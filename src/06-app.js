@@ -5,7 +5,7 @@ const APP = {
   matches: [], tab: "today", myIn: null, lastInJson: "", lastInSend: 0,
   emoteSeen: {}, emoteAt: {}, boardKey: "",
 };
-if (!GAMES[APP.sel]) APP.sel = "coverage";
+if (!GAMES[APP.sel] || !GAME_ORDER.includes(APP.sel)) APP.sel = GAME_ORDER[0];
 (function loadMe() {
   const m = store("nfa-me");
   APP.me = m && validChar(m.c) ? { nick: cleanNick(m.nick), c: validChar(m.c) } : { nick: "", c: randomChar() };
@@ -40,7 +40,8 @@ function startSession(gameId) {
     const pool = shuffle(BOT_NAMES.slice());
     pool.sort((a, b) => (b.boss ? 1 : 0) - (a.boss ? 1 : 0));
     let k = 0;
-    while (ro.length < 4 && k < pool.length) { const b = pool[k++]; ro.push({ k: "bot" + k, n: b.n, c: b.c.slice(), u: null, b: 1, boss: b.boss ? 1 : 0 }); }
+    const want = mod.fill ? mod.fill(ro.length) : 4, extra = shuffle(OPS_EXTRA_BOTS.slice());
+    while (ro.length < want) { const b = pool[k], n = b ? b.n : (extra[k - pool.length] || "Bot " + (k + 1)); k++; ro.push({ k: "bot" + k, n, c: b ? b.c.slice() : randomChar(), u: null, b: 1, boss: b && b.boss ? 1 : 0 }); }
   }
   const used = new Set();
   ro.forEach(r => { let col = r.c[1]; if (used.has(col)) { col = 0; while (used.has(col) && col < PALETTE.length) col++; if (col >= PALETTE.length) col = r.c[1]; } used.add(col); r.col = col; });
@@ -148,6 +149,7 @@ function enterGame(host) {
 function exitGame() {
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
   APP.view = "lobby"; APP.V = null; APP.myIn = null;
+  if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null });
   $("#gameView").hidden = true; $("#lobbyView").hidden = false;
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
@@ -169,6 +171,19 @@ function buildChips(V) {
     return sc;
   });
 }
+function fsElement() { return document.fullscreenElement || document.webkitFullscreenElement || null; }
+function toggleFullscreen() {
+  const el = $("#gameView");
+  try {
+    if (fsElement()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    const req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) { toast("Your browser doesn't allow fullscreen here. On iPhone, use Add to Home Screen."); return; }
+    const r = req.call(el, { navigationUI: "hide" });
+    if (r && r.then) r.then(() => { try { screen.orientation && screen.orientation.lock && screen.orientation.lock("landscape").catch(() => {}); } catch (e) {} }).catch(() => toast("Fullscreen was blocked by the browser."));
+  } catch (e) { toast("Fullscreen isn't available here."); }
+}
+document.addEventListener("fullscreenchange", () => { $("#fsBtn").textContent = fsElement() ? "🗗" : "⛶"; setTimeout(() => { if (APP.view === "game") resizeGame(); }, 60); });
+document.addEventListener("webkitfullscreenchange", () => setTimeout(() => { if (APP.view === "game") resizeGame(); }, 60));
 function resizeGame() {
   const box = $("#stagebox"), cv = $("#gameCanvas");
   const bw = box.clientWidth - 16, bh = box.clientHeight - 16;
@@ -401,7 +416,7 @@ function updateLobby() {
   const mod = GAMES[APP.sel];
   if (host) { btn.textContent = "Game in progress"; btn.disabled = true; }
   else { btn.textContent = "Start " + mod.title; btn.disabled = false; }
-  const bots = APP.bots ? Math.max(0, 4 - n) : 0;
+  const bots = APP.bots ? Math.max(0, (mod.fill ? mod.fill(Math.min(16, n)) : 4) - Math.min(16, n)) : 0;
   $("#startHint").textContent = n + (n === 1 ? " person" : " people") + (bots ? " + " + bots + " bot" + (bots > 1 ? "s" : "") : "") + " will play." + (n < 2 ? " Scores count with 2+ people." : "");
   $$(".game-card").forEach(el => el.setAttribute("aria-pressed", String(el.dataset.g === APP.sel)));
   // net pill
@@ -649,6 +664,7 @@ function bindEvents() {
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
   $$(".tabs button").forEach(b => b.addEventListener("click", () => { APP.tab = b.dataset.tab; renderBoard(); }));
+  $("#fsBtn").addEventListener("click", toggleFullscreen);
   $("#leaveBtn").addEventListener("click", () => {
     if (APP.S && APP.V && APP.S.id === APP.V.sid) { endSession(); toast("You ended the game for everyone."); }
     else if (APP.V) { APP.optOut = APP.V.sid; exitGame(); }
@@ -662,6 +678,7 @@ function bindEvents() {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) e.preventDefault();
     KEYS.add(e.code);
     if (e.repeat) return;
+    if (e.code === "KeyF" && !e.ctrlKey && !e.metaKey) toggleFullscreen();
     if (V.mod.id === "sumo" && e.code === "Space") pendingDash = true;
     if (V.mod.id === "alert" && (e.code === "Space" || e.code === "Enter")) alert.tap(V);
     if (V.mod.id === "alert" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) alert.tap(V, +e.code.slice(-1) - 1);

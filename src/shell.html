@@ -103,7 +103,7 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .btn.big { font-family: var(--f-display); font-weight: 400; font-size: 18px; padding: 14px 22px; letter-spacing: .04em; }
 
 /* games */
-.games { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.games { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 1240px) { .games { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 700px) { .games { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 460px) { .games { gap: 8px; } .game-card .body { padding: 8px 9px 10px; } .game-card h3 { font-size: 13px; } .game-card .meta span:first-child { display: none; } }
@@ -156,6 +156,9 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .hud { display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; background: linear-gradient(180deg, #1a1f40, #12162e); border-bottom: 1px solid var(--line); }
 .hud .gname { font-family: var(--f-display); font-size: 17px; color: var(--bulb); letter-spacing: .03em; }
 .hud .timer { font-family: var(--f-mono); font-weight: 700; font-size: 20px; min-width: 64px; text-align: center; padding: 3px 10px; border-radius: 10px; background: var(--ink-2); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+.hud .icon-btn { padding: 8px 12px; font-size: 18px; line-height: 1; }
+.game-screen:fullscreen { background: var(--ink); }
+.game-screen:fullscreen .hud { padding: 6px 12px; }
 .hud .timer.low { color: var(--coral); border-color: var(--coral); }
 .hud .chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: var(--panel); border: 2px solid transparent; font-size: 13px; font-weight: 600; }
@@ -216,6 +219,25 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 
 /* ---------- editor ---------- */
 dialog.editor { border: 1px solid var(--line); border-radius: 20px; padding: 0; background: var(--panel); color: var(--text); width: min(820px, calc(100% - 24px)); max-height: calc(100% - 24px); box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.ops-shop { position: absolute; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; background: rgba(12,15,34,.96); border: 1px solid var(--line); border-radius: 18px; padding: 16px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
+.ops-shop[hidden] { display: none; }
+.ops-shop .sh-head { display: flex; justify-content: space-between; align-items: center; }
+.ops-shop .sh-head b { font-family: var(--f-display); font-weight: 400; font-size: 18px; color: var(--bulb); letter-spacing: .04em; }
+.ops-shop .sh-head span { font-family: var(--f-mono, monospace); font-weight: 700; font-size: 18px; color: #3ddc97; }
+.ops-shop .sh-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ops-shop .sh-grid button { position: relative; text-align: left; display: flex; flex-direction: column; gap: 3px; padding: 12px 12px 10px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255,255,255,.04); color: var(--text); cursor: pointer; }
+.ops-shop .sh-grid button:hover:not(:disabled) { border-color: var(--bulb); background: rgba(255,210,63,.08); }
+.ops-shop .sh-grid button:disabled { opacity: .45; cursor: default; }
+.ops-shop .sh-grid button.own { opacity: 1; border-color: #3ddc97; }
+.ops-shop .sh-grid button.own em::after { content: " · owned"; color: #3ddc97; }
+.ops-shop .sh-grid small { position: absolute; right: 10px; top: 8px; color: var(--muted); font-weight: 700; }
+.ops-shop .sh-grid b { font-size: 15px; }
+.ops-shop .sh-grid i { font-style: normal; font-size: 12px; color: var(--muted); }
+.ops-shop .sh-grid em { font-style: normal; font-weight: 800; color: #3ddc97; font-size: 14px; }
+.ops-shop .sh-foot { font-size: 12px; color: var(--muted); }
+.ops-touch { position: absolute; z-index: 3; right: 10px; bottom: 74px; display: grid; grid-template-columns: repeat(3, auto); gap: 8px; pointer-events: none; }
+.ops-touch button { pointer-events: auto; min-width: 56px; height: 48px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(18,22,46,.6); color: var(--text); font-weight: 800; font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.ops-touch .t-fire { grid-column: 1 / -1; height: 66px; background: rgba(255,77,94,.55); font-size: 17px; }
 .look-btn { position: absolute; z-index: 3; right: 12px; top: 12px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(18,22,46,.85); color: var(--text); font-weight: 700; font-size: 13px; }
 .look-panel { position: absolute; z-index: 4; right: 12px; top: 54px; width: min(260px, calc(100% - 24px)); background: rgba(18,22,46,.97); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
 .look-panel[hidden] { display: none; }
@@ -330,6 +352,7 @@ footer.foot { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-ali
     <span class="gname" id="hudName">Paint Rush</span>
     <span class="timer" id="hudTimer">1:00</span>
     <div class="chips" id="hudChips"></div>
+    <button class="btn icon-btn" id="fsBtn" type="button" title="Fullscreen (F)" aria-label="Fullscreen">⛶</button>
     <button class="btn" id="leaveBtn">Leave</button>
   </div>
   <div class="stagebox" id="stagebox">

@@ -37,13 +37,13 @@ To update later: `docker compose pull && docker compose up -d`.
 
 | Game | What you do | Controls |
 |---|---|---|
-| Coverage Rush | Claim a client's office floor with your network coverage. Firewall walls block your path. Grab access points for a big blast, Fiber Boost for speed, or Lockdown to protect your tiles. Most tiles in 60 s wins. | WASD / arrows, or drag on touch |
-| Uptime Sumo | Bump rival techs off the server-room floor while an outage shrinks it. Flashing tiles drop out as holes. Shield makes you unpushable; Heavy makes you hit like a server rack. 3 lives each. | WASD / arrows + Space to dash; on phones drag + DASH |
-| Alert Response | Ignore the yellow low-severity decoys. When a red critical alert fires, pick the right containment (isolate host, block IP, reset password, kill process) fastest. Early or wrong fix is −2. 6 rounds. | 1–4, click or tap the fix buttons |
-| Firewall Frenzy (3D) | First-person laser tag through the Neteam data center. 3 hits patches a rival, who reboots in 3 s. Overclock, Patch Kit and Firewall Shield pickups. First to 15 tags or most after 3 minutes. | Click to lock mouse, WASD, Shift sprint, click/Space to tag. Phones: left stick, drag to look, TAG button |
-| Helpdesk Sprint | Close tickets on ports, subnets, CIDR, RAID, private IP ranges, binary and acronyms. Streaks raise the ticket tier, and P1 incidents (3 steps) pay double plus a +25 bonus. | 1–4, click or tap |
+| Breach Protocol | Red Team vs Blue Team, round by round at Neteam HQ. Buy guns and armor in the buy phase. Red plants a ransomware payload at site A (server room) or B (network closet); Blue wipes Red out or defuses it. One life per round, first to 7. Bots fill teams up to even sides. | WASD, mouse aim, click fire, R reload, E plant/defuse, B buy, Tab scores |
+| Zero-Day Deathmatch | Free-for-all on the same map with every weapon unlocked. Respawn after 3 s. First to 25 eliminations or most after 5 minutes. | WASD, mouse aim, 1-4 weapons, right-click scope |
+| Neteam Grand Prix | 3-lap street race around a night-time Manhattan circuit. Boost pads, drift for a turbo, grass slows you down. | W/S gas and brake, A/D steer, Space drift, R reset, C camera |
 
-Bots (Patch Bot, Ping Bot, Sr. Tech Bot, …) fill empty seats so there are always at least 4 players. Untick "Fill empty seats with bots" to turn them off.
+Every game has a fullscreen button (or press F). Mouse invert and sensitivity are in the Aim panel. The older 2D games and Firewall Frenzy are retired from the lobby but their past scores still show.
+
+Bots (Patch Bot, Ping Bot, Sr. Tech Bot, …) fill empty seats (up to even 3v3 teams in Breach Protocol, 4 shooters in Deathmatch, 6 cars in the race). Untick "Fill empty seats with bots" to turn them off.
 
 ## Scoring
 
