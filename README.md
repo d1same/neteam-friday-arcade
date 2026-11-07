@@ -37,11 +37,11 @@ To update later: `docker compose pull && docker compose up -d`.
 
 | Game | What you do | Controls |
 |---|---|---|
-| Coverage Rush | Claim a client's office floor with your network coverage. Grab access points for a big blast. Most tiles in 60 s wins. | WASD / arrows, or drag on touch |
-| Uptime Sumo | Bump rival techs off the server-room floor while an outage shrinks it. 3 lives each. | WASD / arrows + Space to dash; on phones drag + DASH |
-| Alert Response | When the SIEM alert fires, hit Contain first. Jumping early is a false positive (−2). 5 rounds. | Space / Enter, click or tap |
+| Coverage Rush | Claim a client's office floor with your network coverage. Firewall walls block your path. Grab access points for a big blast, Fiber Boost for speed, or Lockdown to protect your tiles. Most tiles in 60 s wins. | WASD / arrows, or drag on touch |
+| Uptime Sumo | Bump rival techs off the server-room floor while an outage shrinks it. Flashing tiles drop out as holes. Shield makes you unpushable; Heavy makes you hit like a server rack. 3 lives each. | WASD / arrows + Space to dash; on phones drag + DASH |
+| Alert Response | Ignore the yellow low-severity decoys. When a red critical alert fires, pick the right containment (isolate host, block IP, reset password, kill process) fastest. Early or wrong fix is −2. 6 rounds. | 1–4, click or tap the fix buttons |
 | Firewall Frenzy (3D) | First-person laser tag through the Neteam data center. 3 hits patches a rival, who reboots in 3 s. Overclock, Patch Kit and Firewall Shield pickups. First to 15 tags or most after 3 minutes. | Click to lock mouse, WASD, Shift sprint, click/Space to tag. Phones: left stick, drag to look, TAG button |
-| Helpdesk Sprint | Close tickets on ports, subnets, binary, acronyms and quick math. Speed bonus and streaks. | 1–4, click or tap |
+| Helpdesk Sprint | Close tickets on ports, subnets, CIDR, RAID, private IP ranges, binary and acronyms. Streaks raise the ticket tier, and P1 incidents (3 steps) pay double plus a +25 bonus. | 1–4, click or tap |
 
 Bots (Patch Bot, Ping Bot, Sr. Tech Bot, …) fill empty seats so there are always at least 4 players. Untick "Fill empty seats with bots" to turn them off.
 

@@ -67,15 +67,19 @@ const FX = {
 
 // ======================= COVERAGE RUSH =======================
 const COLS = 24, ROWS = 15, CELL = 40;
+const FW_CELLS = new Set([[5, 4], [5, 5], [5, 6], [5, 7], [18, 7], [18, 8], [18, 9], [18, 10], [10, 3], [11, 3], [12, 3], [13, 3], [10, 11], [11, 11], [12, 11], [13, 11], [14, 6], [14, 7], [9, 7], [9, 8]].map(([x, y]) => y * COLS + x));
+function covWall(x, y) { const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL); if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return true; return FW_CELLS.has(cy * COLS + cx); }
+function covBlocked(x, y, r = 13) { return covWall(x - r, y - r) || covWall(x + r, y - r) || covWall(x - r, y + r) || covWall(x + r, y + r); }
+const COV_PK = { ap: { n: "AP DEPLOYED", c: "#ffd23f" }, boost: { n: "FIBER BOOST", c: "#4cc9f0" }, lock: { n: "LOCKDOWN", c: "#ff7ac6" } };
 const coverage = {
   id: "coverage", title: "Coverage Rush", tag: "Claim the client's floor",
   blurb: "A new client's office needs coverage. Run the floor and claim tiles with your network. Most tiles in 60 seconds wins.",
-  how: ["Walk over tiles to claim them with your color", "Steal tiles by walking over rivals' coverage", "Grab an access point to blast coverage around you"],
+  how: ["Walk over tiles to claim them · steal rivals' tiles", "Firewalls block the way, so route around them", "Access Point = coverage blast · Fiber Boost = speed · Lockdown = your tiles can't be stolen for 6 s"],
   keys: ["WASD / arrows", "Touch: drag anywhere"],
   rec: { label: "Most tiles", better: "max", fmt: v => v + " tiles" },
   hostStart(S) {
     const n = S.ro.length;
-    S.g = { t: 0, dur: 60, grid: new Array(COLS * ROWS).fill(-1), pos: S.ro.map((r, i) => spawnPoint(i, n)), bot: {}, pk: null, pkT: 4, bm: null, bmSeq: 0 };
+    S.g = { t: 0, dur: 60, grid: new Array(COLS * ROWS).fill(-1), pos: S.ro.map((r, i) => spawnPoint(i, n)), bot: {}, pk: null, pkT: 3, bm: null, bmSeq: 0, boost: S.ro.map(() => 0), lock: S.ro.map(() => 0) };
     S.ro.forEach((r, i) => { if (r.b) S.g.bot[i] = { tx: 0, ty: 0, t: 0, sp: r.boss ? 215 : 185 }; });
   },
   hostTick(S, dt, inputs) {
@@ -86,44 +90,56 @@ const coverage = {
         const b = g.bot[i];
         b.t -= dt;
         const dx = b.tx - p[0], dy = b.ty - p[1], d = Math.hypot(dx, dy);
-        if (b.t <= 0 || d < 12) {
+        if (b.t <= 0 || d < 12 || b.stuck > 0.4) {
+          b.stuck = 0;
           let best = null, bs = -1e9;
           if (g.pk && Math.hypot(g.pk[0] - p[0], g.pk[1] - p[1]) < 320 && Math.random() < 0.6) best = g.pk;
           else for (let k = 0; k < 16; k++) {
             const cx = rint(0, COLS - 1), cy = rint(0, ROWS - 1), o = g.grid[cy * COLS + cx];
+            if (FW_CELLS.has(cy * COLS + cx)) continue;
             const x = cx * CELL + CELL / 2, y = cy * CELL + CELL / 2;
             const sc = (o === i ? -2 : o === -1 ? 1.2 : 2) - Math.hypot(x - p[0], y - p[1]) / 260 + Math.random() * 0.6;
             if (sc > bs) { bs = sc; best = [x, y]; }
           }
           b.tx = best[0]; b.ty = best[1]; b.t = 0.8 + Math.random() * 1.2;
         } else {
-          const s = Math.min(d, b.sp * dt);
-          p[0] += dx / d * s; p[1] += dy / d * s;
+          const s = Math.min(d, b.sp * (g.boost[i] > 0 ? 1.45 : 1) * dt);
+          const nx = p[0] + dx / d * s, ny = p[1] + dy / d * s;
+          let moved = false;
+          if (!covBlocked(nx, p[1])) { p[0] = nx; moved = true; }
+          if (!covBlocked(p[0], ny)) { p[1] = ny; moved = true; }
+          if (!moved || (Math.abs(dx) > 2 && covBlocked(nx, p[1]))) b.stuck = (b.stuck || 0) + dt;
         }
       } else {
         const inp = inputs[i];
         if (inp && Number.isFinite(inp.x) && Number.isFinite(inp.y)) { p[0] = clamp(inp.x, 14, W - 14); p[1] = clamp(inp.y, 14, H - 14); }
       }
       const cx = clamp(Math.floor(p[0] / CELL), 0, COLS - 1), cy = clamp(Math.floor(p[1] / CELL), 0, ROWS - 1);
-      g.grid[cy * COLS + cx] = i;
+      const claim = (k) => { if (FW_CELLS.has(k)) return; const o = g.grid[k]; if (o >= 0 && o !== i && g.lock[o] > 0) return; g.grid[k] = i; };
+      claim(cy * COLS + cx);
       if (g.pk && Math.hypot(g.pk[0] - p[0], g.pk[1] - p[1]) < 34) {
-        const pcx = Math.floor(g.pk[0] / CELL), pcy = Math.floor(g.pk[1] / CELL);
-        for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) {
-          if (x * x + y * y > 6.5) continue;
-          const X = pcx + x, Y = pcy + y;
-          if (X >= 0 && Y >= 0 && X < COLS && Y < ROWS) g.grid[Y * COLS + X] = i;
-        }
-        g.bm = [i, g.pk[0], g.pk[1], ++g.bmSeq]; g.pk = null; g.pkT = 5 + Math.random() * 3;
+        const type = g.pk[2];
+        if (type === "ap") {
+          const pcx = Math.floor(g.pk[0] / CELL), pcy = Math.floor(g.pk[1] / CELL);
+          for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) {
+            if (x * x + y * y > 6.5) continue;
+            const X = pcx + x, Y = pcy + y;
+            if (X >= 0 && Y >= 0 && X < COLS && Y < ROWS) claim(Y * COLS + X);
+          }
+        } else if (type === "boost") g.boost[i] = 5;
+        else g.lock[i] = 6;
+        g.bm = [i, g.pk[0], g.pk[1], ++g.bmSeq, type]; g.pk = null; g.pkT = 3 + Math.random() * 3;
       }
     });
-    if (!g.pk) { g.pkT -= dt; if (g.pkT <= 0) { const cx = rint(2, COLS - 3), cy = rint(2, ROWS - 3); g.pk = [cx * CELL + CELL / 2, cy * CELL + CELL / 2]; } }
+    g.boost = g.boost.map(v => Math.max(0, v - dt)); g.lock = g.lock.map(v => Math.max(0, v - dt));
+    if (!g.pk) { g.pkT -= dt; if (g.pkT <= 0) { let cx, cy; do { cx = rint(2, COLS - 3); cy = rint(2, ROWS - 3); } while (FW_CELLS.has(cy * COLS + cx)); g.pk = [cx * CELL + CELL / 2, cy * CELL + CELL / 2, ["ap", "ap", "boost", "lock"][rint(0, 3)]]; } }
   },
   pack(S) {
     const g = S.g;
     return {
       gr: g.grid.map(v => v < 0 ? "." : String.fromCharCode(97 + v)).join(""),
       bp: S.ro.map((r, i) => r.b ? [Math.round(g.pos[i][0]), Math.round(g.pos[i][1])] : 0),
-      pk: g.pk, bm: g.bm,
+      pk: g.pk, bm: g.bm, fx: S.ro.map((r, i) => (g.boost[i] > 0 ? 1 : 0) + (g.lock[i] > 0 ? 2 : 0)),
     };
   },
   timeLeft(S) { return (S.g.dur - S.g.t) * 1000; },
@@ -131,14 +147,16 @@ const coverage = {
   counts(gr, n) { const c = new Array(n).fill(0); for (let k = 0; k < gr.length; k++) { const v = gr.charCodeAt(k) - 97; if (v >= 0 && v < n) c[v]++; } return c; },
   rank(S) {
     const c = this.counts(this.pack(S).gr, S.ro.length);
-    return S.ro.map((r, i) => ({ i, v: c[i], label: c[i] + " tiles", rec: c[i] })).sort((a, b) => b.v - a.v);
+    return S.ro.map((r, i) => ({ i, v: c[i], label: c[i] + (c[i] === 1 ? " tile" : " tiles"), rec: c[i] })).sort((a, b) => b.v - a.v);
   },
   chip(V, i) { return V.g ? this.counts(V.g.gr || "", V.ro.length)[i] : 0; },
   clientEnter(V) { const sp = spawnPoint(V.meIdx, V.ro.length); V.local = { x: sp[0], y: sp[1] }; V.prevGr = ""; V.pop = {}; V.lastBm = 0; },
   clientInput(V, dt, inp) {
     if (V.meIdx < 0 || V.h.ph !== "play") return null;
-    const L = V.local, sp = 235;
-    L.x = clamp(L.x + inp.dx * sp * dt, 14, W - 14); L.y = clamp(L.y + inp.dy * sp * dt, 14, H - 14);
+    const L = V.local, fx = V.g && V.g.fx ? V.g.fx[V.meIdx] : 0, sp = fx & 1 ? 340 : 235;
+    const nx = clamp(L.x + inp.dx * sp * dt, 14, W - 14), ny = clamp(L.y + inp.dy * sp * dt, 14, H - 14);
+    if (!covBlocked(nx, L.y)) L.x = nx;
+    if (!covBlocked(L.x, ny)) L.y = ny;
     return { x: Math.round(L.x), y: Math.round(L.y) };
   },
   draw(ctx, V, dt, t) {
@@ -177,20 +195,50 @@ const coverage = {
       ctx.beginPath(); ctx.arc(x + CELL / 2, y + CELL / 2 + 6, 4, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
       ctx.globalAlpha = 1;
     }
-    // access point pickup
+    // lockdown shimmer on locked players' tiles
+    if (g.fx) {
+      ctx.strokeStyle = "rgba(255,122,198," + (0.5 + Math.sin(t * 8) * 0.3) + ")"; ctx.lineWidth = 2;
+      for (let k = 0; k < gr.length; k++) { const v = gr.charCodeAt(k) - 97; if (v < 0 || !(g.fx[v] & 2)) continue; ctx.strokeRect((k % COLS) * CELL + 4, Math.floor(k / COLS) * CELL + 4, CELL - 8, CELL - 8); }
+    }
+    // firewalls
+    FW_CELLS.forEach(k => {
+      const x = (k % COLS) * CELL, y = Math.floor(k / COLS) * CELL;
+      ctx.fillStyle = "#3a1d2e"; ctx.fillRect(x, y, CELL, CELL);
+      ctx.fillStyle = "#5b2a3f";
+      ctx.save(); ctx.beginPath(); ctx.rect(x, y, CELL, CELL); ctx.clip();
+      for (let r = 0; r < 4; r++) for (let c = -1; c < 3; c++) ctx.fillRect(x + 2 + c * 19 + (r % 2 ? 9 : 0), y + 2 + r * 9.5, 16, 7);
+      ctx.restore();
+      const glow = 0.35 + Math.sin(t * 5 + k) * 0.2;
+      ctx.fillStyle = "rgba(255,107,87," + glow + ")"; ctx.fillRect(x, y + CELL - 4, CELL, 4);
+    });
+    ctx.font = "700 9px 'JetBrains Mono', monospace"; ctx.fillStyle = "rgba(255,159,28,.8)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    [[5, 4], [18, 7], [10, 3], [10, 11]].forEach(([x, y]) => ctx.fillText("FW", x * CELL + CELL / 2, y * CELL + CELL / 2));
+    // pickup
     if (g.pk) {
-      const [px, py] = g.pk, pulse = (t * 1.4) % 1;
-      ctx.strokeStyle = "rgba(255,210,63," + (1 - pulse) + ")"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.arc(px, py, 14 + pulse * 30, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = "#f5f1e6"; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.roundRect(px - 16, py - 6, 32, 14, 5); ctx.fill(); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(px - 9, py - 6); ctx.lineTo(px - 13, py - 20); ctx.moveTo(px + 9, py - 6); ctx.lineTo(px + 13, py - 20); ctx.stroke();
-      ctx.fillStyle = "#3ddc97"; ctx.beginPath(); ctx.arc(px + 9, py + 1, 2.5, 0, Math.PI * 2); ctx.fill();
+      const [px, py, type] = g.pk, pulse = (t * 1.4) % 1, info = COV_PK[type] || COV_PK.ap;
+      ctx.strokeStyle = info.c; ctx.globalAlpha = 1 - pulse; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(px, py, 14 + pulse * 30, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
+      if (type === "boost") {
+        ctx.fillStyle = "#4cc9f0"; ctx.beginPath(); ctx.moveTo(px + 4, py - 16); ctx.lineTo(px - 10, py + 2); ctx.lineTo(px, py + 2); ctx.lineTo(px - 4, py + 16); ctx.lineTo(px + 10, py - 2); ctx.lineTo(px, py - 2); ctx.closePath(); ctx.fill(); ctx.stroke();
+      } else if (type === "lock") {
+        ctx.fillStyle = "#ff7ac6"; ctx.beginPath(); ctx.roundRect(px - 11, py - 4, 22, 17, 4); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.arc(px, py - 4, 7, Math.PI, 0); ctx.stroke();
+      } else {
+        ctx.fillStyle = "#f5f1e6";
+        ctx.beginPath(); ctx.roundRect(px - 16, py - 6, 32, 14, 5); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(px - 9, py - 6); ctx.lineTo(px - 13, py - 20); ctx.moveTo(px + 9, py - 6); ctx.lineTo(px + 13, py - 20); ctx.stroke();
+        ctx.fillStyle = "#3ddc97"; ctx.beginPath(); ctx.arc(px + 9, py + 1, 2.5, 0, Math.PI * 2); ctx.fill();
+      }
     }
     if (g.bm && g.bm[3] !== V.lastBm) {
       V.lastBm = g.bm[3];
-      const r = V.ro[g.bm[0]];
-      if (r) { FX.ring(g.bm[1], g.bm[2], r.hex, 150, 0.7); FX.burst(g.bm[1], g.bm[2], r.hex, 30, 260, 0.8, 6); FX.text(g.bm[1], g.bm[2] - 30, "AP DEPLOYED", "#ffd23f", 1.1); SFX.play("boom"); }
+      const r = V.ro[g.bm[0]], info = COV_PK[g.bm[4] || "ap"];
+      if (r) {
+        if ((g.bm[4] || "ap") === "ap") { FX.ring(g.bm[1], g.bm[2], r.hex, 150, 0.7); FX.burst(g.bm[1], g.bm[2], r.hex, 30, 260, 0.8, 6); SFX.play("boom"); }
+        else { FX.ring(g.bm[1], g.bm[2], info.c, 60, 0.5); SFX.play("pop"); }
+        FX.text(g.bm[1], g.bm[2] - 30, info.n, info.c, 1.1);
+      }
     }
     // players
     const list = V.ro.map((r, i) => {
@@ -203,6 +251,9 @@ const coverage = {
     }).sort((a, b) => a.m.y - b.m.y);
     for (const { i, r, m } of list) {
       const moving = Math.abs(m.vx) + Math.abs(m.y - (m.py ?? m.y)) > 0.3;
+      const fx = g.fx ? g.fx[i] : 0;
+      if (fx & 1) { FX.parts.length < 400 && moving && FX.burst(m.x, m.y + 8, "#4cc9f0", 1, 40, 0.35, 5); }
+      if (fx & 2) { ctx.strokeStyle = "#ff7ac6"; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(m.x, m.y - 6, 26 + Math.sin(t * 8) * 2, 0, Math.PI * 2); ctx.stroke(); }
       drawChar(ctx, r.c, m.x, m.y - 6, 38, { t, look: clamp(m.vx * 0.3, -1, 1), squash: moving ? Math.sin(t * 18 + i) * 0.35 : 0, phase: i, color: r.hex });
       nameTag(ctx, r.n, m.x, m.y - 40, i === V.meIdx, r.hex);
     }
@@ -213,20 +264,41 @@ const coverage = {
 const sumo = {
   id: "sumo", title: "Uptime Sumo", tag: "Last tech online wins",
   blurb: "An outage is eating the server-room floor. Bump rival techs off the edge and stay online. You have 3 lives.",
-  how: ["Steer your tech around the raised floor", "Dash into rivals to knock them off", "The floor shrinks as the outage spreads"],
+  how: ["Dash into rivals to knock them off the floor", "The floor shrinks, and flashing tiles drop out as holes", "Shield = can't be pushed · Heavy = hit like a server rack"],
   keys: ["WASD / arrows", "Space = dash", "Touch: drag + DASH"],
   rec: { label: "Most knockouts", better: "max", fmt: v => v + " KOs" },
   R: 22,
+  tileOf(x, y) { return [Math.floor((x - (W / 2 - 300)) / 50), Math.floor((y - (H / 2 - 300)) / 50)]; },
   radius(t) { return t < 8 ? 265 : Math.max(125, 265 - (t - 8) * (140 / 45)); },
   hostStart(S) {
     const n = S.ro.length;
-    S.g = { t: 0, dur: 80, endT: 0, p: S.ro.map((r, i) => { const a = -Math.PI / 2 + i / n * Math.PI * 2; return { x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150, vx: 0, vy: 0, st: 0, lives: 3, kos: 0, cd: 0, inv: 1, fallT: 0, hit: -1, hitT: -9, d: null, outAt: 0, boss: !!r.boss }; }) };
+    S.g = { t: 0, dur: 80, endT: 0, p: S.ro.map((r, i) => { const a = -Math.PI / 2 + i / n * Math.PI * 2; return { x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150, vx: 0, vy: 0, st: 0, lives: 3, kos: 0, cd: 0, inv: 1, fallT: 0, hit: -1, hitT: -9, d: null, outAt: 0, boss: !!r.boss, shT: 0, hvT: 0 }; }), holes: [], hT: 7, pk: null, pkT: 5, pev: null, pseq: 0 };
   },
   hostTick(S, dt, inputs) {
     const g = S.g; g.t += dt;
     const r = this.radius(g.t), R = this.R, cx = W / 2, cy = H / 2;
     const ps = g.p;
+    // failing tiles
+    g.hT -= dt;
+    if (g.hT <= 0 && g.holes.length < 4) {
+      g.hT = 2.6 + Math.random() * 1.6;
+      for (let k = 0; k < 10; k++) {
+        const a = Math.random() * Math.PI * 2, d = Math.random() * r * 0.8;
+        const [tx, ty] = this.tileOf(cx + Math.cos(a) * d, cy + Math.sin(a) * d);
+        if (g.holes.some(h => h.tx === tx && h.ty === ty)) continue;
+        g.holes.push({ tx, ty, st: 1, t: 1.6 }); break;
+      }
+    }
+    g.holes.forEach(h => { h.t -= dt; if (h.t <= 0) { if (h.st === 1) { h.st = 2; h.t = 6; } else h.st = 3; } });
+    g.holes = g.holes.filter(h => h.st !== 3);
+    // pickups
+    if (!g.pk) { g.pkT -= dt; if (g.pkT <= 0) { const a = Math.random() * Math.PI * 2, d = Math.random() * r * 0.55; g.pk = [Math.round(cx + Math.cos(a) * d), Math.round(cy + Math.sin(a) * d), Math.random() < 0.5 ? "shield" : "heavy"]; } }
     ps.forEach((p, i) => {
+      p.shT = Math.max(0, p.shT - dt); p.hvT = Math.max(0, p.hvT - dt);
+      if (p.st === 0 && g.pk && Math.hypot(g.pk[0] - p.x, g.pk[1] - p.y) < 32) {
+        if (g.pk[2] === "shield") p.shT = 4; else p.hvT = 6;
+        g.pev = [i, g.pk[2], ++g.pseq]; g.pk = null; g.pkT = 5 + Math.random() * 3;
+      }
       if (p.st === 2) return;
       if (p.st === 1) {
         p.fallT -= dt;
@@ -245,6 +317,8 @@ const sumo = {
         const dc = Math.hypot(p.x - cx, p.y - cy);
         const edge = dc / r;
         if (edge > 0.6) { const w = (edge - 0.6) * (p.boss ? 5 : 3.5); dx += (cx - p.x) / dc * w; dy += (cy - p.y) / dc * w; }
+        for (const h of g.holes) { const hx = W / 2 - 300 + h.tx * 50 + 25, hy = H / 2 - 300 + h.ty * 50 + 25, hd = Math.hypot(p.x - hx, p.y - hy); if (hd < 70 && hd > 0) { dx += (p.x - hx) / hd * 1.6; dy += (p.y - hy) / hd * 1.6; } }
+        if (g.pk && Math.hypot(g.pk[0] - p.x, g.pk[1] - p.y) < 160) { const pd = Math.hypot(g.pk[0] - p.x, g.pk[1] - p.y) || 1; dx += (g.pk[0] - p.x) / pd * 0.8; dy += (g.pk[1] - p.y) / pd * 0.8; }
         const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
         if (!p.boss) { dx *= 0.85; dy *= 0.85; }
       } else {
@@ -254,7 +328,8 @@ const sumo = {
         if (p.d === null) p.d = inp.d || 0;
         if ((inp.d || 0) > p.d) { p.d = inp.d; if (p.cd <= 0) dash = true; }
       }
-      p.vx += dx * 950 * dt; p.vy += dy * 950 * dt;
+      const acc = p.hvT > 0 ? 800 : 950;
+      p.vx += dx * acc * dt; p.vy += dy * acc * dt;
       if (dash) {
         let ddx = dx, ddy = dy; if (!ddx && !ddy) { const l = Math.hypot(p.vx, p.vy) || 1; ddx = p.vx / l; ddy = p.vy / l; }
         p.vx += ddx * 560; p.vy += ddy * 560; p.cd = 1.2; p.dashT = 0.25;
@@ -276,14 +351,18 @@ const sumo = {
       const rv = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
       if (rv > 0) {
         const j2 = rv * 1.25 + 90;
-        a.vx -= nx * j2; a.vy -= ny * j2; b.vx += nx * j2; b.vy += ny * j2;
+        const ma = a.hvT > 0 ? 2.6 : 1, mb = b.hvT > 0 ? 2.6 : 1;
+        const fa = a.shT > 0 ? 0 : 2 * mb / (ma + mb), fb = b.shT > 0 ? 0 : 2 * ma / (ma + mb);
+        a.vx -= nx * j2 * fa; a.vy -= ny * j2 * fa; b.vx += nx * j2 * fb; b.vy += ny * j2 * fb;
         a.hit = j; a.hitT = g.t; b.hit = i; b.hitT = g.t;
       }
     }
     // falls
     ps.forEach((p, i) => {
       if (p.st !== 0) return;
-      if (Math.hypot(p.x - cx, p.y - cy) > r + 4) {
+      const [tx, ty] = this.tileOf(p.x, p.y);
+      const inHole = p.inv <= 0 && g.holes.some(h => h.st === 2 && h.tx === tx && h.ty === ty);
+      if (Math.hypot(p.x - cx, p.y - cy) > r + 4 || inHole) {
         p.st = 1; p.fallT = 1.1; p.lives--;
         if (p.hit >= 0 && g.t - p.hitT < 3 && p.hit !== i) ps[p.hit].kos++;
         p.hit = -1;
@@ -294,7 +373,7 @@ const sumo = {
   },
   pack(S) {
     const g = S.g;
-    return { r: Math.round(this.radius(g.t)), p: g.p.map(p => [Math.round(p.x), Math.round(p.y), Math.round(p.vx), Math.round(p.vy), p.st, p.lives, p.kos, p.inv > 0 ? 1 : 0, Math.max(0, Math.round(p.fallT * 10)), p.dashT > 0 ? 1 : 0]) };
+    return { r: Math.round(this.radius(g.t)), p: g.p.map(p => [Math.round(p.x), Math.round(p.y), Math.round(p.vx), Math.round(p.vy), p.st, p.lives, p.kos, p.inv > 0 ? 1 : 0, Math.max(0, Math.round(p.fallT * 10)), p.dashT > 0 ? 1 : 0, p.shT > 0 ? 1 : 0, p.hvT > 0 ? 1 : 0]), hl: g.holes.map(h => [h.tx, h.ty, h.st]), pk: g.pk, pev: g.pev };
   },
   timeLeft(S) { return (S.g.dur - S.g.t) * 1000; },
   done(S) { return S.g.t >= S.g.dur || (S.g.endT && S.g.t >= S.g.endT); },
@@ -303,7 +382,7 @@ const sumo = {
       .map(({ i, p }) => ({ i, v: p.lives * 100 + p.kos, label: p.kos + " KO" + (p.kos === 1 ? "" : "s") + " · " + (p.st === 2 ? "offline" : p.lives + " " + (p.lives === 1 ? "life" : "lives") + " left"), rec: p.kos }));
   },
   chip(V, i) { const p = V.g && V.g.p && V.g.p[i]; return p ? "●".repeat(Math.max(0, p[5])) + "○".repeat(Math.max(0, 3 - p[5])) : "●●●"; },
-  clientEnter(V) { V.dashN = 0; V.lastBump = 0; V.prevSt = {}; },
+  clientEnter(V) { V.dashN = 0; V.lastBump = 0; V.prevSt = {}; V.pevSeen = 0; },
   clientInput(V, dt, inp) {
     if (V.meIdx < 0) return null;
     if (inp.dash) { V.dashN++; inp.dash = false; SFX.play("dash"); }
@@ -337,7 +416,27 @@ const sumo = {
     for (let x = cx - 275; x < cx + 300; x += 100) for (let y = cy - 275; y < cy + 300; y += 100) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
     ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.07)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("NETEAM DC-1", cx, cy);
+    (g.hl || []).forEach(([tx, ty, st]) => {
+      const x = cx - 300 + tx * 50, y = cy - 300 + ty * 50;
+      if (st === 1) { ctx.fillStyle = "rgba(255,107,87," + (0.25 + 0.35 * (Math.sin(t * 18) * 0.5 + 0.5)) + ")"; ctx.fillRect(x + 1, y + 1, 48, 48); ctx.strokeStyle = "#ff6b57"; ctx.lineWidth = 2; ctx.strokeRect(x + 3, y + 3, 44, 44); }
+      else {
+        ctx.fillStyle = "#03040c"; ctx.fillRect(x, y, 50, 50);
+        const gr2 = ctx.createLinearGradient(x, y, x, y + 50); gr2.addColorStop(0, "rgba(76,201,240,.25)"); gr2.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = gr2; ctx.fillRect(x, y, 50, 10);
+        ctx.strokeStyle = "rgba(255,159,28,.6)"; ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, 48, 48);
+      }
+    });
     ctx.restore();
+    if (g.pk) {
+      const [px, py, type] = g.pk, bob = Math.sin(t * 4) * 3;
+      ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
+      if (type === "shield") { ctx.fillStyle = "rgba(76,201,240,.35)"; ctx.beginPath(); ctx.arc(px, py + bob, 16, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#4cc9f0"; ctx.stroke(); ctx.fillStyle = "#4cc9f0"; ctx.font = "400 14px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("S", px, py + bob + 1); }
+      else { ctx.fillStyle = "#9b7bff"; ctx.beginPath(); ctx.moveTo(px - 16, py + 12 + bob); ctx.lineTo(px - 10, py - 10 + bob); ctx.lineTo(px + 10, py - 10 + bob); ctx.lineTo(px + 16, py + 12 + bob); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#fff"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("4U", px, py + 3 + bob); }
+    }
+    if (g.pev && g.pev[2] !== V.pevSeen) {
+      V.pevSeen = g.pev[2]; const q = (g.p || [])[g.pev[0]];
+      if (q) { FX.text(q[0], q[1] - 50, g.pev[1] === "shield" ? "SHIELD UP" : "HEAVY RACK", g.pev[1] === "shield" ? "#4cc9f0" : "#9b7bff", 1); SFX.play("pop"); }
+    }
     const pulse = 0.5 + Math.sin(t * 6) * 0.5;
     ctx.strokeStyle = r < 260 ? "rgba(255,107,87," + (0.55 + pulse * 0.45) + ")" : "rgba(255,210,63,.7)";
     ctx.lineWidth = 6; ctx.setLineDash([16, 10]); ctx.lineDashOffset = -t * 40;
@@ -369,6 +468,8 @@ const sumo = {
       if (st === 1) { const k = p[8] / 11; scale = 0.25 + 0.75 * k; alpha = k; }
       if (p[7] && Math.floor(t * 10) % 2) alpha *= 0.45;
       if (p[9]) { ctx.fillStyle = "rgba(255,210,63,.25)"; ctx.beginPath(); ctx.arc(m.x - p[2] * 0.03, m.y - p[3] * 0.03, 26, 0, Math.PI * 2); ctx.fill(); }
+      if (p[10] && st === 0) { ctx.fillStyle = "rgba(76,201,240,.18)"; ctx.strokeStyle = "rgba(76,201,240," + (0.6 + Math.sin(t * 10) * 0.3) + ")"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(m.x, m.y - 4, 34, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); }
+      if (p[11]) scale *= 1.3;
       drawChar(ctx, ro.c, m.x, m.y - 4, 46 * scale, { t, alpha, look: clamp(p[2] / 200, -1, 1), squash: clamp(Math.hypot(p[2], p[3]) / 600, 0, 0.6), mood: st === 1 ? "shock" : p[9] ? "happy" : "", phase: i, color: ro.hex });
       if (st === 0) {
         nameTag(ctx, ro.n, m.x, m.y - 44, i === V.meIdx, ro.hex);
@@ -379,14 +480,16 @@ const sumo = {
 };
 
 // ======================= ALERT RESPONSE =======================
-const ALERTS = ["Brute-force on the VPN", "Phishing link clicked", "Ransomware beacon", "Impossible-travel login", "MFA fatigue spam", "Port scan on edge firewall", "Unknown USB device", "Admin login at 3 a.m.", "Mass file rename on NAS", "DNS tunneling spotted"];
+const SOC_ACTS = ["ISOLATE HOST", "BLOCK IP", "RESET PASSWORD", "KILL PROCESS"];
+const ALERTS = [["Brute-force on the VPN", 1], ["Phishing link clicked", 2], ["Ransomware beacon", 0], ["Impossible-travel login", 2], ["MFA fatigue spam", 2], ["Port scan on edge firewall", 1], ["Unknown USB device", 0], ["Admin login at 3 a.m.", 2], ["Mass file rename on NAS", 0], ["DNS tunneling spotted", 1], ["Suspicious PowerShell", 3], ["Crypto-miner on FS01", 3], ["Unsigned process injecting", 3], ["C2 traffic to new domain", 1]];
+const LOW_ALERTS = ["Printer toner low", "Disk 81% on FS01", "Update pending reboot", "Cert expires in 30 days", "Guest Wi-Fi spike", "Backup ran long", "UPS self-test passed"];
 const alert = {
   id: "alert", title: "Alert Response", tag: "Fastest containment wins",
-  blurb: "You're on SOC duty. When the SIEM alert fires, hit Contain. Fastest tech each round scores. Jumping early is a false positive.",
-  how: ["Wait while the monitor shows all clear", "When it flashes red, tap as fast as you can", "5 rounds · 1st 5 pts, 2nd 3, 3rd 2 · false positive −2"],
-  keys: ["Space / Enter", "Click or tap anywhere"],
+  blurb: "You're on SOC duty. When a critical SIEM alert fires, pick the right containment fast. Yellow low-severity noise is bait, and the wrong fix costs you.",
+  how: ["Ignore yellow low-severity alerts, they're decoys", "On a red critical alert, pick the right fix: isolate, block, reset or kill", "6 rounds · 1st 5 pts, 2nd 3, 3rd 2 · early or wrong fix −2"],
+  keys: ["1 2 3 4 = fix", "Click or tap the fix buttons"],
   rec: { label: "Fastest response", better: "min", fmt: v => v + " ms" },
-  ROUNDS: 5,
+  ROUNDS: 6,
   hostStart(S) {
     const n = S.ro.length;
     S.g = { r: 1, rp: "ready", pt: 2, d: 0, al: 0, aT: 0, rt: new Array(n).fill(null), pts: new Array(n).fill(0), rpts: new Array(n).fill(0), best: new Array(n).fill(null), bot: {} };
@@ -394,22 +497,23 @@ const alert = {
   hostTick(S, dt, inputs) {
     const g = S.g; g.pt -= dt;
     if (g.rp === "ready" && g.pt <= 0) {
-      g.rp = "armed"; g.d = Math.round(1500 + Math.random() * 2600); g.aT = 0; g.al = rint(0, ALERTS.length - 1);
+      g.rp = "armed"; g.d = Math.round(2000 + Math.random() * 3000); g.aT = 0; g.al = rint(0, ALERTS.length - 1);
+      g.dc = []; const nd = rint(0, 2); for (let k = 0; k < nd; k++) g.dc.push([Math.round(400 + Math.random() * (g.d - 1300)), rint(0, LOW_ALERTS.length - 1)]);
       g.rt = g.rt.map(() => null); g.rpts = g.rpts.map(() => 0);
-      S.ro.forEach((r, i) => { if (r.b) { const fs = Math.random() < 0.05; g.bot[i] = fs ? { fs: Math.random() * g.d } : { t: r.boss ? 195 + Math.random() * 130 : 230 + Math.random() * 230 }; } });
+      S.ro.forEach((r, i) => { if (r.b) { const fs = Math.random() < 0.04, wr = Math.random() < 0.08; g.bot[i] = fs ? { fs: Math.random() * g.d } : { t: (r.boss ? 195 + Math.random() * 130 : 230 + Math.random() * 230) + 150 + Math.random() * 120, wr }; } });
     } else if (g.rp === "armed") {
       g.aT += dt * 1000;
       S.ro.forEach((r, i) => {
         if (g.rt[i] != null) return;
-        if (r.b) { const b = g.bot[i]; if (b.fs != null && g.aT >= b.fs) g.rt[i] = -1; else if (b.t != null && g.aT >= g.d + b.t) g.rt[i] = Math.round(b.t); }
-        else { const rx = inputs[i] && inputs[i].rx; if (rx && rx.r === g.r) g.rt[i] = rx.f ? -1 : clamp(Math.round(+rx.t || 0), 90, 9999); }
+        if (r.b) { const b = g.bot[i]; if (b.fs != null && g.aT >= b.fs) g.rt[i] = -1; else if (b.t != null && g.aT >= g.d + b.t) g.rt[i] = b.wr ? -2 : Math.round(b.t); }
+        else { const rx = inputs[i] && inputs[i].rx; if (rx && rx.r === g.r) g.rt[i] = rx.f ? -1 : rx.a !== ALERTS[g.al][1] ? -2 : clamp(Math.round(+rx.t || 0), 90, 9999); }
       });
       const all = g.rt.every(v => v != null);
-      if (g.aT > g.d + 2600 || (all && g.aT > g.d + 250)) {
+      if (g.aT > g.d + 4000 || (all && g.aT > g.d + 250)) {
         const valid = g.rt.map((v, i) => ({ v, i })).filter(o => o.v != null && o.v > 0).sort((a, b) => a.v - b.v);
         const P = [5, 3, 2];
         valid.forEach((o, k) => { g.rpts[o.i] = k < 3 ? P[k] : 1; if (g.best[o.i] == null || o.v < g.best[o.i]) g.best[o.i] = o.v; });
-        g.rt.forEach((v, i) => { if (v === -1) g.rpts[i] = -2; });
+        g.rt.forEach((v, i) => { if (v < 0) g.rpts[i] = -2; });
         g.rpts.forEach((p, i) => g.pts[i] += p);
         g.rp = "reveal"; g.pt = 3;
       }
@@ -418,7 +522,7 @@ const alert = {
       else { g.r++; g.rp = "ready"; g.pt = 1.6; }
     }
   },
-  pack(S) { const g = S.g; return { r: g.r, rp: g.rp, d: g.d, al: g.al, rt: g.rp === "armed" ? g.rt.map(v => v == null ? null : 1) : g.rt, pts: g.pts, rpts: g.rpts, best: g.best }; },
+  pack(S) { const g = S.g; return { r: g.r, rp: g.rp, d: g.d, al: g.al, dc: g.dc || [], ac: g.rp === "reveal" ? ALERTS[g.al][1] : -1, rt: g.rp === "armed" ? g.rt.map(v => v == null ? null : 1) : g.rt, pts: g.pts, rpts: g.rpts, best: g.best }; },
   timeLeft() { return null; },
   done(S) { return !!S.g.fin; },
   rank(S) {
@@ -428,18 +532,36 @@ const alert = {
   },
   chip(V, i) { return V.g && V.g.pts ? V.g.pts[i] : 0; },
   clientEnter(V) { V.lr = { r: 0 }; V.lastRp = ""; },
-  tap(V) {
+  tap(V, k) {
     const g = V.g; if (!g || V.meIdx < 0 || V.h.ph !== "play") return;
     const L = V.lr;
     if (g.rp !== "armed" || L.r !== g.r || L.done) return;
-    L.done = true;
-    if (L.goAt) { L.res = Math.round(now() - L.goAt); V.sendRx = { r: g.r, t: L.res }; SFX.play("blip"); }
-    else { L.res = -1; V.sendRx = { r: g.r, f: 1 }; SFX.play("early"); }
+    if (L.goAt) {
+      if (k == null) return;
+      L.done = true; L.pick = k; L.res = Math.round(now() - L.goAt);
+      V.sendRx = { r: g.r, t: L.res, a: k }; SFX.play("blip");
+    } else { L.done = true; L.res = -1; L.pick = k == null ? -1 : k; V.sendRx = { r: g.r, f: 1 }; SFX.play("early"); }
   },
+  clientExit() { const p = $("#socPanel"); if (p) p.hidden = true; },
   clientInput(V) {
     const g = V.g; if (!g) return null;
+    const panel = $("#socPanel");
+    if (panel) {
+      if (!panel.dataset.built) {
+        panel.dataset.built = "1";
+        SOC_ACTS.forEach((a, k) => { const b = document.createElement("button"); b.type = "button"; const sm = document.createElement("small"); sm.textContent = String(k + 1); b.append(sm, document.createTextNode(a)); b.addEventListener("click", () => alert.tap(APP.V, k)); panel.append(b); });
+      }
+      panel.hidden = !(V.h.ph === "play" && V.meIdx >= 0);
+      const Lx = V.lr || {}, bs = panel.querySelectorAll("button");
+      const live = g.rp === "armed" && Lx.r === g.r && Lx.goAt && !Lx.done;
+      panel.classList.toggle("live", !!live);
+      bs.forEach((b, k) => {
+        b.classList.toggle("picked", g.rp !== "ready" && Lx.r === g.r && Lx.pick === k);
+        b.classList.toggle("right", g.rp === "reveal" && g.ac === k);
+      });
+    }
     const L = V.lr;
-    if (g.rp === "armed" && L.r !== g.r) { V.lr = { r: g.r, start: now(), d: g.d, goAt: 0, done: false, res: null }; V.sendRx = null; }
+    if (g.rp === "armed" && L.r !== g.r) { V.lr = { r: g.r, start: now(), d: g.d, goAt: 0, done: false, res: null, pick: -1 }; V.sendRx = null; }
     const L2 = V.lr;
     if (g.rp === "armed" && L2.r === g.r && !L2.goAt && now() - L2.start >= L2.d) { L2.goAt = now(); if (!L2.done) SFX.play("go"); }
     return V.sendRx ? { rx: V.sendRx } : {};
@@ -464,7 +586,13 @@ const alert = {
           ctx.fillStyle = Math.floor(t * 8) % 2 ? "#ff3b4e" : "#d81f36"; ctx.fillRect(x, y, w, h);
           ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.font = "400 44px Bungee, Impact, sans-serif"; ctx.fillText("CONTAIN!", x + w / 2, y + h / 2 - 18);
-          ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.fillText("⚠ " + ALERTS[g.al || 0], x + w / 2, y + h / 2 + 30);
+          ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.fillText("⚠ CRITICAL · " + ALERTS[g.al || 0][0], x + w / 2, y + h / 2 + 30);
+        } else if (armed && !L.done && (g.dc || []).some(([at]) => { const e = now() - L.start; return e >= at && e < at + 750; })) {
+          const dc = g.dc.find(([at]) => { const e = now() - L.start; return e >= at && e < at + 750; });
+          ctx.fillStyle = "#3a3208"; ctx.fillRect(x, y, w, h);
+          ctx.fillStyle = "#ffd23f"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillText("LOW", x + w / 2, y + h / 2 - 16);
+          ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.fillText("ⓘ " + LOW_ALERTS[dc[1]], x + w / 2, y + h / 2 + 24);
         } else {
           ctx.fillStyle = "#07160f"; ctx.fillRect(x, y, w, h);
           ctx.strokeStyle = "#3ddc97"; ctx.lineWidth = 2; ctx.beginPath();
@@ -472,8 +600,9 @@ const alert = {
           ctx.stroke();
           ctx.fillStyle = "#3ddc97"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.font = "700 14px 'JetBrains Mono', monospace";
-          const label = g.rp === "reveal" ? "INCIDENT CLOSED" : armed ? (L.done && L.res === -1 ? "FALSE POSITIVE" : "MONITORING… HOLD") : "ROUND " + g.r + " / " + this.ROUNDS + " · STAND BY";
+          const label = g.rp === "reveal" ? "CLOSED · FIX: " + (SOC_ACTS[g.ac] || "") : armed ? (L.done && L.res === -1 ? "FALSE POSITIVE" : "MONITORING… HOLD") : "ROUND " + g.r + " / " + this.ROUNDS + " · STAND BY";
           ctx.fillText("NETEAM SIEM · " + label, x + w / 2, y + 34);
+          if (g.rp === "reveal") { ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(ALERTS[g.al || 0][0], x + w / 2, y + h / 2 - 22); }
           if (armed && L.done && L.res === -1) { ctx.fillStyle = "#ff6b57"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.fillText("TOO EARLY −2", x + w / 2, y + h / 2 - 12); }
         }
       } else {
@@ -499,7 +628,7 @@ const alert = {
       const x = W / 2 + (i - (n - 1) / 2) * gap, y = 395;
       const rt = g.rt ? g.rt[i] : null;
       let mood = "", jump = 0;
-      if (g.rp === "reveal") { mood = rt === -1 ? "sad" : g.rpts && g.rpts[i] >= 5 ? "happy" : ""; if (g.rpts && g.rpts[i] >= 5) jump = Math.abs(Math.sin(t * 8)) * 18; }
+      if (g.rp === "reveal") { mood = rt < 0 ? "sad" : g.rpts && g.rpts[i] >= 5 ? "happy" : ""; if (g.rpts && g.rpts[i] >= 5) jump = Math.abs(Math.sin(t * 8)) * 18; }
       else if (armed && i === V.meIdx && L.done) { mood = L.res === -1 ? "sad" : "happy"; jump = 8; }
       else if (g.rp === "armed" && rt === 1) jump = 8;
       if (go && !(rt === 1)) mood = mood || "shock";
@@ -507,9 +636,9 @@ const alert = {
       nameTag(ctx, ro.n, x, y + 48, i === V.meIdx, ro.hex);
       // results
       if (g.rp === "reveal") {
-        const txt = rt == null ? "—" : rt === -1 ? "FALSE +" : rt + " ms";
+        const txt = rt == null ? "—" : rt === -1 ? "FALSE +" : rt === -2 ? "WRONG FIX" : rt + " ms";
         ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.textAlign = "center";
-        ctx.fillStyle = rt === -1 ? "#ff6b57" : "#f5f1e6"; ctx.fillText(txt, x, y - 58);
+        ctx.fillStyle = rt < 0 ? "#ff6b57" : "#f5f1e6"; ctx.fillText(txt, x, y - 58);
         const rp = g.rpts ? g.rpts[i] : 0;
         ctx.fillStyle = rp > 0 ? "#ffd23f" : "#ff6b57"; ctx.font = "400 18px Bungee, Impact, sans-serif";
         ctx.fillText((rp > 0 ? "+" : "") + rp, x, y - 80);
@@ -521,7 +650,7 @@ const alert = {
     });
     // instruction
     ctx.textAlign = "center"; ctx.font = "700 16px Figtree, system-ui, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.75)";
-    const hint = V.meIdx < 0 ? "" : g.rp === "ready" ? "Get ready…" : armed && !L.goAt && !L.done ? "Hold… don't jump the gun" : go && !L.done ? "TAP NOW!" : "";
+    const hint = V.meIdx < 0 ? "" : g.rp === "ready" ? "Get ready…" : armed && !L.goAt && !L.done ? "Hold… yellow LOW alerts are decoys" : go && !L.done ? "Pick the right fix! (1–4)" : "";
     ctx.fillText(hint, W / 2, 285);
   },
 };
@@ -530,19 +659,46 @@ const alert = {
 const PORTS = [["HTTPS", 443], ["SSH", 22], ["RDP", 3389], ["DNS", 53], ["SMTP", 25], ["HTTP", 80], ["FTP", 21], ["IMAPS", 993], ["LDAP", 389], ["SMB", 445], ["Telnet", 23], ["SNMP", 161], ["NTP", 123], ["POP3", 110], ["SQL Server", 1433], ["MySQL", 3306], ["Kerberos", 88], ["Syslog", 514], ["Mail submission", 587], ["LDAPS", 636]];
 const ACRONYMS = [["MFA", "Multi-Factor Authentication"], ["MDR", "Managed Detection & Response"], ["SIEM", "Security Info & Event Mgmt"], ["VPN", "Virtual Private Network"], ["DHCP", "Dynamic Host Config Protocol"], ["EDR", "Endpoint Detection & Response"], ["SSO", "Single Sign-On"], ["VLAN", "Virtual LAN"], ["NAS", "Network-Attached Storage"], ["UPS", "Uninterruptible Power Supply"], ["SLA", "Service Level Agreement"], ["MSP", "Managed Service Provider"], ["PoE", "Power over Ethernet"], ["SOC", "Security Operations Center"], ["NAT", "Network Address Translation"], ["RAID", "Redundant Array of Indep. Disks"]];
 const TICKET_FROM = ["Front desk", "Reception", "Accounting", "the CFO", "a new hire", "the warehouse", "Legal"];
-function genTicket(seed, i) {
-  const rnd = mulberry32(seed * 7919 + i * 104729);
+function isP1(i) { return i % 8 >= 5; }
+function genTicket(seed, i, tier) {
+  const rnd = mulberry32(seed * 7919 + i * 104729 + (tier || 0) * 15485863);
   const pick = (a) => a[Math.floor(rnd() * a.length)];
-  const types = ["port", "port", "subnet", "binary", "acr", "acr", "math", "math", "hex", "mask"];
+  const T = isP1(i) ? 3 : (tier || 0);
+  const types = [
+    ["port", "port", "subnet", "binary", "acr", "acr", "math", "math", "hex", "mask"],
+    ["port", "subnet", "mask", "binary", "acr", "math", "hex", "cidr", "priv"],
+    ["port", "subnet", "mask", "hex", "cidr", "bcast", "raid", "priv", "acr"],
+    ["cidr", "bcast", "raid", "raid", "priv", "subnet", "mask", "port"],
+  ][T];
   const type = types[Math.floor(rnd() * types.length)];
   let kind, q, ans, wrong = [];
   const numDistract = (a, spread) => { const s = new Set([a]); let guard = 0; while (s.size < 4 && guard++ < 50) { const d = a + Math.round((rnd() * 2 - 1) * spread) || a + 1; if (d > 0) s.add(d); } return Array.from(s).slice(1); };
-  if (type === "port") {
+  const uniq = (a, list, gen) => { const s2 = new Set([String(a)]); const out = []; for (const w of list) if (!s2.has(String(w))) { s2.add(String(w)); out.push(w); } let g2 = 0; while (out.length < 3 && g2++ < 60) { const w = gen(); if (!s2.has(String(w))) { s2.add(String(w)); out.push(w); } } return out; };
+  if (type === "cidr" || type === "bcast") {
+    const n = 25 + Math.floor(rnd() * 5), blk = Math.pow(2, 32 - n), o = Math.floor(rnd() * 256);
+    const net = Math.floor(o / blk) * blk, bc = net + blk - 1, base = pick(["10.20.4.", "192.168.10.", "172.16.8.", "10.1.50."]);
+    kind = "Subnetting"; q = (type === "cidr" ? "Network address of " : "Broadcast of ") + base + o + "/" + n + "?";
+    ans = base + (type === "cidr" ? net : bc);
+    const cands = type === "cidr" ? [net + blk, net - blk, o, bc] : [net, bc + 1, bc - 1, net + blk * 2 - 1];
+    wrong = uniq(ans, cands.filter(v => v >= 0 && v <= 255).map(v => base + v), () => base + Math.floor(rnd() * 256));
+  } else if (type === "raid") {
+    const lv = pick(["1", "5", "5", "6", "10"]), sz = pick([2, 4, 8, 12]);
+    const nd = lv === "1" ? 2 : lv === "10" ? pick([4, 6, 8]) : 3 + Math.floor(rnd() * 5);
+    const use = { "1": sz, "5": (nd - 1) * sz, "6": (nd - 2) * sz, "10": nd / 2 * sz };
+    kind = "Storage"; q = "RAID " + lv + ", " + nd + " × " + sz + " TB. Usable?"; ans = use[lv] + " TB";
+    wrong = uniq(ans, [nd * sz, (nd - 1) * sz, (nd - 2) * sz, nd / 2 * sz, sz].filter(v => v > 0).map(v => v + " TB"), () => (sz * (1 + Math.floor(rnd() * 8)) / (rnd() < 0.3 ? 2 : 1)) + " TB");
+  } else if (type === "priv") {
+    const r8 = () => Math.floor(rnd() * 256);
+    const priv = [() => "10." + r8() + "." + r8() + "." + r8(), () => "172." + (16 + Math.floor(rnd() * 16)) + "." + r8() + "." + r8(), () => "192.168." + r8() + "." + r8()];
+    const pub = [() => "172." + (32 + Math.floor(rnd() * 20)) + "." + r8() + "." + r8(), () => "192.169." + r8() + "." + r8(), () => "8.8." + r8() + "." + r8(), () => "11." + r8() + "." + r8() + "." + r8(), () => "172." + (1 + Math.floor(rnd() * 15)) + "." + r8() + "." + r8(), () => "193.168." + r8() + "." + r8()];
+    kind = "IP addressing"; q = "Which one is a private IP?"; ans = pick(priv)();
+    wrong = uniq(ans, shuffle(pub.slice(), rnd).slice(0, 3).map(f => f()), () => pick(pub)());
+  } else if (type === "port") {
     const [name, p] = pick(PORTS); kind = "Firewall rule"; q = "Default port for " + name + "?"; ans = p;
     const others = shuffle(PORTS.filter(x => x[1] !== p).map(x => x[1]), rnd); wrong = others.slice(0, 3);
   } else if (type === "subnet") {
     const n = 23 + Math.floor(rnd() * 8); kind = "Subnetting"; q = "Usable hosts in a /" + n + "?"; ans = Math.pow(2, 32 - n) - 2;
-    wrong = [Math.pow(2, 32 - n), Math.pow(2, 33 - n) - 2, Math.max(2, Math.pow(2, 31 - n) - 2)];
+    wrong = uniq(ans, [Math.pow(2, 32 - n), Math.pow(2, 33 - n) - 2, Math.pow(2, 31 - n) - 2].filter(v => v > 0), () => Math.pow(2, 32 - n) + Math.floor(rnd() * 4) * 2 + 2);
   } else if (type === "mask") {
     const n = 24 + Math.floor(rnd() * 7); kind = "Subnetting"; q = "Subnet mask for /" + n + "?";
     const oct = 256 - Math.pow(2, 32 - n); ans = "255.255.255." + oct;
@@ -570,8 +726,8 @@ function genTicket(seed, i) {
 }
 const helpdesk = {
   id: "helpdesk", title: "Helpdesk Sprint", tag: "Close tickets fast",
-  blurb: "The queue is exploding. Close tickets on ports, subnets, binary, acronyms and quick math. Faster fixes score more.",
-  how: ["+10 per fix, plus a speed bonus up to +10", "Every 3 in a row adds +5", "A wrong fix costs 5 and locks you for a second"],
+  blurb: "The queue is exploding. Close tickets on ports, subnets, RAID, IP ranges and more. Streaks unlock harder tickets, and P1 incidents pay double.",
+  how: ["+10 per fix, plus a speed bonus up to +10. Every 3 in a row adds +5", "Your streak raises the ticket tier: harder, but worth more", "P1 incident = 3 steps at double points, +25 if you nail all 3"],
   keys: ["1 2 3 4", "Click or tap answers"],
   rec: { label: "Top sprint score", better: "max", fmt: v => v + " pts" },
   hostStart(S) {
@@ -591,7 +747,7 @@ const helpdesk = {
         }
       } else {
         const inp = inputs[i];
-        if (inp && Number.isFinite(inp.p)) { g.sc[i] = clamp(Math.round(inp.p), 0, 5000); g.nn[i] = inp.n | 0; }
+        if (inp && Number.isFinite(inp.p)) { g.sc[i] = clamp(Math.round(inp.p), 0, 20000); g.nn[i] = inp.n | 0; }
       }
     });
   },
@@ -600,23 +756,26 @@ const helpdesk = {
   done(S) { return S.g.t >= S.g.dur; },
   rank(S) { return S.ro.map((r, i) => ({ i, v: S.g.sc[i], label: S.g.sc[i] + " pts · " + S.g.nn[i] + " tickets", rec: S.g.sc[i] })).sort((a, b) => b.v - a.v); },
   chip(V, i) { return V.g && V.g.sc ? V.g.sc[i] : 0; },
-  clientEnter(V) { V.md = { qi: 0, pts: 0, n: 0, streak: 0, lock: 0, shown: -1, qStart: 0, flash: 0 }; },
+  clientEnter(V) { V.md = { qi: 0, pts: 0, n: 0, streak: 0, lock: 0, shown: -1, qStart: 0, flash: 0, tier: 0, p1ok: 0, tk: null }; },
   answer(V, k) {
     const M = V.md; if (!M || V.h.ph !== "play" || V.meIdx < 0) return;
     if (now() < M.lock || M.busy) return;
-    const tk = genTicket(V.h.seed, M.qi);
+    const tk = M.tk || genTicket(V.h.seed, M.qi, M.tier);
     const btns = $$("#mindAns button");
+    const p1 = isP1(M.qi), step = M.qi % 8 - 4;
     M.busy = true;
     if (k === tk.ans) {
       const el = now() - M.qStart;
       M.streak++; M.n++;
       const bonus = Math.max(0, Math.round(10 - el / 500));
-      const add = 10 + bonus + (M.streak % 3 === 0 ? 5 : 0);
+      let add = 10 + bonus + (M.streak % 3 === 0 ? 5 : 0) + M.tier * 3;
+      if (p1) { add *= 2; if (step === 1) M.p1ok = 0; M.p1ok = (M.p1ok || 0) + 1; if (step === 3 && M.p1ok === 3) { add += 25; FX.text(W / 2, 290, "P1 RESOLVED +25", "#ffd23f", 1.2); SFX.play("win"); } }
       M.pts += add; SFX.play("right");
       btns[k] && btns[k].classList.add("right");
       FX.text(W / 2, 330, "+" + add, "#3ddc97", 0.8);
       setTimeout(() => { M.qi++; M.busy = false; M.shown = -1; }, 260);
     } else {
+      if (p1) M.p1ok = -9;
       M.streak = 0; M.n++; M.pts = Math.max(0, M.pts - 5); M.lock = now() + 1000; SFX.play("wrong");
       btns[k] && btns[k].classList.add("wrong"); btns[tk.ans] && btns[tk.ans].classList.add("right");
       $("#mindPanel").classList.add("locked");
@@ -630,8 +789,11 @@ const helpdesk = {
     panel.hidden = !playing;
     if (playing && M.shown !== M.qi) {
       M.shown = M.qi; M.qStart = now();
-      const tk = genTicket(V.h.seed, M.qi);
-      $("#mindKind").textContent = "Ticket " + tk.id + " · " + tk.kind + " · from " + tk.from;
+      if (!isP1(M.qi)) M.tier = Math.min(3, Math.floor(M.streak / 3));
+      const tk = M.tk = genTicket(V.h.seed, M.qi, M.tier);
+      const p1 = isP1(M.qi);
+      $("#mindPanel").classList.toggle("p1", p1);
+      $("#mindKind").textContent = p1 ? "P1 INCIDENT · step " + (M.qi % 8 - 4) + "/3 · " + tk.kind + " · 2x points" : "Ticket " + tk.id + " · Tier " + (M.tier + 1) + " · " + tk.kind + " · from " + tk.from;
       $("#mindQ").textContent = tk.q;
       const box = $("#mindAns"); box.textContent = "";
       tk.choices.forEach((c, k) => {

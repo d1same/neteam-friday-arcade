@@ -150,7 +150,7 @@ function exitGame() {
   APP.view = "lobby"; APP.V = null; APP.myIn = null;
   setPresence({ in: null });
   $("#gameView").hidden = true; $("#lobbyView").hidden = false;
-  $("#mindPanel").hidden = true; $("#dashBtn").hidden = true;
+  $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
   updateLobby();
 }
@@ -250,6 +250,7 @@ function gameFrame(dt, t) {
 function renderOverlay(V, full) {
   const ov = $("#overlay"), ph = V.h.ph, mod = V.mod;
   if (ph !== "results") $("#mindPanel").hidden = !(ph === "play" && mod.id === "helpdesk" && V.meIdx >= 0);
+  if (ph !== "play" && $("#socPanel")) $("#socPanel").hidden = true;
   if (ph === "intro") {
     ov.textContent = "";
     const card = document.createElement("div"); card.className = "card";
@@ -632,6 +633,7 @@ function bindEvents() {
     if (e.repeat) return;
     if (V.mod.id === "sumo" && e.code === "Space") pendingDash = true;
     if (V.mod.id === "alert" && (e.code === "Space" || e.code === "Enter")) alert.tap(V);
+    if (V.mod.id === "alert" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) alert.tap(V, +e.code.slice(-1) - 1);
     if (V.mod.id === "helpdesk" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) helpdesk.answer(V, +e.code.slice(-1) - 1);
   });
   addEventListener("keyup", (e) => KEYS.delete(e.code));
@@ -645,7 +647,7 @@ function bindEvents() {
   cv.addEventListener("pointermove", (e) => { if (JOY.on && e.pointerId === JOY.id) { JOY.x = e.clientX; JOY.y = e.clientY; } });
   const up = (e) => { if (e.pointerId === JOY.id) { JOY.on = false; JOY.id = null; } };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-  $("#stagebox").addEventListener("pointerdown", (e) => { const V = APP.V; if (V && V.mod.id === "alert" && e.target.id !== "leaveBtn" && !e.target.closest(".card")) { if (e.target !== cv) alert.tap(V); } });
+  $("#stagebox").addEventListener("pointerdown", (e) => { const V = APP.V; if (V && V.mod.id === "alert" && e.target.id !== "leaveBtn" && !e.target.closest(".card") && !e.target.closest("#socPanel")) { if (e.target !== cv) alert.tap(V); } });
 }
 
 // ---------- main loop ----------
