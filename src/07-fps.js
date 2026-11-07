@@ -333,7 +333,9 @@ const frenzy = {
     ctx.fillStyle = "rgba(11,14,32,.82)"; ctx.beginPath(); ctx.roundRect(128 - w / 2, 14, w, 42, 21); ctx.fill();
     ctx.fillStyle = hex; ctx.fillRect(128 - w / 2 + 12, 50, w - 24, 4);
     ctx.fillStyle = "#f5f1e6"; ctx.fillText(name, 128, 36);
-    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    if (isAvId(c && c[5]) && !avImg(c[5])) avImg(c[5], () => { const n = this.charTex(c, hex, name); ctx.clearRect(0, 0, 256, 320); ctx.drawImage(n.image, 0, 0); t.needsUpdate = true; n.dispose(); });
+    return t;
   },
   build(V) {
     const F = V.fps; if (!F || F.ready) return;

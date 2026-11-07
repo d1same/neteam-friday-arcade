@@ -29,6 +29,14 @@ function persist() {
   }, 300);
 }
 
+const AV_DIR = path.join(DATA_DIR, "avatars");
+fs.mkdirSync(AV_DIR, { recursive: true });
+const avHits = new Map(); // ip -> [timestamps]
+function avAllowed(ip) {
+  const nowT = Date.now(), list = (avHits.get(ip) || []).filter(t => nowT - t < 10 * 60 * 1000);
+  if (list.length >= 30) { avHits.set(ip, list); return false; }
+  list.push(nowT); avHits.set(ip, list); return true;
+}
 const indexHtml = () => fs.readFileSync(path.join(PUBLIC, "index.html"));
 const server = http.createServer((req, res) => {
   const url = (req.url || "/").split("?")[0];
@@ -42,6 +50,30 @@ const server = http.createServer((req, res) => {
     return fs.readFile(f, (err, buf) => {
       if (err) { res.writeHead(404); return res.end("Not found"); }
       res.writeHead(200, { "content-type": "application/javascript; charset=utf-8", "cache-control": "public, max-age=604800" });
+      res.end(buf);
+    });
+  }
+  if (url === "/api/avatar" && req.method === "POST") {
+    if (!avAllowed(req.socket.remoteAddress || "")) { res.writeHead(429); return res.end("Too many uploads"); }
+    const chunks = []; let size = 0, tooBig = false;
+    req.on("data", (d) => { size += d.length; if (size > 256 * 1024) { tooBig = true; req.destroy(); } else chunks.push(d); });
+    req.on("end", () => {
+      if (tooBig) return;
+      const buf = Buffer.concat(chunks);
+      if (buf.length < 100 || buf[0] !== 0xff || buf[1] !== 0xd8 || buf[2] !== 0xff) { res.writeHead(400, { "content-type": "text/plain" }); return res.end("JPEG only"); }
+      const id = crypto.createHash("sha256").update(buf).digest("hex").slice(0, 16);
+      fs.writeFile(path.join(AV_DIR, id + ".jpg"), buf, (err) => {
+        if (err) { res.writeHead(500); return res.end("Save failed"); }
+        res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ id }));
+      });
+    });
+    return;
+  }
+  const am = /^\/api\/avatar\/([a-f0-9]{16})\.jpg$/.exec(url);
+  if (am && req.method === "GET") {
+    return fs.readFile(path.join(AV_DIR, am[1] + ".jpg"), (err, buf) => {
+      if (err) { res.writeHead(404); return res.end("Not found"); }
+      res.writeHead(200, { "content-type": "image/jpeg", "cache-control": "public, max-age=31536000, immutable" });
       res.end(buf);
     });
   }

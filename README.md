@@ -1,6 +1,6 @@
 # Neteam Friday Arcade
 
-Multiplayer party games for Friday afternoons at Neteam Solutions. Everyone makes their own tech character, hangs out in the NOC, and one person starts a game for the whole room. A scoreboard keeps points across every game and every Friday.
+Multiplayer party games for Friday afternoons at Neteam Solutions. Everyone makes their own tech character (and can upload a photo to use as its face), hangs out in the NOC, and one person starts a game for the whole room. A scoreboard keeps points across every game and every Friday.
 
 ## Run it with Docker
 
@@ -27,7 +27,7 @@ docker run -d --name neteam-friday-arcade -p 4802:4802 -v arcade-data:/data --re
 
 To update later: `docker compose pull && docker compose up -d`.
 
-- Scores live in the `arcade-data` volume (`/data/arcade-db.json`), so they survive restarts and upgrades.
+- Scores live in the `arcade-data` volume (`/data/arcade-db.json`), so they survive restarts and upgrades. Uploaded profile photos are kept next to them in `/data/avatars/`.
 - Want a different host port? Change the left side of `"4802:4802"`.
 - To build from source instead: `docker compose -f docker-compose.build.yml up -d --build`.
 - Health check: `GET /health`. Raw scoreboard export: `GET /api/scores`.

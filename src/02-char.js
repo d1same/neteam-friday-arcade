@@ -12,10 +12,27 @@ function randomChar() {
   return [rint(0, 4), rint(0, PALETTE.length - 1), rint(0, 5), rint(0, 8), rint(0, 6)];
 }
 function validChar(c) {
-  if (!Array.isArray(c) || c.length !== 5) return null;
+  if (!Array.isArray(c) || (c.length !== 5 && c.length !== 6)) return null;
   const lim = [5, PALETTE.length, 6, 9, 7];
-  const o = c.map((v, i) => (Number.isInteger(v) && v >= 0 && v < lim[i]) ? v : 0);
+  const o = c.slice(0, 5).map((v, i) => (Number.isInteger(v) && v >= 0 && v < lim[i]) ? v : 0);
+  if (c.length === 6 && isAvId(c[5])) o.push(c[5]);
   return o;
+}
+// ---------- uploaded photo avatars (stored on the arcade server, addressed by hash) ----------
+const AV = {};
+function isAvId(id) { return typeof id === "string" && /^[a-f0-9]{16}$/.test(id); }
+function avImg(id, onReady) {
+  if (!isAvId(id)) return null;
+  let e = AV[id];
+  if (!e) {
+    e = AV[id] = { img: new Image(), ok: false, cbs: [] };
+    e.img.onload = () => { e.ok = true; const cbs = e.cbs; e.cbs = []; cbs.forEach(f => { try { f(); } catch (er) {} }); };
+    e.img.onerror = () => { e.bad = true; e.cbs = []; };
+    e.img.src = "api/avatar/" + id + ".jpg";
+  }
+  if (e.ok) return e.img;
+  if (onReady && !e.bad) e.cbs.push(onReady);
+  return null;
 }
 function shade(hex, amt) {
   let n = parseInt(hex.slice(1), 16);
@@ -91,10 +108,26 @@ function drawChar(ctx, c, x, y, s, o = {}) {
   ctx.restore();
 
   const top = info.top, w = info.w;
+  const photo = avImg(c[5]);
   const ey = bt === 1 ? -s * 0.2 : bt === 3 ? -s * 0.02 : -s * 0.08;
   const ex = s * 0.17, lx = look * s * 0.06;
   const blink = o.blink != null ? o.blink : ((t + (o.phase || 0)) % 4.2 > 4.05);
 
+  const mood = o.mood || "", my = ey + s * 0.2;
+  if (photo) {
+    const fr = s * (bt === 1 ? 0.28 : 0.34), fy = (bt === 1 ? -s * 0.12 : bt === 3 ? s * 0.04 : -s * 0.02) + (mood === "happy" ? -s * 0.02 : 0);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(lx * 0.6, fy, fr, 0, Math.PI * 2); ctx.closePath();
+    ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.drawImage(photo, lx * 0.6 - fr, fy - fr, fr * 2, fr * 2);
+    if (mood === "shock") { ctx.fillStyle = "rgba(255,107,87,.25)"; ctx.fillRect(lx * 0.6 - fr, fy - fr, fr * 2, fr * 2); }
+    if (mood === "sad") { ctx.fillStyle = "rgba(40,50,110,.3)"; ctx.fillRect(lx * 0.6 - fr, fy - fr, fr * 2, fr * 2); }
+    ctx.restore();
+    ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUTLINE; ctx.stroke();
+    ctx.lineWidth = lw * 0.8; ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.arc(lx * 0.6, fy, fr - lw * 1.1, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  } else {
   // accessory: blush (under eyes)
   if (ac === 5) {
     ctx.fillStyle = "rgba(255,90,120,.45)";
@@ -104,7 +137,6 @@ function drawChar(ctx, c, x, y, s, o = {}) {
 
   // eyes
   ctx.lineWidth = lw; ctx.strokeStyle = OUTLINE; ctx.fillStyle = OUTLINE;
-  const mood = o.mood || "";
   if (et === 0 || et === 3 || et === 4) {
     for (const sx of [-1, 1]) {
       const cx = sx * ex + lx;
@@ -150,7 +182,6 @@ function drawChar(ctx, c, x, y, s, o = {}) {
   }
 
   // mouth
-  const my = ey + s * 0.2;
   ctx.strokeStyle = OUTLINE; ctx.lineWidth = lw; ctx.lineCap = "round";
   if (ac !== 3) {
     ctx.beginPath();
@@ -160,6 +191,7 @@ function drawChar(ctx, c, x, y, s, o = {}) {
     else { ctx.arc(lx, my - s * 0.03, s * 0.065, 0.35, Math.PI - 0.35); ctx.stroke(); }
   }
   ctx.lineCap = "butt";
+  }
 
   // accessories front
   if (ac === 1) { // bow tie
@@ -175,7 +207,7 @@ function drawChar(ctx, c, x, y, s, o = {}) {
     ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = lw * 0.8;
     for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * s * 0.12, by - s * 0.05); ctx.lineTo(i * s * 0.12 + s * 0.04, by + s * 0.06); ctx.stroke(); }
     ctx.strokeStyle = OUTLINE; ctx.lineWidth = lw;
-  } else if (ac === 3) { // mustache
+  } else if (ac === 3 && !photo) { // mustache
     ctx.fillStyle = "#3a2318";
     for (const sx of [-1, 1]) {
       ctx.beginPath(); ctx.moveTo(lx, my - s * 0.04);
@@ -183,7 +215,7 @@ function drawChar(ctx, c, x, y, s, o = {}) {
       ctx.bezierCurveTo(lx + sx * s * 0.2, my + s * 0.04, lx + sx * s * 0.06, my + s * 0.03, lx, my - s * 0.01);
       ctx.fill();
     }
-  } else if (ac === 4 && et !== 2) { // specs
+  } else if (ac === 4 && et !== 2 && !photo) { // specs
     ctx.lineWidth = lw * 1.1;
     for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * ex + lx, ey, s * 0.13, 0, Math.PI * 2); ctx.stroke(); }
     ctx.beginPath(); ctx.moveTo(-ex + s * 0.13 + lx, ey); ctx.lineTo(ex - s * 0.13 + lx, ey); ctx.stroke();
@@ -261,6 +293,7 @@ function avatarCanvas(c, px = 38, colorOverride) {
   return cv;
 }
 function paintAvatar(cv, c, px, colorOverride) {
+  if (c && isAvId(c[5]) && !avImg(c[5], () => paintAvatar(cv, c, px, colorOverride))) { /* repaint once the photo loads */ }
   const ctx = fitCanvas(cv, px, px);
   ctx.clearRect(0, 0, px, px);
   drawChar(ctx, c, px / 2, px * 0.56, px * 0.62, { shadow: false, bob: false, blink: false, color: colorOverride });

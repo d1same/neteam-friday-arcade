@@ -224,6 +224,9 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 
 /* ---------- editor ---------- */
 dialog.editor { border: 1px solid var(--line); border-radius: 20px; padding: 0; background: var(--panel); color: var(--text); width: min(820px, calc(100% - 24px)); max-height: calc(100% - 24px); box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.photo-row { display: flex; gap: 8px; align-self: stretch; }
+.photo-row .btn { flex: 1; white-space: nowrap; font-size: 14px; padding-left: 8px; padding-right: 8px; }
+.photo-note { margin: 0; font-size: 11.5px; line-height: 1.35; color: var(--muted); text-align: center; }
 dialog.editor::backdrop { background: rgba(6,8,20,.7); backdrop-filter: blur(3px); }
 .ed { display: grid; grid-template-columns: 260px minmax(0,1fr); }
 @media (max-width: 700px) { .ed { grid-template-columns: minmax(0,1fr); } }
@@ -240,7 +243,7 @@ dialog.editor::backdrop { background: rgba(6,8,20,.7); backdrop-filter: blur(3px
 .opt[aria-pressed="true"] { border-color: var(--bulb); background: #2a2a3a; }
 .swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid transparent; padding: 0; }
 .swatch[aria-pressed="true"] { border-color: var(--text); box-shadow: 0 0 0 2px var(--ink-2) inset; }
-.ed-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; padding: 14px 20px; border-top: 1px solid var(--line); }
+.ed-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; padding: 14px 20px; border-top: 1px solid var(--line); position: sticky; bottom: 0; background: var(--panel); z-index: 1; }
 
 .toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%) translateY(20px); opacity: 0; z-index: 60; background: var(--panel-2); border: 1px solid var(--line); padding: 10px 16px; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.4); transition: opacity .2s, transform .2s; pointer-events: none; max-width: calc(100% - 32px); font-size: 14px; }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
@@ -351,6 +354,12 @@ footer.foot { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-ali
         <input id="nickInput" maxlength="14" autocomplete="off" placeholder="Your name">
       </label>
       <button class="btn" id="randBtn" style="align-self:stretch">🎲 Randomize</button>
+      <div class="photo-row">
+        <button class="btn" id="photoBtn" type="button">📷 Use my photo</button>
+        <button class="btn" id="photoDel" type="button" hidden>Remove photo</button>
+      </div>
+      <input type="file" id="photoInput" accept="image/*" hidden>
+      <p class="photo-note">Your photo becomes your face in every game. It's saved on the office arcade server only.</p>
     </div>
     <div class="ed-opts" id="edOpts"></div>
   </div>
@@ -438,10 +447,27 @@ function randomChar() {
   return [rint(0, 4), rint(0, PALETTE.length - 1), rint(0, 5), rint(0, 8), rint(0, 6)];
 }
 function validChar(c) {
-  if (!Array.isArray(c) || c.length !== 5) return null;
+  if (!Array.isArray(c) || (c.length !== 5 && c.length !== 6)) return null;
   const lim = [5, PALETTE.length, 6, 9, 7];
-  const o = c.map((v, i) => (Number.isInteger(v) && v >= 0 && v < lim[i]) ? v : 0);
+  const o = c.slice(0, 5).map((v, i) => (Number.isInteger(v) && v >= 0 && v < lim[i]) ? v : 0);
+  if (c.length === 6 && isAvId(c[5])) o.push(c[5]);
   return o;
+}
+// ---------- uploaded photo avatars (stored on the arcade server, addressed by hash) ----------
+const AV = {};
+function isAvId(id) { return typeof id === "string" && /^[a-f0-9]{16}$/.test(id); }
+function avImg(id, onReady) {
+  if (!isAvId(id)) return null;
+  let e = AV[id];
+  if (!e) {
+    e = AV[id] = { img: new Image(), ok: false, cbs: [] };
+    e.img.onload = () => { e.ok = true; const cbs = e.cbs; e.cbs = []; cbs.forEach(f => { try { f(); } catch (er) {} }); };
+    e.img.onerror = () => { e.bad = true; e.cbs = []; };
+    e.img.src = "api/avatar/" + id + ".jpg";
+  }
+  if (e.ok) return e.img;
+  if (onReady && !e.bad) e.cbs.push(onReady);
+  return null;
 }
 function shade(hex, amt) {
   let n = parseInt(hex.slice(1), 16);
@@ -517,10 +543,26 @@ function drawChar(ctx, c, x, y, s, o = {}) {
   ctx.restore();
 
   const top = info.top, w = info.w;
+  const photo = avImg(c[5]);
   const ey = bt === 1 ? -s * 0.2 : bt === 3 ? -s * 0.02 : -s * 0.08;
   const ex = s * 0.17, lx = look * s * 0.06;
   const blink = o.blink != null ? o.blink : ((t + (o.phase || 0)) % 4.2 > 4.05);
 
+  const mood = o.mood || "", my = ey + s * 0.2;
+  if (photo) {
+    const fr = s * (bt === 1 ? 0.28 : 0.34), fy = (bt === 1 ? -s * 0.12 : bt === 3 ? s * 0.04 : -s * 0.02) + (mood === "happy" ? -s * 0.02 : 0);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(lx * 0.6, fy, fr, 0, Math.PI * 2); ctx.closePath();
+    ctx.fillStyle = "#fff"; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.drawImage(photo, lx * 0.6 - fr, fy - fr, fr * 2, fr * 2);
+    if (mood === "shock") { ctx.fillStyle = "rgba(255,107,87,.25)"; ctx.fillRect(lx * 0.6 - fr, fy - fr, fr * 2, fr * 2); }
+    if (mood === "sad") { ctx.fillStyle = "rgba(40,50,110,.3)"; ctx.fillRect(lx * 0.6 - fr, fy - fr, fr * 2, fr * 2); }
+    ctx.restore();
+    ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUTLINE; ctx.stroke();
+    ctx.lineWidth = lw * 0.8; ctx.strokeStyle = "rgba(255,255,255,.7)"; ctx.beginPath(); ctx.arc(lx * 0.6, fy, fr - lw * 1.1, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  } else {
   // accessory: blush (under eyes)
   if (ac === 5) {
     ctx.fillStyle = "rgba(255,90,120,.45)";
@@ -530,7 +572,6 @@ function drawChar(ctx, c, x, y, s, o = {}) {
 
   // eyes
   ctx.lineWidth = lw; ctx.strokeStyle = OUTLINE; ctx.fillStyle = OUTLINE;
-  const mood = o.mood || "";
   if (et === 0 || et === 3 || et === 4) {
     for (const sx of [-1, 1]) {
       const cx = sx * ex + lx;
@@ -576,7 +617,6 @@ function drawChar(ctx, c, x, y, s, o = {}) {
   }
 
   // mouth
-  const my = ey + s * 0.2;
   ctx.strokeStyle = OUTLINE; ctx.lineWidth = lw; ctx.lineCap = "round";
   if (ac !== 3) {
     ctx.beginPath();
@@ -586,6 +626,7 @@ function drawChar(ctx, c, x, y, s, o = {}) {
     else { ctx.arc(lx, my - s * 0.03, s * 0.065, 0.35, Math.PI - 0.35); ctx.stroke(); }
   }
   ctx.lineCap = "butt";
+  }
 
   // accessories front
   if (ac === 1) { // bow tie
@@ -601,7 +642,7 @@ function drawChar(ctx, c, x, y, s, o = {}) {
     ctx.strokeStyle = "rgba(255,255,255,.5)"; ctx.lineWidth = lw * 0.8;
     for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * s * 0.12, by - s * 0.05); ctx.lineTo(i * s * 0.12 + s * 0.04, by + s * 0.06); ctx.stroke(); }
     ctx.strokeStyle = OUTLINE; ctx.lineWidth = lw;
-  } else if (ac === 3) { // mustache
+  } else if (ac === 3 && !photo) { // mustache
     ctx.fillStyle = "#3a2318";
     for (const sx of [-1, 1]) {
       ctx.beginPath(); ctx.moveTo(lx, my - s * 0.04);
@@ -609,7 +650,7 @@ function drawChar(ctx, c, x, y, s, o = {}) {
       ctx.bezierCurveTo(lx + sx * s * 0.2, my + s * 0.04, lx + sx * s * 0.06, my + s * 0.03, lx, my - s * 0.01);
       ctx.fill();
     }
-  } else if (ac === 4 && et !== 2) { // specs
+  } else if (ac === 4 && et !== 2 && !photo) { // specs
     ctx.lineWidth = lw * 1.1;
     for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * ex + lx, ey, s * 0.13, 0, Math.PI * 2); ctx.stroke(); }
     ctx.beginPath(); ctx.moveTo(-ex + s * 0.13 + lx, ey); ctx.lineTo(ex - s * 0.13 + lx, ey); ctx.stroke();
@@ -687,6 +728,7 @@ function avatarCanvas(c, px = 38, colorOverride) {
   return cv;
 }
 function paintAvatar(cv, c, px, colorOverride) {
+  if (c && isAvId(c[5]) && !avImg(c[5], () => paintAvatar(cv, c, px, colorOverride))) { /* repaint once the photo loads */ }
   const ctx = fitCanvas(cv, px, px);
   ctx.clearRect(0, 0, px, px);
   drawChar(ctx, c, px / 2, px * 0.56, px * 0.62, { shadow: false, bob: false, blink: false, color: colorOverride });
@@ -2179,7 +2221,9 @@ const frenzy = {
     ctx.fillStyle = "rgba(11,14,32,.82)"; ctx.beginPath(); ctx.roundRect(128 - w / 2, 14, w, 42, 21); ctx.fill();
     ctx.fillStyle = hex; ctx.fillRect(128 - w / 2 + 12, 50, w - 24, 4);
     ctx.fillStyle = "#f5f1e6"; ctx.fillText(name, 128, 36);
-    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace; return t;
+    const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.SRGBColorSpace;
+    if (isAvId(c && c[5]) && !avImg(c[5])) avImg(c[5], () => { const n = this.charTex(c, hex, name); ctx.clearRect(0, 0, 256, 320); ctx.drawImage(n.image, 0, 0); t.needsUpdate = true; n.dispose(); });
+    return t;
   },
   build(V) {
     const F = V.fps; if (!F || F.ready) return;
@@ -3105,7 +3149,34 @@ function openEditor() {
   if (!d.open) { try { d.showModal(); } catch (e) { d.setAttribute("open", ""); } }
   setTimeout(() => $("#nickInput").focus(), 30);
 }
+async function uploadPhoto(file) {
+  const btn = $("#photoBtn"); btn.disabled = true; btn.textContent = "Uploading…";
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => bad(new Error("That file isn't an image we can read.")); im.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight), N = 192;
+    const cv = document.createElement("canvas"); cv.width = cv.height = N;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, N, N);
+    // center crop, nudged up a bit since faces sit in the upper half of most photos
+    const sx = (img.naturalWidth - side) / 2, sy = Math.max(0, Math.min(img.naturalHeight - side, (img.naturalHeight - side) * 0.35));
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, N, N);
+    URL.revokeObjectURL(url);
+    const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.86));
+    const r = await fetch("api/avatar", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+    if (!r.ok) throw new Error(r.status === 429 ? "Too many uploads, try again in a few minutes." : "Upload failed (" + r.status + "). Photos need the arcade server.");
+    const { id } = await r.json();
+    if (!isAvId(id)) throw new Error("Upload failed.");
+    // seed the cache with the local copy so the preview updates right away
+    const e = AV[id] || (AV[id] = { img: new Image(), ok: false, cbs: [] });
+    if (!e.ok) { e.img.onload = () => { e.ok = true; buildEditorOpts(); }; e.img.src = cv.toDataURL("image/jpeg", 0.86); }
+    DRAFT.c = DRAFT.c.slice(0, 5).concat([id]);
+    SFX.play("join"); buildEditorOpts();
+  } catch (err) { toast(err.message || "Upload failed."); }
+  btn.disabled = false; btn.textContent = "📷 Use my photo";
+}
 function buildEditorOpts() {
+  $("#photoDel").hidden = !(DRAFT && DRAFT.c[5]);
   const box = $("#edOpts"); box.textContent = "";
   const groups = [["Body", 0, CHAR_OPTS.body], ["Color", 1, PALETTE_NAMES], ["Eyes", 2, CHAR_OPTS.eyes], ["Hat", 3, CHAR_OPTS.hat], ["Accessory", 4, CHAR_OPTS.acc]];
   groups.forEach(([label, slot, names]) => {
@@ -3156,7 +3227,10 @@ function bindEvents() {
   $("#edCancel").addEventListener("click", () => $("#editor").close());
   $("#edSave").addEventListener("click", saveEditor);
   $("#nickInput").addEventListener("keydown", (e) => { if (e.key === "Enter") saveEditor(); });
-  $("#randBtn").addEventListener("click", () => { DRAFT.c = randomChar(); SFX.play("pop"); buildEditorOpts(); });
+  $("#randBtn").addEventListener("click", () => { const ph = DRAFT.c[5]; DRAFT.c = randomChar(); if (ph) DRAFT.c.push(ph); SFX.play("pop"); buildEditorOpts(); });
+  $("#photoBtn").addEventListener("click", () => $("#photoInput").click());
+  $("#photoInput").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) uploadPhoto(f); });
+  $("#photoDel").addEventListener("click", () => { DRAFT.c = DRAFT.c.slice(0, 5); SFX.play("pop"); buildEditorOpts(); });
   $("#soundBtn").addEventListener("click", () => { SFX.on = !SFX.on; store("nfa-sound", SFX.on); $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));

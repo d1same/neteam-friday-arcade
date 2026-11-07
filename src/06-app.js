@@ -563,7 +563,34 @@ function openEditor() {
   if (!d.open) { try { d.showModal(); } catch (e) { d.setAttribute("open", ""); } }
   setTimeout(() => $("#nickInput").focus(), 30);
 }
+async function uploadPhoto(file) {
+  const btn = $("#photoBtn"); btn.disabled = true; btn.textContent = "Uploading…";
+  try {
+    const url = URL.createObjectURL(file);
+    const img = await new Promise((ok, bad) => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => bad(new Error("That file isn't an image we can read.")); im.src = url; });
+    const side = Math.min(img.naturalWidth, img.naturalHeight), N = 192;
+    const cv = document.createElement("canvas"); cv.width = cv.height = N;
+    const ctx = cv.getContext("2d");
+    ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, N, N);
+    // center crop, nudged up a bit since faces sit in the upper half of most photos
+    const sx = (img.naturalWidth - side) / 2, sy = Math.max(0, Math.min(img.naturalHeight - side, (img.naturalHeight - side) * 0.35));
+    ctx.drawImage(img, sx, sy, side, side, 0, 0, N, N);
+    URL.revokeObjectURL(url);
+    const blob = await new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.86));
+    const r = await fetch("api/avatar", { method: "POST", headers: { "content-type": "image/jpeg" }, body: blob });
+    if (!r.ok) throw new Error(r.status === 429 ? "Too many uploads, try again in a few minutes." : "Upload failed (" + r.status + "). Photos need the arcade server.");
+    const { id } = await r.json();
+    if (!isAvId(id)) throw new Error("Upload failed.");
+    // seed the cache with the local copy so the preview updates right away
+    const e = AV[id] || (AV[id] = { img: new Image(), ok: false, cbs: [] });
+    if (!e.ok) { e.img.onload = () => { e.ok = true; buildEditorOpts(); }; e.img.src = cv.toDataURL("image/jpeg", 0.86); }
+    DRAFT.c = DRAFT.c.slice(0, 5).concat([id]);
+    SFX.play("join"); buildEditorOpts();
+  } catch (err) { toast(err.message || "Upload failed."); }
+  btn.disabled = false; btn.textContent = "📷 Use my photo";
+}
 function buildEditorOpts() {
+  $("#photoDel").hidden = !(DRAFT && DRAFT.c[5]);
   const box = $("#edOpts"); box.textContent = "";
   const groups = [["Body", 0, CHAR_OPTS.body], ["Color", 1, PALETTE_NAMES], ["Eyes", 2, CHAR_OPTS.eyes], ["Hat", 3, CHAR_OPTS.hat], ["Accessory", 4, CHAR_OPTS.acc]];
   groups.forEach(([label, slot, names]) => {
@@ -614,7 +641,10 @@ function bindEvents() {
   $("#edCancel").addEventListener("click", () => $("#editor").close());
   $("#edSave").addEventListener("click", saveEditor);
   $("#nickInput").addEventListener("keydown", (e) => { if (e.key === "Enter") saveEditor(); });
-  $("#randBtn").addEventListener("click", () => { DRAFT.c = randomChar(); SFX.play("pop"); buildEditorOpts(); });
+  $("#randBtn").addEventListener("click", () => { const ph = DRAFT.c[5]; DRAFT.c = randomChar(); if (ph) DRAFT.c.push(ph); SFX.play("pop"); buildEditorOpts(); });
+  $("#photoBtn").addEventListener("click", () => $("#photoInput").click());
+  $("#photoInput").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) uploadPhoto(f); });
+  $("#photoDel").addEventListener("click", () => { DRAFT.c = DRAFT.c.slice(0, 5); SFX.play("pop"); buildEditorOpts(); });
   $("#soundBtn").addEventListener("click", () => { SFX.on = !SFX.on; store("nfa-sound", SFX.on); $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
