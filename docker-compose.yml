@@ -1,0 +1,12 @@
+services:
+  arcade:
+    image: ghcr.io/d1same/neteam-friday-arcade:latest
+    container_name: neteam-friday-arcade
+    ports:
+      - "4802:4802"
+    volumes:
+      - arcade-data:/data
+    restart: unless-stopped
+
+volumes:
+  arcade-data:

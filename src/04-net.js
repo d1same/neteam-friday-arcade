@@ -1,0 +1,251 @@
+// ---------- networking: claude.ai room/db/user, with a same-browser fallback ----------
+// Inside the claude.ai viewer we use the platform's live room (presence) and shared db.
+// Opened anywhere else (a saved copy, local testing) a BroadcastChannel stand-in lets
+// several tabs in one browser play together, and scores are kept in localStorage.
+function makeLocalRoom() {
+  const myPeer = "t" + randId(12);
+  let uid = sstore("nfa-local-uid"); if (!uid) { uid = "local-" + randId(8); sstore("nfa-local-uid", uid); }
+  let ch = null; try { ch = new BroadcastChannel("nfa-room-v1"); } catch (e) { ch = null; }
+  const peers = new Map();
+  let mine = {};
+  const handlers = new Set();
+  let snap = Object.freeze([]);
+  let pend = { joined: [], left: [], updated: [] }, sched = false;
+  function mk(peer, by, presence, isMe) {
+    return Object.freeze({ peer, by, isMe, sameTab: isMe, kind: "viewer", guest: false, presence: Object.freeze(presence), updatedAt: Date.now() });
+  }
+  function flush() {
+    sched = false;
+    snap = Object.freeze(Array.from(peers.values()).map(v => v.p));
+    const ch = { peers: snap, joined: pend.joined, left: pend.left, updated: pend.updated };
+    pend = { joined: [], left: [], updated: [] };
+    handlers.forEach(h => { try { h(ch); } catch (e) { console.error(e); } });
+  }
+  function notify() { if (!sched) { sched = true; setTimeout(flush, 0); } }
+  function upsert(peer, by, presence, isMe) {
+    const had = peers.get(peer);
+    const p = mk(peer, by, presence, isMe);
+    peers.set(peer, { p, seen: Date.now() });
+    (had ? pend.updated : pend.joined).push(p);
+    notify();
+  }
+  upsert(myPeer, uid, {}, true);
+  let lastSend = 0, sendT = 0;
+  function send() {
+    if (!ch) return;
+    const n = Date.now();
+    if (n - lastSend < 30) { if (!sendT) sendT = setTimeout(() => { sendT = 0; send(); }, 30); return; }
+    lastSend = n;
+    ch.postMessage({ t: "p", peer: myPeer, by: uid, presence: mine });
+  }
+  if (ch) {
+    ch.onmessage = (ev) => {
+      const m = ev.data || {};
+      if (m.t === "p" && m.peer && m.peer !== myPeer) upsert(m.peer, m.by || null, m.presence || {}, false);
+      else if (m.t === "bye" && peers.has(m.peer)) { pend.left.push(peers.get(m.peer).p); peers.delete(m.peer); notify(); }
+      else if (m.t === "hello" && m.peer !== myPeer) send();
+    };
+    ch.postMessage({ t: "hello", peer: myPeer });
+    setInterval(() => {
+      ch.postMessage({ t: "p", peer: myPeer, by: uid, presence: mine });
+      const n = Date.now();
+      for (const [k, v] of peers) if (k !== myPeer && n - v.seen > 4000) { pend.left.push(v.p); peers.delete(k); notify(); }
+    }, 1000);
+    addEventListener("pagehide", () => { try { ch.postMessage({ t: "bye", peer: myPeer }); } catch (e) {} });
+  }
+  return {
+    local: true, solo: !ch, uid,
+    presence(patch) {
+      const m = Object.assign({}, mine);
+      for (const k in patch) { if (patch[k] === null) delete m[k]; else m[k] = patch[k]; }
+      mine = JSON.parse(JSON.stringify(m));
+      upsert(myPeer, uid, mine, true);
+      send();
+      return Promise.resolve();
+    },
+    peers() { return snap; },
+    onPeers(fn) { handlers.add(fn); setTimeout(() => fn({ peers: snap, joined: snap, left: [], updated: [] }), 0); return () => handlers.delete(fn); },
+    connected() { return true; },
+    onConnection(fn) { setTimeout(() => fn(true), 0); return () => {}; },
+    emit() { return Promise.resolve(); },
+    on() { return () => {}; },
+  };
+}
+function makeLocalDb() {
+  const KEY = "nfa-local-db";
+  let ch = null; try { ch = new BroadcastChannel("nfa-db-v1"); } catch (e) {}
+  const listeners = new Set();
+  const read = () => store(KEY) || {};
+  const write = (d) => { store(KEY, d); listeners.forEach(f => f()); if (ch) ch.postMessage(1); };
+  if (ch) ch.onmessage = () => listeners.forEach(f => f());
+  const docSnap = (path, data) => ({ id: path.split("/").pop(), exists: data != null, data: () => data == null ? undefined : JSON.parse(JSON.stringify(data)), metadata: { fromCache: false, hasPendingWrites: false } });
+  function doc(path) {
+    return {
+      id: path.split("/").pop(), path,
+      get: async () => docSnap(path, read()[path]),
+      set: async (data) => { const d = read(); d[path] = data; write(d); },
+      update: async (data) => { const d = read(); d[path] = Object.assign({}, d[path] || {}, data); write(d); },
+      delete: async () => { const d = read(); delete d[path]; write(d); },
+      onSnapshot(next) { const f = () => next(docSnap(path, read()[path])); listeners.add(f); setTimeout(f, 0); return () => listeners.delete(f); },
+    };
+  }
+  function collection(path) {
+    const q = {
+      path,
+      where() { return q; }, orderBy() { return q; }, limit() { return q; },
+      doc: (id) => doc(path + "/" + (id || randId(16))),
+      add: async (data) => { const r = doc(path + "/" + randId(16)); await r.set(data); return r; },
+      get: async () => snapOf(),
+      onSnapshot(next) { const f = () => next(snapOf()); listeners.add(f); setTimeout(f, 0); return () => listeners.delete(f); },
+    };
+    function snapOf() {
+      const d = read(), pre = path + "/";
+      const docs = Object.keys(d).filter(k => k.startsWith(pre) && !k.slice(pre.length).includes("/")).map(k => docSnap(k, d[k]));
+      return { docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata: { fromCache: false, hasPendingWrites: false } };
+    }
+    return q;
+  }
+  return { local: true, doc, collection };
+}
+
+// ---------- self-hosted server backend (Docker) ----------
+function connectServer(timeoutMs = 2500) {
+  return new Promise((resolve) => {
+    let ws;
+    try { ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws"); }
+    catch (e) { resolve(null); return; }
+    const t = setTimeout(() => { try { ws.close(); } catch (e) {} resolve(null); }, timeoutMs);
+    ws.onopen = () => { clearTimeout(t); resolve(ws); };
+    ws.onerror = () => { clearTimeout(t); resolve(null); };
+  });
+}
+function makeServerBackend(firstWs) {
+  let uid = store("nfa-uid"); if (!uid) { uid = "u-" + randId(14); store("nfa-uid", uid); }
+  let ws = firstWs, myPeer = null, mine = {}, isOpen = false;
+  const peers = new Map();
+  const handlers = new Set(), connHandlers = new Set();
+  let snap = Object.freeze([]), pend = { joined: [], left: [], updated: [] }, sched = false;
+  const subs = new Map(); // id -> {path, kind, cb}
+  let subSeq = 0;
+  function flush() {
+    sched = false;
+    snap = Object.freeze(Array.from(peers.values()));
+    const ch = { peers: snap, joined: pend.joined, left: pend.left, updated: pend.updated };
+    pend = { joined: [], left: [], updated: [] };
+    handlers.forEach(h => { try { h(ch); } catch (e) { console.error(e); } });
+  }
+  function notify() { if (!sched) { sched = true; requestAnimationFrame ? setTimeout(flush, 0) : flush(); } }
+  function upsert(peer, by, presence) {
+    const isMe = peer === myPeer;
+    const had = peers.has(peer);
+    const p = Object.freeze({ peer, by, isMe, sameTab: isMe, kind: "viewer", guest: false, presence: Object.freeze(presence || {}), updatedAt: Date.now() });
+    peers.set(peer, p);
+    (had ? pend.updated : pend.joined).push(p);
+    notify();
+  }
+  function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
+  let lastP = 0, pT = 0;
+  function sendPresence() {
+    const n = Date.now();
+    if (n - lastP < 33) { if (!pT) pT = setTimeout(() => { pT = 0; sendPresence(); }, 34); return; }
+    lastP = n; send({ t: "p", presence: mine });
+  }
+  function attach(sock) {
+    ws = sock;
+    ws.onmessage = (ev) => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.t === "welcome") {
+        myPeer = m.peer; isOpen = true;
+        for (const [k, p] of peers) if (k !== myPeer) { pend.left.push(p); peers.delete(k); }
+        peers.delete(myPeer);
+        upsert(myPeer, uid, mine);
+        (m.peers || []).forEach(x => { if (x.peer !== myPeer) upsert(x.peer, x.by, x.presence); });
+        send({ t: "p", presence: mine });
+        for (const [id, s] of subs) send({ t: "sub", id, path: s.path, kind: s.kind });
+        connHandlers.forEach(f => f(true));
+      } else if (m.t === "p") { if (m.peer !== myPeer) upsert(m.peer, m.by, m.presence); }
+      else if (m.t === "left") { const p = peers.get(m.peer); if (p) { pend.left.push(p); peers.delete(m.peer); notify(); } }
+      else if (m.t === "db") { const s = subs.get(m.id); if (s) s.cb(m.data); }
+    };
+    ws.onclose = () => {
+      isOpen = false; connHandlers.forEach(f => f(false));
+      const retry = () => setTimeout(async () => { const s = await connectServer(4000); if (s) attach(s); else retry(); }, 1500);
+      retry();
+    };
+    ws.send(JSON.stringify({ t: "hello", uid }));
+  }
+  const room = {
+    server: true, uid,
+    presence(patch) {
+      const m = Object.assign({}, mine);
+      for (const k in patch) { if (patch[k] === null) delete m[k]; else m[k] = patch[k]; }
+      mine = JSON.parse(JSON.stringify(m));
+      if (myPeer) upsert(myPeer, uid, mine);
+      sendPresence();
+      return Promise.resolve();
+    },
+    peers() { return snap; },
+    onPeers(fn) { handlers.add(fn); setTimeout(() => fn({ peers: snap, joined: snap, left: [], updated: [] }), 0); return () => handlers.delete(fn); },
+    connected() { return isOpen; },
+    onConnection(fn) { connHandlers.add(fn); setTimeout(() => fn(isOpen), 0); return () => connHandlers.delete(fn); },
+    emit() { return Promise.resolve(); }, on() { return () => {}; },
+  };
+  const docSnap = (path, data) => ({ id: path.split("/").pop(), exists: data != null, data: () => data == null ? undefined : data, metadata: { fromCache: false, hasPendingWrites: false } });
+  function subscribe(path, kind, cb) { const id = "s" + (++subSeq); subs.set(id, { path, kind, cb }); send({ t: "sub", id, path, kind }); return () => { subs.delete(id); send({ t: "unsub", id }); }; }
+  function doc(path) {
+    return {
+      id: path.split("/").pop(), path,
+      get: () => new Promise((res) => { const un = subscribe(path, "doc", (d) => { un(); res(docSnap(path, d)); }); }),
+      set: async (data) => send({ t: "set", path, data }),
+      update: async (data) => send({ t: "update", path, data }),
+      delete: async () => send({ t: "del", path }),
+      onSnapshot(next) { return subscribe(path, "doc", (d) => next(docSnap(path, d))); },
+    };
+  }
+  function collection(path) {
+    const q = {
+      path, where() { return q; }, orderBy() { return q; }, limit() { return q; },
+      doc: (id) => doc(path + "/" + (id || randId(16))),
+      add: async (data) => { const r = doc(path + "/" + Date.now().toString(36) + randId(6)); await r.set(data); return r; },
+      onSnapshot(next) {
+        return subscribe(path, "col", (list) => {
+          const docs = (list || []).map(x => docSnap(x.path, x.data));
+          next({ docs, size: docs.length, empty: !docs.length, docChanges: () => [], metadata: { fromCache: false, hasPendingWrites: false } });
+        });
+      },
+    };
+    return q;
+  }
+  attach(firstWs);
+  return { room, db: { server: true, doc, collection }, uid };
+}
+
+const NET = {
+  room: null, db: null, user: null, local: false, uid: null, myPeer: null, canWrite: true,
+  async init() {
+    const hasClaude = !!(window.claude && typeof window.claude.use === "function");
+    let room = null, db = null, user = null;
+    if (hasClaude) {
+      const get = (n) => window.claude.use(n).catch(() => null);
+      [room, db, user] = await Promise.all([get("room"), get("db"), get("user")]);
+    }
+    this.user = user;
+    if (!hasClaude && /^https?:$/.test(location.protocol)) {
+      const sock = await connectServer();
+      if (sock) { const b = makeServerBackend(sock); this.server = true; this.room = b.room; this.db = b.db; this.uid = b.uid; return this; }
+    }
+    if (room) { this.room = room; }
+    else { this.room = makeLocalRoom(); this.local = true; }
+    if (db) this.db = db; else { this.db = makeLocalDb(); this.dbLocal = true; }
+    if (user) {
+      try { this.uid = await user.id(); } catch (e) {}
+      try { const c = await user.can("data.write"); if (c === false) this.canWrite = false; } catch (e) {}
+    }
+    if (!this.uid) this.uid = this.room.uid || store("nfa-uid") || (() => { const u = "anon-" + randId(10); store("nfa-uid", u); return u; })();
+    return this;
+  },
+  myPeerLabel() {
+    const me = this.room.peers().find(p => p.sameTab);
+    return me ? me.peer : null;
+  },
+};

@@ -1,0 +1,10 @@
+{
+  "name": "neteam-friday-arcade",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Neteam Friday Arcade: multiplayer party games with a persistent scoreboard",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "8.18.0" },
+  "engines": { "node": ">=18" }
+}

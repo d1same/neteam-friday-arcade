@@ -1,0 +1,14 @@
+# Build locally from source instead of pulling: docker compose -f docker-compose.build.yml up -d --build
+services:
+  arcade:
+    build: .
+    image: neteam-friday-arcade:local
+    container_name: neteam-friday-arcade
+    ports:
+      - "4802:4802"
+    volumes:
+      - arcade-data:/data
+    restart: unless-stopped
+
+volumes:
+  arcade-data:

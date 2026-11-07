@@ -1,0 +1,682 @@
+// ---------- games ----------
+// World is 960 x 600 logical px. The host simulates; everyone renders.
+const W = 960, H = 600;
+const BOT_NAMES = [
+  { n: "Sr. Tech Bot", boss: true, c: [2, 3, 4, 2, 1] },
+  { n: "Firewall Bot", boss: true, c: [0, 4, 4, 5, 3] },
+  { n: "Patch Bot", c: [1, 6, 2, 1, 0] },
+  { n: "Ping Bot", c: [4, 8, 5, 6, 0] },
+  { n: "Tier-1 Bot", c: [3, 7, 0, 3, 2] },
+  { n: "Cache Bot", c: [0, 9, 1, 8, 6] },
+];
+function spawnPoint(i, n) {
+  const a = -Math.PI / 2 + (i / Math.max(1, n)) * Math.PI * 2;
+  return [W / 2 + Math.cos(a) * 340, H / 2 + Math.sin(a) * 200];
+}
+function smoothTo(V, key, x, y, k = 0.35) {
+  const m = V.sm[key] || (V.sm[key] = { x, y, px: x, py: y, vx: 0 });
+  m.px = m.x; m.py = m.y;
+  m.x = lerp(m.x, x, k); m.y = lerp(m.y, y, k);
+  m.vx = m.x - m.px;
+  return m;
+}
+function nameTag(ctx, text, x, y, me, color) {
+  ctx.font = "700 12px Figtree, system-ui, sans-serif";
+  const w = ctx.measureText(text).width + 12;
+  ctx.fillStyle = me ? "#f5f1e6" : "rgba(11,14,32,.78)";
+  ctx.beginPath(); ctx.roundRect(x - w / 2, y - 9, w, 18, 9); ctx.fill();
+  if (color) { ctx.fillStyle = color; ctx.fillRect(x - w / 2 + 6, y + 6, w - 12, 2); }
+  ctx.fillStyle = me ? "#12162e" : "#f5f1e6";
+  ctx.textAlign = "center"; ctx.textBaseline = "middle";
+  ctx.fillText(text, x, y + 0.5);
+}
+const FX = {
+  parts: [],
+  burst(x, y, color, n = 14, speed = 160, life = 0.6, size = 4) {
+    if (reducedMotion) n = Math.ceil(n / 3);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.8);
+      this.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, max: life, color, size: size * (0.6 + Math.random() * 0.8) });
+    }
+  },
+  ring(x, y, color, r = 90, life = 0.5) { this.parts.push({ ring: true, x, y, r, life, max: life, color }); },
+  text(x, y, txt, color, life = 1) { this.parts.push({ txt, x, y, vy: -40, vx: 0, life, max: life, color }); },
+  draw(ctx, dt) {
+    for (const p of this.parts) {
+      p.life -= dt;
+      const k = Math.max(0, p.life / p.max);
+      ctx.globalAlpha = k;
+      if (p.ring) {
+        ctx.strokeStyle = p.color; ctx.lineWidth = 6 * k;
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 - k) + 10, 0, Math.PI * 2); ctx.stroke();
+      } else if (p.txt) {
+        p.y += p.vy * dt;
+        ctx.font = "400 22px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.lineWidth = 5; ctx.strokeStyle = "#0b0e20"; ctx.strokeText(p.txt, p.x, p.y);
+        ctx.fillStyle = p.color; ctx.fillText(p.txt, p.x, p.y);
+      } else {
+        p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94;
+        ctx.fillStyle = p.color; ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      }
+    }
+    ctx.globalAlpha = 1;
+    this.parts = this.parts.filter(p => p.life > 0);
+  },
+  clear() { this.parts = []; },
+};
+
+// ======================= COVERAGE RUSH =======================
+const COLS = 24, ROWS = 15, CELL = 40;
+const coverage = {
+  id: "coverage", title: "Coverage Rush", tag: "Claim the client's floor",
+  blurb: "A new client's office needs coverage. Run the floor and claim tiles with your network. Most tiles in 60 seconds wins.",
+  how: ["Walk over tiles to claim them with your color", "Steal tiles by walking over rivals' coverage", "Grab an access point to blast coverage around you"],
+  keys: ["WASD / arrows", "Touch: drag anywhere"],
+  rec: { label: "Most tiles", better: "max", fmt: v => v + " tiles" },
+  hostStart(S) {
+    const n = S.ro.length;
+    S.g = { t: 0, dur: 60, grid: new Array(COLS * ROWS).fill(-1), pos: S.ro.map((r, i) => spawnPoint(i, n)), bot: {}, pk: null, pkT: 4, bm: null, bmSeq: 0 };
+    S.ro.forEach((r, i) => { if (r.b) S.g.bot[i] = { tx: 0, ty: 0, t: 0, sp: r.boss ? 215 : 185 }; });
+  },
+  hostTick(S, dt, inputs) {
+    const g = S.g; g.t += dt;
+    S.ro.forEach((r, i) => {
+      let p = g.pos[i];
+      if (r.b) {
+        const b = g.bot[i];
+        b.t -= dt;
+        const dx = b.tx - p[0], dy = b.ty - p[1], d = Math.hypot(dx, dy);
+        if (b.t <= 0 || d < 12) {
+          let best = null, bs = -1e9;
+          if (g.pk && Math.hypot(g.pk[0] - p[0], g.pk[1] - p[1]) < 320 && Math.random() < 0.6) best = g.pk;
+          else for (let k = 0; k < 16; k++) {
+            const cx = rint(0, COLS - 1), cy = rint(0, ROWS - 1), o = g.grid[cy * COLS + cx];
+            const x = cx * CELL + CELL / 2, y = cy * CELL + CELL / 2;
+            const sc = (o === i ? -2 : o === -1 ? 1.2 : 2) - Math.hypot(x - p[0], y - p[1]) / 260 + Math.random() * 0.6;
+            if (sc > bs) { bs = sc; best = [x, y]; }
+          }
+          b.tx = best[0]; b.ty = best[1]; b.t = 0.8 + Math.random() * 1.2;
+        } else {
+          const s = Math.min(d, b.sp * dt);
+          p[0] += dx / d * s; p[1] += dy / d * s;
+        }
+      } else {
+        const inp = inputs[i];
+        if (inp && Number.isFinite(inp.x) && Number.isFinite(inp.y)) { p[0] = clamp(inp.x, 14, W - 14); p[1] = clamp(inp.y, 14, H - 14); }
+      }
+      const cx = clamp(Math.floor(p[0] / CELL), 0, COLS - 1), cy = clamp(Math.floor(p[1] / CELL), 0, ROWS - 1);
+      g.grid[cy * COLS + cx] = i;
+      if (g.pk && Math.hypot(g.pk[0] - p[0], g.pk[1] - p[1]) < 34) {
+        const pcx = Math.floor(g.pk[0] / CELL), pcy = Math.floor(g.pk[1] / CELL);
+        for (let y = -3; y <= 3; y++) for (let x = -3; x <= 3; x++) {
+          if (x * x + y * y > 6.5) continue;
+          const X = pcx + x, Y = pcy + y;
+          if (X >= 0 && Y >= 0 && X < COLS && Y < ROWS) g.grid[Y * COLS + X] = i;
+        }
+        g.bm = [i, g.pk[0], g.pk[1], ++g.bmSeq]; g.pk = null; g.pkT = 5 + Math.random() * 3;
+      }
+    });
+    if (!g.pk) { g.pkT -= dt; if (g.pkT <= 0) { const cx = rint(2, COLS - 3), cy = rint(2, ROWS - 3); g.pk = [cx * CELL + CELL / 2, cy * CELL + CELL / 2]; } }
+  },
+  pack(S) {
+    const g = S.g;
+    return {
+      gr: g.grid.map(v => v < 0 ? "." : String.fromCharCode(97 + v)).join(""),
+      bp: S.ro.map((r, i) => r.b ? [Math.round(g.pos[i][0]), Math.round(g.pos[i][1])] : 0),
+      pk: g.pk, bm: g.bm,
+    };
+  },
+  timeLeft(S) { return (S.g.dur - S.g.t) * 1000; },
+  done(S) { return S.g.t >= S.g.dur; },
+  counts(gr, n) { const c = new Array(n).fill(0); for (let k = 0; k < gr.length; k++) { const v = gr.charCodeAt(k) - 97; if (v >= 0 && v < n) c[v]++; } return c; },
+  rank(S) {
+    const c = this.counts(this.pack(S).gr, S.ro.length);
+    return S.ro.map((r, i) => ({ i, v: c[i], label: c[i] + " tiles", rec: c[i] })).sort((a, b) => b.v - a.v);
+  },
+  chip(V, i) { return V.g ? this.counts(V.g.gr || "", V.ro.length)[i] : 0; },
+  clientEnter(V) { const sp = spawnPoint(V.meIdx, V.ro.length); V.local = { x: sp[0], y: sp[1] }; V.prevGr = ""; V.pop = {}; V.lastBm = 0; },
+  clientInput(V, dt, inp) {
+    if (V.meIdx < 0 || V.h.ph !== "play") return null;
+    const L = V.local, sp = 235;
+    L.x = clamp(L.x + inp.dx * sp * dt, 14, W - 14); L.y = clamp(L.y + inp.dy * sp * dt, 14, H - 14);
+    return { x: Math.round(L.x), y: Math.round(L.y) };
+  },
+  draw(ctx, V, dt, t) {
+    const g = V.g || {};
+    const gr = g.gr || "";
+    // floor
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      ctx.fillStyle = (x + y) % 2 ? "#1c2246" : "#191e3f";
+      ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+    }
+    // office plan details (non-blocking): room outlines + labels
+    ctx.strokeStyle = "rgba(166,172,208,.18)"; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    [[0, 0, 7, 6, "MIKE'S OFFICE"], [17, 0, 7, 6, "SERVER CLOSET"], [0, 9, 7, 6, "RECEPTION"], [17, 9, 7, 6, "PAVLOS'S OFFICE"], [9, 5, 6, 5, "OPEN DESKS"]].forEach(([x, y, w, h, l]) => {
+      ctx.strokeRect(x * CELL + 3, y * CELL + 3, w * CELL - 6, h * CELL - 6);
+      ctx.fillStyle = "rgba(166,172,208,.22)"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.fillText(l, x * CELL + 10, y * CELL + 9);
+    });
+    ctx.setLineDash([]);
+    // claimed tiles
+    if (gr !== V.prevGr) {
+      for (let k = 0; k < gr.length; k++) if (gr[k] !== V.prevGr[k] && gr[k] !== ".") V.pop[k] = t;
+      V.prevGr = gr;
+    }
+    for (let k = 0; k < gr.length; k++) {
+      const v = gr.charCodeAt(k) - 97; if (v < 0) continue;
+      const r = V.ro[v]; if (!r) continue;
+      const x = (k % COLS) * CELL, y = Math.floor(k / COLS) * CELL;
+      const age = V.pop[k] != null ? t - V.pop[k] : 9;
+      const s = age < 0.25 ? 0.6 + (age / 0.25) * 0.4 : 1;
+      const pad = 2 + (1 - s) * 16;
+      ctx.fillStyle = r.hex;
+      ctx.globalAlpha = 0.78;
+      ctx.beginPath(); ctx.roundRect(x + pad, y + pad, CELL - pad * 2, CELL - pad * 2, 7); ctx.fill();
+      ctx.globalAlpha = 0.35; ctx.strokeStyle = "#0b0e20"; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(x + CELL / 2, y + CELL / 2 + 6, 9, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + CELL / 2, y + CELL / 2 + 6, 4, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // access point pickup
+    if (g.pk) {
+      const [px, py] = g.pk, pulse = (t * 1.4) % 1;
+      ctx.strokeStyle = "rgba(255,210,63," + (1 - pulse) + ")"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(px, py, 14 + pulse * 30, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "#f5f1e6"; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.roundRect(px - 16, py - 6, 32, 14, 5); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(px - 9, py - 6); ctx.lineTo(px - 13, py - 20); ctx.moveTo(px + 9, py - 6); ctx.lineTo(px + 13, py - 20); ctx.stroke();
+      ctx.fillStyle = "#3ddc97"; ctx.beginPath(); ctx.arc(px + 9, py + 1, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+    if (g.bm && g.bm[3] !== V.lastBm) {
+      V.lastBm = g.bm[3];
+      const r = V.ro[g.bm[0]];
+      if (r) { FX.ring(g.bm[1], g.bm[2], r.hex, 150, 0.7); FX.burst(g.bm[1], g.bm[2], r.hex, 30, 260, 0.8, 6); FX.text(g.bm[1], g.bm[2] - 30, "AP DEPLOYED", "#ffd23f", 1.1); SFX.play("boom"); }
+    }
+    // players
+    const list = V.ro.map((r, i) => {
+      let x, y;
+      if (i === V.meIdx && V.h.ph === "play") { x = V.local.x; y = V.local.y; }
+      else if (r.b) { const p = g.bp && g.bp[i]; if (!p) { [x, y] = spawnPoint(i, V.ro.length); } else { x = p[0]; y = p[1]; } }
+      else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x)) { x = inp.x; y = inp.y; } else[x, y] = spawnPoint(i, V.ro.length); }
+      const m = i === V.meIdx ? (V.sm[i] = { x, y, px: (V.sm[i] || { x }).x, vx: x - (V.sm[i] || { x }).x }) : smoothTo(V, i, x, y, 0.3);
+      return { i, r, m };
+    }).sort((a, b) => a.m.y - b.m.y);
+    for (const { i, r, m } of list) {
+      const moving = Math.abs(m.vx) + Math.abs(m.y - (m.py ?? m.y)) > 0.3;
+      drawChar(ctx, r.c, m.x, m.y - 6, 38, { t, look: clamp(m.vx * 0.3, -1, 1), squash: moving ? Math.sin(t * 18 + i) * 0.35 : 0, phase: i, color: r.hex });
+      nameTag(ctx, r.n, m.x, m.y - 40, i === V.meIdx, r.hex);
+    }
+  },
+};
+
+// ======================= UPTIME SUMO =======================
+const sumo = {
+  id: "sumo", title: "Uptime Sumo", tag: "Last tech online wins",
+  blurb: "An outage is eating the server-room floor. Bump rival techs off the edge and stay online. You have 3 lives.",
+  how: ["Steer your tech around the raised floor", "Dash into rivals to knock them off", "The floor shrinks as the outage spreads"],
+  keys: ["WASD / arrows", "Space = dash", "Touch: drag + DASH"],
+  rec: { label: "Most knockouts", better: "max", fmt: v => v + " KOs" },
+  R: 22,
+  radius(t) { return t < 8 ? 265 : Math.max(125, 265 - (t - 8) * (140 / 45)); },
+  hostStart(S) {
+    const n = S.ro.length;
+    S.g = { t: 0, dur: 80, endT: 0, p: S.ro.map((r, i) => { const a = -Math.PI / 2 + i / n * Math.PI * 2; return { x: W / 2 + Math.cos(a) * 150, y: H / 2 + Math.sin(a) * 150, vx: 0, vy: 0, st: 0, lives: 3, kos: 0, cd: 0, inv: 1, fallT: 0, hit: -1, hitT: -9, d: null, outAt: 0, boss: !!r.boss }; }) };
+  },
+  hostTick(S, dt, inputs) {
+    const g = S.g; g.t += dt;
+    const r = this.radius(g.t), R = this.R, cx = W / 2, cy = H / 2;
+    const ps = g.p;
+    ps.forEach((p, i) => {
+      if (p.st === 2) return;
+      if (p.st === 1) {
+        p.fallT -= dt;
+        if (p.fallT <= 0) {
+          if (p.lives > 0) { const a = Math.random() * Math.PI * 2, d = Math.random() * r * 0.35; p.x = cx + Math.cos(a) * d; p.y = cy + Math.sin(a) * d; p.vx = p.vy = 0; p.st = 0; p.inv = 1.5; }
+          else { p.st = 2; p.outAt = g.t; }
+        }
+        return;
+      }
+      p.cd -= dt; p.inv -= dt;
+      let dx = 0, dy = 0, dash = false;
+      if (S.ro[i].b) {
+        let best = null, bd = 1e9;
+        ps.forEach((q, j) => { if (j !== i && q.st === 0) { const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = q; } } });
+        if (best) { dx = (best.x - p.x) / bd; dy = (best.y - p.y) / bd; if (bd < 140 && p.cd <= 0 && Math.random() < dt * (p.boss ? 3 : 1.8)) dash = true; }
+        const dc = Math.hypot(p.x - cx, p.y - cy);
+        const edge = dc / r;
+        if (edge > 0.6) { const w = (edge - 0.6) * (p.boss ? 5 : 3.5); dx += (cx - p.x) / dc * w; dy += (cy - p.y) / dc * w; }
+        const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+        if (!p.boss) { dx *= 0.85; dy *= 0.85; }
+      } else {
+        const inp = inputs[i] || {};
+        dx = clamp(+inp.dx || 0, -1, 1); dy = clamp(+inp.dy || 0, -1, 1);
+        const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
+        if (p.d === null) p.d = inp.d || 0;
+        if ((inp.d || 0) > p.d) { p.d = inp.d; if (p.cd <= 0) dash = true; }
+      }
+      p.vx += dx * 950 * dt; p.vy += dy * 950 * dt;
+      if (dash) {
+        let ddx = dx, ddy = dy; if (!ddx && !ddy) { const l = Math.hypot(p.vx, p.vy) || 1; ddx = p.vx / l; ddy = p.vy / l; }
+        p.vx += ddx * 560; p.vy += ddy * 560; p.cd = 1.2; p.dashT = 0.25;
+      }
+      p.dashT = (p.dashT || 0) - dt;
+      const sp = Math.hypot(p.vx, p.vy), max = p.dashT > 0 ? 820 : 270;
+      if (sp > max) { p.vx = p.vx / sp * lerp(sp, max, 0.25); p.vy = p.vy / sp * lerp(sp, max, 0.25); }
+      const f = Math.pow(0.12, dt); p.vx *= f; p.vy *= f;
+      p.x += p.vx * dt; p.y += p.vy * dt;
+    });
+    // collisions
+    for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+      const a = ps[i], b = ps[j];
+      if (a.st || b.st || a.inv > 0 || b.inv > 0) continue;
+      const dx = b.x - a.x, dy = b.y - a.y, d = Math.hypot(dx, dy);
+      if (d >= R * 2 || d === 0) continue;
+      const nx = dx / d, ny = dy / d, ov = R * 2 - d;
+      a.x -= nx * ov / 2; a.y -= ny * ov / 2; b.x += nx * ov / 2; b.y += ny * ov / 2;
+      const rv = (a.vx - b.vx) * nx + (a.vy - b.vy) * ny;
+      if (rv > 0) {
+        const j2 = rv * 1.25 + 90;
+        a.vx -= nx * j2; a.vy -= ny * j2; b.vx += nx * j2; b.vy += ny * j2;
+        a.hit = j; a.hitT = g.t; b.hit = i; b.hitT = g.t;
+      }
+    }
+    // falls
+    ps.forEach((p, i) => {
+      if (p.st !== 0) return;
+      if (Math.hypot(p.x - cx, p.y - cy) > r + 4) {
+        p.st = 1; p.fallT = 1.1; p.lives--;
+        if (p.hit >= 0 && g.t - p.hitT < 3 && p.hit !== i) ps[p.hit].kos++;
+        p.hit = -1;
+      }
+    });
+    const alive = ps.filter(p => p.st !== 2).length;
+    if (ps.length > 1 && alive <= 1 && !g.endT) g.endT = g.t + 1.4;
+  },
+  pack(S) {
+    const g = S.g;
+    return { r: Math.round(this.radius(g.t)), p: g.p.map(p => [Math.round(p.x), Math.round(p.y), Math.round(p.vx), Math.round(p.vy), p.st, p.lives, p.kos, p.inv > 0 ? 1 : 0, Math.max(0, Math.round(p.fallT * 10)), p.dashT > 0 ? 1 : 0]) };
+  },
+  timeLeft(S) { return (S.g.dur - S.g.t) * 1000; },
+  done(S) { return S.g.t >= S.g.dur || (S.g.endT && S.g.t >= S.g.endT); },
+  rank(S) {
+    return S.g.p.map((p, i) => ({ i, p })).sort((a, b) => ((b.p.st !== 2) - (a.p.st !== 2)) || (b.p.lives - a.p.lives) || (b.p.outAt - a.p.outAt) || (b.p.kos - a.p.kos))
+      .map(({ i, p }) => ({ i, v: p.lives * 100 + p.kos, label: p.kos + " KO" + (p.kos === 1 ? "" : "s") + " · " + (p.st === 2 ? "offline" : p.lives + " " + (p.lives === 1 ? "life" : "lives") + " left"), rec: p.kos }));
+  },
+  chip(V, i) { const p = V.g && V.g.p && V.g.p[i]; return p ? "●".repeat(Math.max(0, p[5])) + "○".repeat(Math.max(0, 3 - p[5])) : "●●●"; },
+  clientEnter(V) { V.dashN = 0; V.lastBump = 0; V.prevSt = {}; },
+  clientInput(V, dt, inp) {
+    if (V.meIdx < 0) return null;
+    if (inp.dash) { V.dashN++; inp.dash = false; SFX.play("dash"); }
+    return { dx: Math.round(inp.dx * 100) / 100, dy: Math.round(inp.dy * 100) / 100, d: V.dashN };
+  },
+  draw(ctx, V, dt, t) {
+    const g = V.g || {};
+    const r = g.r || 265, cx = W / 2, cy = H / 2;
+    // under-floor void: cable trays
+    ctx.fillStyle = "#0a0d1e"; ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "rgba(76,201,240,.07)"; ctx.lineWidth = 1;
+    for (let x = 0; x < W; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+    for (let y = 0; y < H; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+    // outage zone ring
+    ctx.save();
+    const og = ctx.createRadialGradient(cx, cy, r, cx, cy, 300);
+    og.addColorStop(0, "rgba(255,107,87,.35)"); og.addColorStop(1, "rgba(255,107,87,0)");
+    ctx.fillStyle = og; ctx.beginPath(); ctx.arc(cx, cy, 300, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // raised floor disc
+    ctx.save();
+    ctx.fillStyle = "#06081a"; ctx.beginPath(); ctx.ellipse(cx, cy + 14, r, r * 0.98, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.clip();
+    const fg = ctx.createRadialGradient(cx - 60, cy - 80, 20, cx, cy, r);
+    fg.addColorStop(0, "#3a4486"); fg.addColorStop(1, "#232a58");
+    ctx.fillStyle = fg; ctx.fillRect(cx - r, cy - r, r * 2, r * 2);
+    ctx.strokeStyle = "rgba(245,241,230,.08)"; ctx.lineWidth = 2;
+    for (let x = cx - 300; x < cx + 300; x += 50) { ctx.beginPath(); ctx.moveTo(x, cy - r); ctx.lineTo(x, cy + r); ctx.stroke(); }
+    for (let y = cy - 300; y < cy + 300; y += 50) { ctx.beginPath(); ctx.moveTo(cx - r, y); ctx.lineTo(cx + r, y); ctx.stroke(); }
+    ctx.fillStyle = "rgba(76,201,240,.12)";
+    for (let x = cx - 275; x < cx + 300; x += 100) for (let y = cy - 275; y < cy + 300; y += 100) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
+    ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.07)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("NETEAM DC-1", cx, cy);
+    ctx.restore();
+    const pulse = 0.5 + Math.sin(t * 6) * 0.5;
+    ctx.strokeStyle = r < 260 ? "rgba(255,107,87," + (0.55 + pulse * 0.45) + ")" : "rgba(255,210,63,.7)";
+    ctx.lineWidth = 6; ctx.setLineDash([16, 10]); ctx.lineDashOffset = -t * 40;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+    if (r < 260) { ctx.font = "700 12px 'JetBrains Mono', monospace"; ctx.fillStyle = "rgba(255,107,87,.9)"; ctx.textAlign = "center"; ctx.fillText("OUTAGE SPREADING", cx, cy - r - 16); }
+    // players
+    const P = g.p || [];
+    const list = V.ro.map((ro, i) => {
+      const p = P[i]; if (!p) { const a = -Math.PI / 2 + i / V.ro.length * Math.PI * 2; return { i, ro, m: smoothTo(V, i, cx + Math.cos(a) * 150, cy + Math.sin(a) * 150), p: [0, 0, 0, 0, 0, 3, 0, 0, 0, 0] }; }
+      const ex = p[0] + p[2] * Math.min(0.12, V.age / 1000), ey = p[1] + p[3] * Math.min(0.12, V.age / 1000);
+      const m = (V.sm[i] && Math.hypot(V.sm[i].x - ex, V.sm[i].y - ey) > 120) ? (V.sm[i] = { x: ex, y: ey, px: ex, py: ey, vx: 0 }) : smoothTo(V, i, ex, ey, 0.45);
+      return { i, ro, m, p };
+    });
+    // sparks on contact
+    for (let a = 0; a < list.length; a++) for (let b = a + 1; b < list.length; b++) {
+      const A = list[a], B = list[b];
+      if (A.p[4] || B.p[4]) continue;
+      if (Math.hypot(A.m.x - B.m.x, A.m.y - B.m.y) < this.R * 2 + 3 && t - V.lastBump > 0.15) {
+        V.lastBump = t; FX.burst((A.m.x + B.m.x) / 2, (A.m.y + B.m.y) / 2, "#ffd23f", 10, 220, 0.35, 4); SFX.play("bump");
+      }
+    }
+    list.sort((a, b) => a.m.y - b.m.y);
+    for (const { i, ro, m, p } of list) {
+      const st = p[4];
+      if (V.prevSt[i] === 0 && st === 1) { SFX.play("fall"); FX.text(m.x, m.y - 30, "OFFLINE", "#ff6b57", 1); }
+      V.prevSt[i] = st;
+      if (st === 2) continue;
+      let scale = 1, alpha = 1;
+      if (st === 1) { const k = p[8] / 11; scale = 0.25 + 0.75 * k; alpha = k; }
+      if (p[7] && Math.floor(t * 10) % 2) alpha *= 0.45;
+      if (p[9]) { ctx.fillStyle = "rgba(255,210,63,.25)"; ctx.beginPath(); ctx.arc(m.x - p[2] * 0.03, m.y - p[3] * 0.03, 26, 0, Math.PI * 2); ctx.fill(); }
+      drawChar(ctx, ro.c, m.x, m.y - 4, 46 * scale, { t, alpha, look: clamp(p[2] / 200, -1, 1), squash: clamp(Math.hypot(p[2], p[3]) / 600, 0, 0.6), mood: st === 1 ? "shock" : p[9] ? "happy" : "", phase: i, color: ro.hex });
+      if (st === 0) {
+        nameTag(ctx, ro.n, m.x, m.y - 44, i === V.meIdx, ro.hex);
+        for (let k = 0; k < 3; k++) { ctx.fillStyle = k < p[5] ? "#3ddc97" : "rgba(245,241,230,.2)"; ctx.beginPath(); ctx.arc(m.x - 10 + k * 10, m.y + 30, 3.5, 0, Math.PI * 2); ctx.fill(); }
+      }
+    }
+  },
+};
+
+// ======================= ALERT RESPONSE =======================
+const ALERTS = ["Brute-force on the VPN", "Phishing link clicked", "Ransomware beacon", "Impossible-travel login", "MFA fatigue spam", "Port scan on edge firewall", "Unknown USB device", "Admin login at 3 a.m.", "Mass file rename on NAS", "DNS tunneling spotted"];
+const alert = {
+  id: "alert", title: "Alert Response", tag: "Fastest containment wins",
+  blurb: "You're on SOC duty. When the SIEM alert fires, hit Contain. Fastest tech each round scores. Jumping early is a false positive.",
+  how: ["Wait while the monitor shows all clear", "When it flashes red, tap as fast as you can", "5 rounds · 1st 5 pts, 2nd 3, 3rd 2 · false positive −2"],
+  keys: ["Space / Enter", "Click or tap anywhere"],
+  rec: { label: "Fastest response", better: "min", fmt: v => v + " ms" },
+  ROUNDS: 5,
+  hostStart(S) {
+    const n = S.ro.length;
+    S.g = { r: 1, rp: "ready", pt: 2, d: 0, al: 0, aT: 0, rt: new Array(n).fill(null), pts: new Array(n).fill(0), rpts: new Array(n).fill(0), best: new Array(n).fill(null), bot: {} };
+  },
+  hostTick(S, dt, inputs) {
+    const g = S.g; g.pt -= dt;
+    if (g.rp === "ready" && g.pt <= 0) {
+      g.rp = "armed"; g.d = Math.round(1500 + Math.random() * 2600); g.aT = 0; g.al = rint(0, ALERTS.length - 1);
+      g.rt = g.rt.map(() => null); g.rpts = g.rpts.map(() => 0);
+      S.ro.forEach((r, i) => { if (r.b) { const fs = Math.random() < 0.05; g.bot[i] = fs ? { fs: Math.random() * g.d } : { t: r.boss ? 195 + Math.random() * 130 : 230 + Math.random() * 230 }; } });
+    } else if (g.rp === "armed") {
+      g.aT += dt * 1000;
+      S.ro.forEach((r, i) => {
+        if (g.rt[i] != null) return;
+        if (r.b) { const b = g.bot[i]; if (b.fs != null && g.aT >= b.fs) g.rt[i] = -1; else if (b.t != null && g.aT >= g.d + b.t) g.rt[i] = Math.round(b.t); }
+        else { const rx = inputs[i] && inputs[i].rx; if (rx && rx.r === g.r) g.rt[i] = rx.f ? -1 : clamp(Math.round(+rx.t || 0), 90, 9999); }
+      });
+      const all = g.rt.every(v => v != null);
+      if (g.aT > g.d + 2600 || (all && g.aT > g.d + 250)) {
+        const valid = g.rt.map((v, i) => ({ v, i })).filter(o => o.v != null && o.v > 0).sort((a, b) => a.v - b.v);
+        const P = [5, 3, 2];
+        valid.forEach((o, k) => { g.rpts[o.i] = k < 3 ? P[k] : 1; if (g.best[o.i] == null || o.v < g.best[o.i]) g.best[o.i] = o.v; });
+        g.rt.forEach((v, i) => { if (v === -1) g.rpts[i] = -2; });
+        g.rpts.forEach((p, i) => g.pts[i] += p);
+        g.rp = "reveal"; g.pt = 3;
+      }
+    } else if (g.rp === "reveal" && g.pt <= 0) {
+      if (g.r >= this.ROUNDS) g.fin = true;
+      else { g.r++; g.rp = "ready"; g.pt = 1.6; }
+    }
+  },
+  pack(S) { const g = S.g; return { r: g.r, rp: g.rp, d: g.d, al: g.al, rt: g.rp === "armed" ? g.rt.map(v => v == null ? null : 1) : g.rt, pts: g.pts, rpts: g.rpts, best: g.best }; },
+  timeLeft() { return null; },
+  done(S) { return !!S.g.fin; },
+  rank(S) {
+    const g = S.g;
+    return S.ro.map((r, i) => ({ i, v: g.pts[i], label: g.pts[i] + " pts" + (g.best[i] ? " · best " + g.best[i] + " ms" : ""), rec: g.best[i] }))
+      .sort((a, b) => (b.v - a.v) || ((a.rec || 1e9) - (b.rec || 1e9)));
+  },
+  chip(V, i) { return V.g && V.g.pts ? V.g.pts[i] : 0; },
+  clientEnter(V) { V.lr = { r: 0 }; V.lastRp = ""; },
+  tap(V) {
+    const g = V.g; if (!g || V.meIdx < 0 || V.h.ph !== "play") return;
+    const L = V.lr;
+    if (g.rp !== "armed" || L.r !== g.r || L.done) return;
+    L.done = true;
+    if (L.goAt) { L.res = Math.round(now() - L.goAt); V.sendRx = { r: g.r, t: L.res }; SFX.play("blip"); }
+    else { L.res = -1; V.sendRx = { r: g.r, f: 1 }; SFX.play("early"); }
+  },
+  clientInput(V) {
+    const g = V.g; if (!g) return null;
+    const L = V.lr;
+    if (g.rp === "armed" && L.r !== g.r) { V.lr = { r: g.r, start: now(), d: g.d, goAt: 0, done: false, res: null }; V.sendRx = null; }
+    const L2 = V.lr;
+    if (g.rp === "armed" && L2.r === g.r && !L2.goAt && now() - L2.start >= L2.d) { L2.goAt = now(); if (!L2.done) SFX.play("go"); }
+    return V.sendRx ? { rx: V.sendRx } : {};
+  },
+  draw(ctx, V, dt, t) {
+    const g = V.g || { rp: "ready", r: 1 };
+    const L = V.lr || {};
+    const armed = g.rp === "armed" && L.r === g.r;
+    const go = armed && !!L.goAt;
+    // room
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, go ? "#3a0f1a" : "#121733"); bg.addColorStop(1, "#0a0d1e");
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    // SOC wall: 3 monitors
+    const mons = [[90, 40, 200, 120], [310, 30, 340, 210], [670, 40, 200, 120]];
+    mons.forEach(([x, y, w, h], k) => {
+      ctx.fillStyle = "#05070f"; ctx.strokeStyle = "#333d73"; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.fill(); ctx.stroke();
+      ctx.save(); ctx.beginPath(); ctx.roundRect(x + 6, y + 6, w - 12, h - 12, 6); ctx.clip();
+      if (k === 1) {
+        if (go) {
+          ctx.fillStyle = Math.floor(t * 8) % 2 ? "#ff3b4e" : "#d81f36"; ctx.fillRect(x, y, w, h);
+          ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.font = "400 44px Bungee, Impact, sans-serif"; ctx.fillText("CONTAIN!", x + w / 2, y + h / 2 - 18);
+          ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.fillText("⚠ " + ALERTS[g.al || 0], x + w / 2, y + h / 2 + 30);
+        } else {
+          ctx.fillStyle = "#07160f"; ctx.fillRect(x, y, w, h);
+          ctx.strokeStyle = "#3ddc97"; ctx.lineWidth = 2; ctx.beginPath();
+          for (let i = 0; i <= 60; i++) { const xx = x + 10 + i * (w - 20) / 60; const yy = y + h / 2 + 22 + Math.sin(i * 0.7 + t * 4) * 8 + Math.sin(i * 2.3 + t * 7) * 4; i ? ctx.lineTo(xx, yy) : ctx.moveTo(xx, yy); }
+          ctx.stroke();
+          ctx.fillStyle = "#3ddc97"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.font = "700 14px 'JetBrains Mono', monospace";
+          const label = g.rp === "reveal" ? "INCIDENT CLOSED" : armed ? (L.done && L.res === -1 ? "FALSE POSITIVE" : "MONITORING… HOLD") : "ROUND " + g.r + " / " + this.ROUNDS + " · STAND BY";
+          ctx.fillText("NETEAM SIEM · " + label, x + w / 2, y + 34);
+          if (armed && L.done && L.res === -1) { ctx.fillStyle = "#ff6b57"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.fillText("TOO EARLY −2", x + w / 2, y + h / 2 - 12); }
+        }
+      } else {
+        ctx.fillStyle = "#0b1022"; ctx.fillRect(x, y, w, h);
+        ctx.fillStyle = go ? "rgba(255,59,78,.6)" : "rgba(76,201,240,.35)";
+        for (let b = 0; b < 8; b++) { const bh = 10 + Math.abs(Math.sin(b * 1.7 + t * (k + 1))) * (h - 40); ctx.fillRect(x + 14 + b * ((w - 28) / 8), y + h - 10 - bh, (w - 28) / 8 - 5, bh); }
+      }
+      ctx.restore();
+    });
+    // founders frame
+    ctx.fillStyle = "#2a2140"; ctx.strokeStyle = "#c99a00"; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.roundRect(110, 182, 160, 112, 6); ctx.fill(); ctx.stroke();
+    drawChar(ctx, [2, 3, 1, 0, 1], 158, 232, 38, { t, shadow: false, phase: 1 });
+    drawChar(ctx, [0, 8, 0, 0, 4], 222, 232, 38, { t, shadow: false, phase: 2 });
+    ctx.font = "700 9.5px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#ffd23f";
+    ctx.fillText("MIKE & PAVLOS", 190, 270); ctx.fillStyle = "#a6acd0"; ctx.fillText("FOUNDERS · SINCE 2001", 190, 283);
+    // desk
+    ctx.fillStyle = "#1b2142"; ctx.fillRect(0, 430, W, 170);
+    ctx.fillStyle = "#2a3263"; ctx.fillRect(0, 430, W, 8);
+    // techs in a row
+    const n = V.ro.length, gap = Math.min(120, (W - 80) / Math.max(1, n));
+    V.ro.forEach((ro, i) => {
+      const x = W / 2 + (i - (n - 1) / 2) * gap, y = 395;
+      const rt = g.rt ? g.rt[i] : null;
+      let mood = "", jump = 0;
+      if (g.rp === "reveal") { mood = rt === -1 ? "sad" : g.rpts && g.rpts[i] >= 5 ? "happy" : ""; if (g.rpts && g.rpts[i] >= 5) jump = Math.abs(Math.sin(t * 8)) * 18; }
+      else if (armed && i === V.meIdx && L.done) { mood = L.res === -1 ? "sad" : "happy"; jump = 8; }
+      else if (g.rp === "armed" && rt === 1) jump = 8;
+      if (go && !(rt === 1)) mood = mood || "shock";
+      drawChar(ctx, ro.c, x, y - jump, 56, { t, mood, phase: i, color: ro.hex });
+      nameTag(ctx, ro.n, x, y + 48, i === V.meIdx, ro.hex);
+      // results
+      if (g.rp === "reveal") {
+        const txt = rt == null ? "—" : rt === -1 ? "FALSE +" : rt + " ms";
+        ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.textAlign = "center";
+        ctx.fillStyle = rt === -1 ? "#ff6b57" : "#f5f1e6"; ctx.fillText(txt, x, y - 58);
+        const rp = g.rpts ? g.rpts[i] : 0;
+        ctx.fillStyle = rp > 0 ? "#ffd23f" : "#ff6b57"; ctx.font = "400 18px Bungee, Impact, sans-serif";
+        ctx.fillText((rp > 0 ? "+" : "") + rp, x, y - 80);
+      }
+      if (i === V.meIdx && armed && L.done && L.res > 0) {
+        ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#3ddc97";
+        ctx.fillText(L.res + " ms", x, y - 58);
+      }
+    });
+    // instruction
+    ctx.textAlign = "center"; ctx.font = "700 16px Figtree, system-ui, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.75)";
+    const hint = V.meIdx < 0 ? "" : g.rp === "ready" ? "Get ready…" : armed && !L.goAt && !L.done ? "Hold… don't jump the gun" : go && !L.done ? "TAP NOW!" : "";
+    ctx.fillText(hint, W / 2, 285);
+  },
+};
+
+// ======================= HELPDESK SPRINT =======================
+const PORTS = [["HTTPS", 443], ["SSH", 22], ["RDP", 3389], ["DNS", 53], ["SMTP", 25], ["HTTP", 80], ["FTP", 21], ["IMAPS", 993], ["LDAP", 389], ["SMB", 445], ["Telnet", 23], ["SNMP", 161], ["NTP", 123], ["POP3", 110], ["SQL Server", 1433], ["MySQL", 3306], ["Kerberos", 88], ["Syslog", 514], ["Mail submission", 587], ["LDAPS", 636]];
+const ACRONYMS = [["MFA", "Multi-Factor Authentication"], ["MDR", "Managed Detection & Response"], ["SIEM", "Security Info & Event Mgmt"], ["VPN", "Virtual Private Network"], ["DHCP", "Dynamic Host Config Protocol"], ["EDR", "Endpoint Detection & Response"], ["SSO", "Single Sign-On"], ["VLAN", "Virtual LAN"], ["NAS", "Network-Attached Storage"], ["UPS", "Uninterruptible Power Supply"], ["SLA", "Service Level Agreement"], ["MSP", "Managed Service Provider"], ["PoE", "Power over Ethernet"], ["SOC", "Security Operations Center"], ["NAT", "Network Address Translation"], ["RAID", "Redundant Array of Indep. Disks"]];
+const TICKET_FROM = ["Front desk", "Reception", "Accounting", "the CFO", "a new hire", "the warehouse", "Legal"];
+function genTicket(seed, i) {
+  const rnd = mulberry32(seed * 7919 + i * 104729);
+  const pick = (a) => a[Math.floor(rnd() * a.length)];
+  const types = ["port", "port", "subnet", "binary", "acr", "acr", "math", "math", "hex", "mask"];
+  const type = types[Math.floor(rnd() * types.length)];
+  let kind, q, ans, wrong = [];
+  const numDistract = (a, spread) => { const s = new Set([a]); let guard = 0; while (s.size < 4 && guard++ < 50) { const d = a + Math.round((rnd() * 2 - 1) * spread) || a + 1; if (d > 0) s.add(d); } return Array.from(s).slice(1); };
+  if (type === "port") {
+    const [name, p] = pick(PORTS); kind = "Firewall rule"; q = "Default port for " + name + "?"; ans = p;
+    const others = shuffle(PORTS.filter(x => x[1] !== p).map(x => x[1]), rnd); wrong = others.slice(0, 3);
+  } else if (type === "subnet") {
+    const n = 23 + Math.floor(rnd() * 8); kind = "Subnetting"; q = "Usable hosts in a /" + n + "?"; ans = Math.pow(2, 32 - n) - 2;
+    wrong = [Math.pow(2, 32 - n), Math.pow(2, 33 - n) - 2, Math.max(2, Math.pow(2, 31 - n) - 2)];
+  } else if (type === "mask") {
+    const n = 24 + Math.floor(rnd() * 7); kind = "Subnetting"; q = "Subnet mask for /" + n + "?";
+    const oct = 256 - Math.pow(2, 32 - n); ans = "255.255.255." + oct;
+    const alts = [128, 192, 224, 240, 248, 252, 254, 0].filter(v => v !== oct); shuffle(alts, rnd);
+    wrong = alts.slice(0, 3).map(v => "255.255.255." + v);
+  } else if (type === "binary") {
+    const v = 5 + Math.floor(rnd() * 250), b = v.toString(2).padStart(8, "0");
+    kind = "Binary"; q = b.slice(0, 4) + " " + b.slice(4) + " = ?"; ans = v; wrong = numDistract(v, 24);
+  } else if (type === "hex") {
+    const v = 16 + Math.floor(rnd() * 240); kind = "Hex"; q = "0x" + v.toString(16).toUpperCase() + " in decimal?"; ans = v; wrong = numDistract(v, 30);
+  } else if (type === "acr") {
+    const [a, full] = pick(ACRONYMS); kind = "Acronym"; q = a + " stands for…"; ans = full;
+    wrong = shuffle(ACRONYMS.filter(x => x[0] !== a).map(x => x[1]), rnd).slice(0, 3);
+  } else {
+    const lvl = Math.min(3, Math.floor(i / 5));
+    const op = pick(lvl ? ["+", "−", "×"] : ["+", "−"]);
+    let a, b;
+    if (op === "×") { a = 3 + Math.floor(rnd() * (6 + lvl * 3)); b = 3 + Math.floor(rnd() * 9); ans = a * b; }
+    else if (op === "+") { a = 12 + Math.floor(rnd() * (40 + lvl * 40)); b = 9 + Math.floor(rnd() * (40 + lvl * 30)); ans = a + b; }
+    else { a = 40 + Math.floor(rnd() * (60 + lvl * 40)); b = 7 + Math.floor(rnd() * (a - 10)); ans = a - b; }
+    kind = pick(["Ticket queue", "License count", "Seat count", "Open alerts"]); q = a + " " + op + " " + b; wrong = numDistract(ans, op === "×" ? 12 : 10);
+  }
+  const choices = shuffle([ans, ...wrong.slice(0, 3)], rnd);
+  return { kind, q, choices: choices.map(String), ans: choices.indexOf(ans), from: pick(TICKET_FROM), id: "NT-" + (4100 + ((seed + i * 37) % 900)) };
+}
+const helpdesk = {
+  id: "helpdesk", title: "Helpdesk Sprint", tag: "Close tickets fast",
+  blurb: "The queue is exploding. Close tickets on ports, subnets, binary, acronyms and quick math. Faster fixes score more.",
+  how: ["+10 per fix, plus a speed bonus up to +10", "Every 3 in a row adds +5", "A wrong fix costs 5 and locks you for a second"],
+  keys: ["1 2 3 4", "Click or tap answers"],
+  rec: { label: "Top sprint score", better: "max", fmt: v => v + " pts" },
+  hostStart(S) {
+    const n = S.ro.length;
+    S.g = { t: 0, dur: 60, sc: new Array(n).fill(0), nn: new Array(n).fill(0), bot: {} };
+    S.ro.forEach((r, i) => { if (r.b) S.g.bot[i] = 1.5 + Math.random() * 2; });
+  },
+  hostTick(S, dt, inputs) {
+    const g = S.g; g.t += dt;
+    S.ro.forEach((r, i) => {
+      if (r.b) {
+        g.bot[i] -= dt;
+        if (g.bot[i] <= 0) {
+          const ok = Math.random() < (r.boss ? 0.86 : 0.76);
+          g.sc[i] = Math.max(0, g.sc[i] + (ok ? 10 + rint(0, r.boss ? 9 : 6) : -5)); g.nn[i]++;
+          g.bot[i] = (r.boss ? 1.9 : 2.4) + Math.random() * 2;
+        }
+      } else {
+        const inp = inputs[i];
+        if (inp && Number.isFinite(inp.p)) { g.sc[i] = clamp(Math.round(inp.p), 0, 5000); g.nn[i] = inp.n | 0; }
+      }
+    });
+  },
+  pack(S) { return { sc: S.g.sc, nn: S.g.nn }; },
+  timeLeft(S) { return (S.g.dur - S.g.t) * 1000; },
+  done(S) { return S.g.t >= S.g.dur; },
+  rank(S) { return S.ro.map((r, i) => ({ i, v: S.g.sc[i], label: S.g.sc[i] + " pts · " + S.g.nn[i] + " tickets", rec: S.g.sc[i] })).sort((a, b) => b.v - a.v); },
+  chip(V, i) { return V.g && V.g.sc ? V.g.sc[i] : 0; },
+  clientEnter(V) { V.md = { qi: 0, pts: 0, n: 0, streak: 0, lock: 0, shown: -1, qStart: 0, flash: 0 }; },
+  answer(V, k) {
+    const M = V.md; if (!M || V.h.ph !== "play" || V.meIdx < 0) return;
+    if (now() < M.lock || M.busy) return;
+    const tk = genTicket(V.h.seed, M.qi);
+    const btns = $$("#mindAns button");
+    M.busy = true;
+    if (k === tk.ans) {
+      const el = now() - M.qStart;
+      M.streak++; M.n++;
+      const bonus = Math.max(0, Math.round(10 - el / 500));
+      const add = 10 + bonus + (M.streak % 3 === 0 ? 5 : 0);
+      M.pts += add; SFX.play("right");
+      btns[k] && btns[k].classList.add("right");
+      FX.text(W / 2, 330, "+" + add, "#3ddc97", 0.8);
+      setTimeout(() => { M.qi++; M.busy = false; M.shown = -1; }, 260);
+    } else {
+      M.streak = 0; M.n++; M.pts = Math.max(0, M.pts - 5); M.lock = now() + 1000; SFX.play("wrong");
+      btns[k] && btns[k].classList.add("wrong"); btns[tk.ans] && btns[tk.ans].classList.add("right");
+      $("#mindPanel").classList.add("locked");
+      setTimeout(() => { $("#mindPanel").classList.remove("locked"); M.qi++; M.busy = false; M.shown = -1; }, 1000);
+    }
+  },
+  clientInput(V) {
+    const M = V.md; if (!M || V.meIdx < 0) return null;
+    const panel = $("#mindPanel");
+    const playing = V.h.ph === "play";
+    panel.hidden = !playing;
+    if (playing && M.shown !== M.qi) {
+      M.shown = M.qi; M.qStart = now();
+      const tk = genTicket(V.h.seed, M.qi);
+      $("#mindKind").textContent = "Ticket " + tk.id + " · " + tk.kind + " · from " + tk.from;
+      $("#mindQ").textContent = tk.q;
+      const box = $("#mindAns"); box.textContent = "";
+      tk.choices.forEach((c, k) => {
+        const b = document.createElement("button");
+        b.type = "button";
+        const sm = document.createElement("small"); sm.textContent = String(k + 1);
+        b.append(sm, document.createTextNode(c));
+        if (c.length > 9) b.style.fontSize = c.length > 22 ? "12px" : "15px";
+        b.addEventListener("click", () => helpdesk.answer(V, k));
+        box.append(b);
+      });
+    }
+    $("#mindScore").textContent = M.pts;
+    $("#mindStreak").textContent = "Streak " + M.streak;
+    return { p: M.pts, n: M.n };
+  },
+  draw(ctx, V, dt, t) {
+    const g = V.g || {};
+    ctx.fillStyle = "#11152c"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "rgba(76,201,240,.05)";
+    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+    ctx.font = "400 18px Bungee, Impact, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ffd23f";
+    ctx.fillText("TICKET QUEUE · RESOLVED", 30, 30);
+    const n = V.ro.length;
+    const top = 60, laneH = Math.min(46, 270 / Math.max(1, n));
+    const sc = g.sc || [];
+    const me = V.meIdx >= 0 && V.md ? V.md.pts : null;
+    const vals = V.ro.map((r, i) => i === V.meIdx && me != null ? me : (sc[i] || 0));
+    const max = Math.max(160, ...vals.map(v => v * 1.12));
+    const x0 = 150, x1 = W - 60;
+    V.ro.forEach((ro, i) => {
+      const y = top + i * laneH + laneH / 2;
+      ctx.fillStyle = i % 2 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.05)"; ctx.fillRect(20, y - laneH / 2, W - 40, laneH);
+      ctx.font = "700 13px Figtree, system-ui, sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = i === V.meIdx ? "#f5f1e6" : "#a6acd0";
+      ctx.fillText(ro.n, x0 - 30, y);
+      ctx.strokeStyle = "rgba(166,172,208,.2)"; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+      const m = smoothTo(V, i, x0 + (x1 - x0) * vals[i] / max, y, 0.12);
+      ctx.fillStyle = ro.hex; ctx.globalAlpha = 0.35; ctx.fillRect(x0, y - 3, m.x - x0, 6); ctx.globalAlpha = 1;
+      drawChar(ctx, ro.c, m.x, y - 2, Math.min(36, laneH * 0.82), { t, shadow: false, squash: Math.abs(m.vx) > 0.2 ? Math.sin(t * 20) * 0.3 : 0, phase: i, color: ro.hex });
+      ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.textAlign = "left"; ctx.fillStyle = "#ffd23f";
+      ctx.fillText(String(vals[i]), m.x + 24, y);
+    });
+  },
+};
+
+const GAMES = { coverage, sumo, alert, helpdesk };
+const GAME_ORDER = ["coverage", "sumo", "alert", "helpdesk"];
+const PLACE_POINTS = [10, 7, 5, 3];
