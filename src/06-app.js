@@ -33,7 +33,7 @@ function startSession(gameId) {
   if (findHost()) { toast("A game is already running. Hop in when it ends."); return; }
   const mod = GAMES[gameId];
   const myPeer = NET.myPeerLabel();
-  const humans = lobbyPeers().slice(0, 8);
+  const humans = lobbyPeers().slice(0, 16);
   const ro = humans.map(p => ({ k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], u: p.by || (typeof p.presence.uid === "string" ? p.presence.uid.slice(0, 80) : null), b: 0 }));
   if (!ro.length) ro.push({ k: myPeer, n: APP.me.nick || "You", c: APP.me.c, u: NET.uid, b: 0 });
   if (APP.bots) {
@@ -156,6 +156,7 @@ function exitGame() {
 }
 function buildChips(V) {
   const box = $("#hudChips"); box.textContent = "";
+  box.classList.toggle("many", V.ro.length > 8);
   V.chips = V.ro.map((r, i) => {
     const el = document.createElement("span"); el.className = "chip" + (i === V.meIdx ? " me" : "");
     el.style.borderColor = i === V.meIdx ? "" : "transparent";

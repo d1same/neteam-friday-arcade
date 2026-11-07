@@ -265,7 +265,9 @@ const frenzy = {
   },
   // ---------------- client ----------------
   clientEnter(V) {
-    const sp = FPS_SPAWNS[(V.meIdx >= 0 ? V.meIdx : 0) % FPS_SPAWNS.length];
+    const mi = V.meIdx >= 0 ? V.meIdx : 0, sp0 = FPS_SPAWNS[mi % FPS_SPAWNS.length], lap = Math.floor(mi / FPS_SPAWNS.length);
+    let sp = sp0;
+    if (lap) { for (const [ox, oz] of [[1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2]]) { const c = [sp0[0] + ox * lap, sp0[1] + oz * lap]; if (!fBlocked(c[0], c[1], 0.4)) { sp = c; break; } } }
     const F = V.fps = { ready: false, failed: false, me: { x: sp[0], z: sp[1], a: 0, p: 0 }, rsq: 0, shotN: 0, claimN: 0, claims: [], fireCd: 0, firing: false,
       look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, kfSeen: 0, pevSeen: 0, msg: null, bsSeen: {}, shSeen: {}, remote: {}, recoil: 0, bob: 0, toast: [] };
     F.me.a = this.faceOpen(sp[0], sp[1]);

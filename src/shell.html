@@ -160,6 +160,8 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .hud .chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: var(--panel); border: 2px solid transparent; font-size: 13px; font-weight: 600; }
 .chip canvas { width: 24px; height: 24px; }
+.hud .chips.many .chip { padding: 2px 8px 2px 3px; gap: 4px; }
+.hud .chips.many .chip:not(.me) > span { display: none; }
 .chip b { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
 .chip.me { border-color: var(--text); }
 .stagebox { position: relative; flex: 1; min-height: 0; display: grid; place-items: center; overflow: hidden; }
@@ -199,7 +201,7 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .mind.p1 { border-color: #ff3b4e; box-shadow: 0 0 0 2px rgba(255,59,78,.35), 0 16px 50px rgba(0,0,0,.45); }
 .mind.p1 .qk { color: #ff8a7a; }
 .soc { position: absolute; z-index: 2; left: 50%; bottom: 3%; transform: translateX(-50%); width: min(680px, calc(100% - 24px)); display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; }
-.soc button { padding: 10px 4px; border-radius: 12px; border: 1px solid var(--line); background: rgba(18,22,46,.92); font-family: var(--f-mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; box-shadow: 0 3px 0 #0b0e20; color: var(--muted); transition: transform .08s, background .15s; }
+.soc button { padding: 10px 4px; border-radius: 12px; border: 1px solid var(--line); background: rgba(18,22,46,.92); font-family: var(--f-mono); font-weight: 700; font-size: 13px; letter-spacing: .04em; box-shadow: 0 3px 0 #0b0e20; color: var(--muted); transition: transform .08s; }
 .soc button small { display: block; font-size: 10px; font-weight: 500; opacity: .7; }
 .soc.live button { color: var(--text); background: #3a0f1a; border-color: #ff3b4e; animation: socPulse .5s infinite alternate; }
 .soc button.picked { outline: 3px solid var(--bulb); }

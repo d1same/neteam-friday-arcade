@@ -11,7 +11,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "arcade-db.json");
 const PUBLIC = path.join(__dirname, "public");
 const ALLOWED = /^(matches|players)\/[A-Za-z0-9_-]{1,80}$/;
-const MAX_DOC = 16 * 1024, MAX_PRESENCE = 6 * 1024;
+const MAX_DOC = 16 * 1024, MAX_PRESENCE = 32 * 1024;
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 let db = {};
@@ -53,7 +53,7 @@ const server = http.createServer((req, res) => {
   res.writeHead(404, { "content-type": "text/plain" }); res.end("Not found");
 });
 
-const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 64 * 1024 });
+const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 128 * 1024 });
 const clients = new Map(); // ws -> {peer, by, presence, subs: Map}
 function send(ws, m) { if (ws.readyState === 1) ws.send(JSON.stringify(m)); }
 function broadcast(m, except) { const s = JSON.stringify(m); for (const ws of clients.keys()) if (ws !== except && ws.readyState === 1) ws.send(s); }

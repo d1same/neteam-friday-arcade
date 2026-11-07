@@ -70,6 +70,7 @@ const COLS = 24, ROWS = 15, CELL = 40;
 const FW_CELLS = new Set([[5, 4], [5, 5], [5, 6], [5, 7], [18, 7], [18, 8], [18, 9], [18, 10], [10, 3], [11, 3], [12, 3], [13, 3], [10, 11], [11, 11], [12, 11], [13, 11], [14, 6], [14, 7], [9, 7], [9, 8]].map(([x, y]) => y * COLS + x));
 function covWall(x, y) { const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL); if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return true; return FW_CELLS.has(cy * COLS + cx); }
 function covBlocked(x, y, r = 13) { return covWall(x - r, y - r) || covWall(x + r, y - r) || covWall(x - r, y + r) || covWall(x + r, y + r); }
+function covSpawn(i, n) { let [x, y] = spawnPoint(i, n); for (let k = 0; k < 20 && covBlocked(x, y, 16); k++) { x += (W / 2 - x) * 0.08; y += (H / 2 - y) * 0.08 + (k % 2 ? 10 : -10); } return [x, y]; }
 const COV_PK = { ap: { n: "AP DEPLOYED", c: "#ffd23f" }, boost: { n: "FIBER BOOST", c: "#4cc9f0" }, lock: { n: "LOCKDOWN", c: "#ff7ac6" } };
 const coverage = {
   id: "coverage", title: "Coverage Rush", tag: "Claim the client's floor",
@@ -79,7 +80,7 @@ const coverage = {
   rec: { label: "Most tiles", better: "max", fmt: v => v + " tiles" },
   hostStart(S) {
     const n = S.ro.length;
-    S.g = { t: 0, dur: 60, grid: new Array(COLS * ROWS).fill(-1), pos: S.ro.map((r, i) => spawnPoint(i, n)), bot: {}, pk: null, pkT: 3, bm: null, bmSeq: 0, boost: S.ro.map(() => 0), lock: S.ro.map(() => 0) };
+    S.g = { t: 0, dur: 60, grid: new Array(COLS * ROWS).fill(-1), pos: S.ro.map((r, i) => covSpawn(i, n)), bot: {}, pk: null, pkT: 3, bm: null, bmSeq: 0, boost: S.ro.map(() => 0), lock: S.ro.map(() => 0) };
     S.ro.forEach((r, i) => { if (r.b) S.g.bot[i] = { tx: 0, ty: 0, t: 0, sp: r.boss ? 215 : 185 }; });
   },
   hostTick(S, dt, inputs) {
@@ -150,7 +151,7 @@ const coverage = {
     return S.ro.map((r, i) => ({ i, v: c[i], label: c[i] + (c[i] === 1 ? " tile" : " tiles"), rec: c[i] })).sort((a, b) => b.v - a.v);
   },
   chip(V, i) { return V.g ? this.counts(V.g.gr || "", V.ro.length)[i] : 0; },
-  clientEnter(V) { const sp = spawnPoint(V.meIdx, V.ro.length); V.local = { x: sp[0], y: sp[1] }; V.prevGr = ""; V.pop = {}; V.lastBm = 0; },
+  clientEnter(V) { const sp = covSpawn(V.meIdx, V.ro.length); V.local = { x: sp[0], y: sp[1] }; V.prevGr = ""; V.pop = {}; V.lastBm = 0; },
   clientInput(V, dt, inp) {
     if (V.meIdx < 0 || V.h.ph !== "play") return null;
     const L = V.local, fx = V.g && V.g.fx ? V.g.fx[V.meIdx] : 0, sp = fx & 1 ? 340 : 235;
@@ -244,8 +245,8 @@ const coverage = {
     const list = V.ro.map((r, i) => {
       let x, y;
       if (i === V.meIdx && V.h.ph === "play") { x = V.local.x; y = V.local.y; }
-      else if (r.b) { const p = g.bp && g.bp[i]; if (!p) { [x, y] = spawnPoint(i, V.ro.length); } else { x = p[0]; y = p[1]; } }
-      else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x)) { x = inp.x; y = inp.y; } else[x, y] = spawnPoint(i, V.ro.length); }
+      else if (r.b) { const p = g.bp && g.bp[i]; if (!p) { [x, y] = covSpawn(i, V.ro.length); } else { x = p[0]; y = p[1]; } }
+      else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x)) { x = inp.x; y = inp.y; } else[x, y] = covSpawn(i, V.ro.length); }
       const m = i === V.meIdx ? (V.sm[i] = { x, y, px: (V.sm[i] || { x }).x, vx: x - (V.sm[i] || { x }).x }) : smoothTo(V, i, x, y, 0.3);
       return { i, r, m };
     }).sort((a, b) => a.m.y - b.m.y);
@@ -600,9 +601,9 @@ const alert = {
           ctx.stroke();
           ctx.fillStyle = "#3ddc97"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.font = "700 14px 'JetBrains Mono', monospace";
-          const label = g.rp === "reveal" ? "CLOSED · FIX: " + (SOC_ACTS[g.ac] || "") : armed ? (L.done && L.res === -1 ? "FALSE POSITIVE" : "MONITORING… HOLD") : "ROUND " + g.r + " / " + this.ROUNDS + " · STAND BY";
+          const label = g.rp === "reveal" ? "INCIDENT CLOSED" : armed ? (L.done && L.res === -1 ? "FALSE POSITIVE" : "MONITORING… HOLD") : "ROUND " + g.r + " / " + this.ROUNDS + " · STAND BY";
           ctx.fillText("NETEAM SIEM · " + label, x + w / 2, y + 34);
-          if (g.rp === "reveal") { ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(ALERTS[g.al || 0][0], x + w / 2, y + h / 2 - 22); }
+          if (g.rp === "reveal") { ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(ALERTS[g.al || 0][0], x + w / 2, y + h / 2 - 40); ctx.fillStyle = "#3ddc97"; ctx.font = "400 24px Bungee, Impact, sans-serif"; ctx.fillText("FIX: " + (SOC_ACTS[g.ac] || ""), x + w / 2, y + h / 2 - 12); }
           if (armed && L.done && L.res === -1) { ctx.fillStyle = "#ff6b57"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.fillText("TOO EARLY −2", x + w / 2, y + h / 2 - 12); }
         }
       } else {
@@ -623,29 +624,30 @@ const alert = {
     ctx.fillStyle = "#1b2142"; ctx.fillRect(0, 430, W, 170);
     ctx.fillStyle = "#2a3263"; ctx.fillRect(0, 430, W, 8);
     // techs in a row
-    const n = V.ro.length, gap = Math.min(120, (W - 80) / Math.max(1, n));
+    const n = V.ro.length, two = n > 8, perRow = two ? Math.ceil(n / 2) : n, gap = Math.min(120, (W - 80) / Math.max(1, perRow));
     V.ro.forEach((ro, i) => {
-      const x = W / 2 + (i - (n - 1) / 2) * gap, y = 395;
+      const row = two && i >= perRow ? 1 : 0, col = row ? i - perRow : i, cnt = row ? n - perRow : perRow;
+      const x = W / 2 + (col - (cnt - 1) / 2) * gap + (two && row ? gap / 2 : 0), y = two ? (row ? 466 : 366) : 395;
       const rt = g.rt ? g.rt[i] : null;
       let mood = "", jump = 0;
       if (g.rp === "reveal") { mood = rt < 0 ? "sad" : g.rpts && g.rpts[i] >= 5 ? "happy" : ""; if (g.rpts && g.rpts[i] >= 5) jump = Math.abs(Math.sin(t * 8)) * 18; }
       else if (armed && i === V.meIdx && L.done) { mood = L.res === -1 ? "sad" : "happy"; jump = 8; }
       else if (g.rp === "armed" && rt === 1) jump = 8;
       if (go && !(rt === 1)) mood = mood || "shock";
-      drawChar(ctx, ro.c, x, y - jump, 56, { t, mood, phase: i, color: ro.hex });
-      nameTag(ctx, ro.n, x, y + 48, i === V.meIdx, ro.hex);
+      drawChar(ctx, ro.c, x, y - jump, two ? 44 : 56, { t, mood, phase: i, color: ro.hex });
+      nameTag(ctx, ro.n, x, y + (two ? 38 : 48), i === V.meIdx, ro.hex);
       // results
       if (g.rp === "reveal") {
         const txt = rt == null ? "—" : rt === -1 ? "FALSE +" : rt === -2 ? "WRONG FIX" : rt + " ms";
         ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.textAlign = "center";
-        ctx.fillStyle = rt < 0 ? "#ff6b57" : "#f5f1e6"; ctx.fillText(txt, x, y - 58);
+        ctx.fillStyle = rt < 0 ? "#ff6b57" : "#f5f1e6"; ctx.fillText(txt, x, y - (two ? 44 : 58));
         const rp = g.rpts ? g.rpts[i] : 0;
         ctx.fillStyle = rp > 0 ? "#ffd23f" : "#ff6b57"; ctx.font = "400 18px Bungee, Impact, sans-serif";
-        ctx.fillText((rp > 0 ? "+" : "") + rp, x, y - 80);
+        ctx.fillText((rp > 0 ? "+" : "") + rp, x, y - (two ? 64 : 80));
       }
       if (i === V.meIdx && armed && L.done && L.res > 0) {
         ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#3ddc97";
-        ctx.fillText(L.res + " ms", x, y - 58);
+        ctx.fillText(L.res + " ms", x, y - (two ? 44 : 58));
       }
     });
     // instruction
