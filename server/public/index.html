@@ -224,6 +224,15 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 
 /* ---------- editor ---------- */
 dialog.editor { border: 1px solid var(--line); border-radius: 20px; padding: 0; background: var(--panel); color: var(--text); width: min(820px, calc(100% - 24px)); max-height: calc(100% - 24px); box-shadow: 0 30px 80px rgba(0,0,0,.6); }
+.look-btn { position: absolute; z-index: 3; right: 12px; top: 12px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(18,22,46,.85); color: var(--text); font-weight: 700; font-size: 13px; }
+.look-panel { position: absolute; z-index: 4; right: 12px; top: 54px; width: min(260px, calc(100% - 24px)); background: rgba(18,22,46,.97); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
+.look-panel[hidden] { display: none; }
+.look-panel h4 { margin: 0; font-family: var(--f-display); font-weight: 400; font-size: 15px; color: var(--bulb); }
+.look-panel label { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.look-panel label small { color: var(--muted); font-weight: 500; }
+.look-panel label.sl { flex-wrap: wrap; justify-content: space-between; }
+.look-panel label.sl input { width: 100%; accent-color: var(--bulb); }
+.look-panel input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--bulb); }
 .photo-row { display: flex; gap: 8px; align-self: stretch; }
 .photo-row .btn { flex: 1; white-space: nowrap; font-size: 14px; padding-left: 8px; padding-right: 8px; }
 .photo-note { margin: 0; font-size: 11.5px; line-height: 1.35; color: var(--muted); text-align: center; }
@@ -1962,6 +1971,14 @@ function fCellPath(sx, sz, tx, tz) { // BFS on open cells; returns list of [cx,c
   return out.reverse();
 }
 const FPS_OPEN = []; FPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch !== "#") FPS_OPEN.push([x, z]); }));
+// player aim preferences (kept per browser)
+function lookPrefs() { const L = store("nfa-look") || {}; return { iy: !!L.iy, ix: !!L.ix, s: clamp(+L.s || 1, 0.3, 3) }; }
+function saveLookPrefs(L) { store("nfa-look", { iy: !!L.iy, ix: !!L.ix, s: L.s }); }
+function syncLookPanel(F) {
+  const sp = F && F.setPanel; if (!sp) return; const L = lookPrefs();
+  sp.querySelector('[data-k="iy"]').checked = L.iy; sp.querySelector('[data-k="ix"]').checked = L.ix;
+  sp.querySelector('[data-k="s"]').value = L.s; sp.querySelector("[data-v]").textContent = L.s.toFixed(1) + "×";
+}
 function loadThree() {
   if (window.THREE) return Promise.resolve(true);
   if (loadThree.p) return loadThree.p;
@@ -1977,7 +1994,7 @@ const frenzy = {
   id: "frenzy", title: "Firewall Frenzy", tag: "3D first-person laser tag",
   blurb: "Laser tag through the Neteam data center. Tag rivals to patch them, they reboot a few seconds later. First to 15 tags or most tags after 3 minutes wins.",
   how: ["3 hits patches a rival · you reboot in 3 s", "Overclock = rapid fire · Patch Kit = heal · Shield = blocks 2 hits", "Use the minimap to find people in the racks"],
-  keys: ["Click to aim (mouse look)", "WASD move · Shift sprint", "Click / Space = tag", "Phone: left stick + drag + TAG"],
+  keys: ["Click to aim (mouse look) · I = invert", "WASD move · Shift sprint", "Click / Space = tag", "Phone: left stick + drag + TAG"],
   rec: { label: "Most tags", better: "max", fmt: v => v + " tags" },
   custom3d: true,
   DUR: 180, GOAL: 15, DMG: 34,
@@ -2170,6 +2187,8 @@ const frenzy = {
     if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
     if (F.cv) F.cv.remove();
     if (F.fireBtn) F.fireBtn.remove();
+    if (F.setBtn) F.setBtn.remove();
+    if (F.setPanel) F.setPanel.remove();
     V.fps = null;
   },
   bind(V) {
@@ -2185,7 +2204,26 @@ const frenzy = {
     on(window, "mousemove", (e) => {
       if (document.pointerLockElement === cv || F.dragLook) { F.look.dx += e.movementX || 0; F.look.dy += e.movementY || 0; }
     });
-    on(window, "keydown", (e) => { if (e.code === "Space" && APP.view === "game") { F.firing = true; e.preventDefault(); } });
+    on(window, "keydown", (e) => {
+      if (e.code === "Space" && APP.view === "game") { F.firing = true; e.preventDefault(); }
+      if (e.code === "KeyI" && APP.view === "game" && !e.repeat) { const L = lookPrefs(); L.iy = !L.iy; saveLookPrefs(L); toast("Mouse look up/down: " + (L.iy ? "inverted" : "normal")); syncLookPanel(F); }
+    });
+    // look settings: gear button + small panel (press Esc first to free the mouse)
+    const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.textContent = "⚙ Aim"; sb.title = "Mouse and aim settings";
+    const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
+    sp.innerHTML = '<h4>Aim settings</h4>' +
+      '<label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label>' +
+      '<label><input type="checkbox" data-k="ix"> Invert left/right</label>' +
+      '<label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label>' +
+      '<button type="button" class="btn" data-close>Done</button>';
+    sb.addEventListener("click", (e) => { e.stopPropagation(); if (document.pointerLockElement) try { document.exitPointerLock(); } catch (er) {} sp.hidden = !sp.hidden; syncLookPanel(F); });
+    sp.addEventListener("mousedown", (e) => e.stopPropagation());
+    sp.addEventListener("input", (e) => {
+      const k = e.target.dataset.k; if (!k) return;
+      const L = lookPrefs(); L[k] = k === "s" ? clamp(+e.target.value || 1, 0.3, 3) : e.target.checked; saveLookPrefs(L); syncLookPanel(F);
+    });
+    sp.querySelector("[data-close]").addEventListener("click", () => { sp.hidden = true; });
+    $("#stagebox").append(sb, sp); F.setBtn = sb; F.setPanel = sp;
     on(window, "keyup", (e) => { if (e.code === "Space") F.firing = false; });
     // touch: left half = move stick, right half = look
     on(cv, "touchstart", (e) => {
@@ -2372,8 +2410,8 @@ const frenzy = {
     // respawn teleport
     if (pl && pl[7] !== F.rsq) { F.rsq = pl[7]; F.me.x = pl[8]; F.me.z = pl[9]; F.me.a = this.faceOpen(F.me.x, F.me.z); F.me.p = 0; }
     // look
-    const sens = 0.0024;
-    F.me.a -= F.look.dx * sens; F.me.p = clamp(F.me.p - F.look.dy * sens, -1.2, 1.2);
+    const LK = lookPrefs(), sens = 0.0024 * LK.s;
+    F.me.a -= F.look.dx * sens * (LK.ix ? -1 : 1); F.me.p = clamp(F.me.p - F.look.dy * sens * (LK.iy ? -1 : 1), -1.2, 1.2);
     F.look.dx = 0; F.look.dy = 0;
     const playing = V.h.ph === "play";
     if (!playing && document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
@@ -2576,7 +2614,7 @@ const frenzy = {
       ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc((F.stick.x - r.left) / s, (F.stick.y - r.top) / s, 22 / s, 0, Math.PI * 2); ctx.fill();
     }
     if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !matchMedia("(pointer: coarse)").matches && t % 2 < 1.6 && !F.firedOnce) {
-      ctx.textAlign = "center"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 15px Figtree, sans-serif"; ctx.fillText("Click to lock your mouse and aim · Esc to release", W / 2, H - 20);
+      ctx.textAlign = "center"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 15px Figtree, sans-serif"; ctx.fillText("Click to lock your mouse and aim · Esc to release · I = invert up/down", W / 2, H - 20);
     }
     if (document.pointerLockElement) F.firedOnce = true;
   },
