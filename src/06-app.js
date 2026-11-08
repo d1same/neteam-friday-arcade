@@ -277,7 +277,7 @@ function renderOverlay(V, full) {
     const keys = document.createElement("div"); keys.className = "keys";
     mod.keys.forEach(x => { const s = document.createElement("span"); s.className = "key"; s.textContent = x; keys.append(s); });
     const cnt = document.createElement("div"); cnt.className = "count-ring"; cnt.id = "introCount"; cnt.textContent = "Starting…";
-    card.append(h2, p, ul, keys, cnt);
+    card.append(h2, p); if (mod.how && mod.how.length) card.append(ul); card.append(keys, cnt);
     if (innerHeight > innerWidth && innerWidth < 700) { const tip = document.createElement("p"); tip.style.marginTop = "8px"; tip.textContent = "Tip: turn your phone sideways for a bigger view."; card.append(tip); }
     if (APP.S && APP.S.id === V.sid) {
       const b = document.createElement("button"); b.className = "btn primary"; b.style.marginTop = "12px"; b.textContent = "Skip intro";

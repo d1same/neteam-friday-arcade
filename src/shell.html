@@ -153,6 +153,7 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 /* ---------- game screen ---------- */
 .game-screen { position: fixed; inset: 0; z-index: 30; background: var(--ink-2); display: flex; flex-direction: column;
   padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+@media (max-height: 500px) { .hud { padding: 4px 10px !important; gap: 8px !important; flex-wrap: nowrap !important; } .hud .gname, .hud .chips { display: none !important; } .hud .timer { font-size: 15px; padding: 3px 10px; } .hud .btn { padding: 5px 12px; font-size: 13px; } }
 .hud { display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; background: linear-gradient(180deg, #1a1f40, #12162e); border-bottom: 1px solid var(--line); }
 .hud .gname { font-family: var(--f-display); font-size: 17px; color: var(--bulb); letter-spacing: .03em; }
 .hud .timer { font-family: var(--f-mono); font-weight: 700; font-size: 20px; min-width: 64px; text-align: center; padding: 3px 10px; border-radius: 10px; background: var(--ink-2); border: 1px solid var(--line); font-variant-numeric: tabular-nums; }
@@ -160,7 +161,7 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .game-screen:fullscreen { background: var(--ink); }
 .game-screen:fullscreen .hud { padding: 6px 12px; }
 .hud .timer.low { color: var(--coral); border-color: var(--coral); }
-.hud .chips { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.hud .chips { display: flex; gap: 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; flex: 1; min-width: 0; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; border-radius: 999px; background: var(--panel); border: 2px solid transparent; font-size: 13px; font-weight: 600; }
 .chip canvas { width: 24px; height: 24px; }
 .hud .chips.many .chip { padding: 2px 8px 2px 3px; gap: 4px; }
@@ -238,6 +239,7 @@ dialog.editor { border: 1px solid var(--line); border-radius: 20px; padding: 0; 
 .ops-touch { position: absolute; z-index: 3; right: 10px; bottom: 74px; display: grid; grid-template-columns: repeat(3, auto); gap: 8px; pointer-events: none; }
 .ops-touch button { pointer-events: auto; min-width: 56px; height: 48px; border-radius: 14px; border: 1px solid rgba(255,255,255,.25); background: rgba(18,22,46,.6); color: var(--text); font-weight: 800; font-size: 13px; touch-action: none; user-select: none; -webkit-user-select: none; }
 .ops-touch .t-fire { grid-column: 1 / -1; height: 66px; background: rgba(255,77,94,.55); font-size: 17px; }
+@media (max-height: 500px) { .ops-touch { gap: 5px; } .ops-touch button { min-width: 46px; height: 38px; font-size: 11px; border-radius: 10px; background: rgba(18,22,46,.45); } .ops-touch .t-fire { height: 52px; font-size: 14px; background: rgba(255,77,94,.45); } }
 .look-btn { position: absolute; z-index: 3; right: 12px; top: 12px; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(18,22,46,.85); color: var(--text); font-weight: 700; font-size: 13px; }
 .look-panel { position: absolute; z-index: 4; right: 12px; top: 54px; width: min(260px, calc(100% - 24px)); background: rgba(18,22,46,.97); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
 .look-panel[hidden] { display: none; }
