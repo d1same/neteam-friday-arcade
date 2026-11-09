@@ -2718,11 +2718,24 @@ GAME_ORDER.push("frenzy");
 // ======================= shared 3D graphics helpers: post-processing (bloom + grade), procedural PBR textures =======================
 const GFX = {
   // animated CC0 "operator" character (Quaternius robot via the three.js examples), loaded on demand
+  // CC0 HDR environment (Poly Haven, via @pmndrs/assets) for realistic image-based lighting and reflections
+  hdri(renderer, name) {
+    GFX._hd = GFX._hd || {};
+    const key = name;
+    if (!GFX._hd[key]) GFX._hd[key] = GFX.operator().then(() => new Promise((res) => {
+      try { new THREE_EXTRAS.EXRLoader().load("models/hdri-" + name + ".exr", (tex) => res(tex), null, () => res(null)); } catch (e) { res(null); }
+    }));
+    return GFX._hd[key].then((tex) => {
+      if (!tex) return null;
+      const pm = new THREE.PMREMGenerator(renderer); tex.mapping = THREE.EquirectangularReflectionMapping;
+      const rt = pm.fromEquirectangular(tex); pm.dispose(); return rt.texture;
+    });
+  },
   operator() {
     if (GFX._op) return GFX._op;
     GFX._op = new Promise((res) => {
       const go = () => { try { new THREE_EXTRAS.GLTFLoader().load("models/operator.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } };
-      if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
+      if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js?v=2"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
     });
     return GFX._op;
   },
@@ -2772,8 +2785,8 @@ const GFX = {
       fragmentShader: "uniform sampler2D t; uniform float th; varying vec2 vUv; void main(){ vec3 c = texture2D(t, vUv).rgb; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(th, th + 0.8, l), 1.0); }" });
     const blur = new T.ShaderMaterial({ uniforms: { t: { value: null }, d: { value: new T.Vector2() } }, vertexShader: vs, depthTest: false, depthWrite: false,
       fragmentShader: "uniform sampler2D t; uniform vec2 d; varying vec2 vUv; void main(){ vec3 c = texture2D(t, vUv).rgb * 0.227; c += (texture2D(t, vUv + d * 1.385).rgb + texture2D(t, vUv - d * 1.385).rgb) * 0.316; c += (texture2D(t, vUv + d * 3.231).rgb + texture2D(t, vUv - d * 3.231).rgb) * 0.070; gl_FragColor = vec4(c, 1.0); }" });
-    const comp = new T.ShaderMaterial({ defines: P.useAO ? { USE_AO: 1 } : {}, uniforms: { t: { value: null }, aoT: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: P.strength }, vig: { value: P.vignette }, tint: { value: P.tint }, tm: { value: 0 }, hurt: { value: 0 } }, vertexShader: vs, depthTest: false, depthWrite: false,
-      fragmentShader: "uniform sampler2D t, b1, b2, aoT; uniform float k, vig, tm, hurt; uniform vec3 tint; varying vec2 vUv;\n#include <common>\nvoid main(){ vec3 c = texture2D(t, vUv).rgb;\n#ifdef USE_AO\n c *= texture2D(aoT, vUv).r;\n#endif\n c += (texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.9) * k; c *= tint; vec2 q = vUv - 0.5; float v = 1.0 - dot(q, q) * vig * 2.6; c *= clamp(v, 0.0, 1.0); c = mix(c, c * vec3(1.6, 0.35, 0.35), hurt * smoothstep(0.15, 0.7, length(q))); float n = fract(sin(dot(vUv * (tm + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.018; gl_FragColor = vec4(max(c, 0.0), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}" });
+    const comp = new T.ShaderMaterial({ defines: P.useAO ? { USE_AO: 1 } : {}, uniforms: { t: { value: null }, aoT: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: P.strength }, vig: { value: P.vignette }, tint: { value: P.tint }, tm: { value: 0 }, hurt: { value: 0 }, sat: { value: opt.sat || 1 } }, vertexShader: vs, depthTest: false, depthWrite: false,
+      fragmentShader: "uniform sampler2D t, b1, b2, aoT; uniform float k, vig, tm, hurt, sat; uniform vec3 tint; varying vec2 vUv;\n#include <common>\nvoid main(){ vec3 c = texture2D(t, vUv).rgb;\n#ifdef USE_AO\n c *= texture2D(aoT, vUv).r;\n#endif\n c += (texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.9) * k; c *= tint; c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, sat); vec2 q = vUv - 0.5; float v = 1.0 - dot(q, q) * vig * 2.6; c *= clamp(v, 0.0, 1.0); c = mix(c, c * vec3(1.6, 0.35, 0.35), hurt * smoothstep(0.15, 0.7, length(q))); float n = fract(sin(dot(vUv * (tm + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.018; gl_FragColor = vec4(max(c, 0.0), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}" });
     const quad = new T.Mesh(new T.PlaneGeometry(2, 2), bright); quad.frustumCulled = false;
     const sc = new T.Scene(); sc.add(quad); const oc = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const pass = (mat, target) => { quad.material = mat; renderer.setRenderTarget(target); renderer.render(sc, oc); };
@@ -3579,7 +3592,7 @@ function makeOps(md) {
       renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
       renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
       F.renderer = renderer;
-      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.45, low, ao: true, aoRadius: 0.6, aoStrength: 1.1 });
+      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.4, low, ao: true, aoRadius: 0.6, aoStrength: 1.1, sat: 1.18 });
       const scene = new T.Scene(); F.scene = scene;
       const TH = OPS_M.theme, outdoor = TH === "desert" || TH === "roof";
       const skyGrad = (stops) => { const t2 = GFX.tex(8, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); stops.forEach(([o, c]) => g.addColorStop(o, c)); x.fillStyle = g; x.fillRect(0, 0, w, h); }); t2.wrapS = t2.wrapT = T.ClampToEdgeWrapping; return t2; };
@@ -3588,6 +3601,12 @@ function makeOps(md) {
       else { scene.background = new T.Color(0x05070f); scene.fog = new T.FogExp2(TH === "farm" ? 0x0a1420 : 0x0d1122, 0.016); }
       const cam = new T.PerspectiveCamera(74, 16 / 10, 0.05, 160); F.cam = cam; scene.add(cam);
       scene.environment = GFX.env(renderer, TH === "desert" ? { base: 0x9a8a70 } : {});
+      // swap the generated environment for a real HDR one once it has loaded (reflections + soft fill light)
+      if (!low) GFX.hdri(renderer, { office: "lobby", farm: "warehouse", desert: "sunset", roof: "night" }[TH] || "lobby").then((env) => {
+        if (!env || F.gone) return; scene.environment = env;
+        const k = { office: 0.75, farm: 0.7, desert: 0.9, roof: 0.8 }[TH] || 0.8;
+        scene.traverse(o => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; ms.forEach(m => { if (m.isMeshStandardMaterial) { m.envMapIntensity = k; m.needsUpdate = true; } }); });
+      });
       if (TH === "desert") {
         scene.add(new T.HemisphereLight(0xfff1d6, 0x8a6a40, 2.4));
         const sun = new T.DirectionalLight(0xffe0b0, 2.7); sun.position.set(30, 50, 12); scene.add(sun); F.key = sun;
@@ -3637,7 +3656,7 @@ function makeOps(md) {
       glowTex.wrapS = glowTex.wrapT = T.ClampToEdgeWrapping;
       const bump = tex(128, 128, (x, w, h) => { x.fillStyle = "#808080"; x.fillRect(0, 0, w, h); for (let i = 0; i < 2500; i++) { const v = 100 + Math.random() * 60 | 0; x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); } x.fillStyle = "#3a3a3a"; x.fillRect(0, 0, w, 2); x.fillRect(0, 0, 2, h); });
       bump.repeat.set(OG, OG);
-      const floor = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: floorTex, emissiveMap: glowTex, emissive: 0xffffff, emissiveIntensity: 0.55, normalMap: GFX.normal(bump, 3), normalScale: new T.Vector2(0.6, 0.6), roughness: 0.82, metalness: 0.05 }));
+      const floor = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: floorTex, emissiveMap: glowTex, emissive: 0xffffff, emissiveIntensity: outdoor ? 0.22 : 0.45, normalMap: GFX.normal(bump, 3), normalScale: new T.Vector2(0.6, 0.6), roughness: 0.82, metalness: 0.05 }));
       floor.rotation.x = -Math.PI / 2; floor.position.set(size / 2, 0, size / 2); scene.add(floor);
       // big site letters on the floor (glowing)
       ["A", "B"].forEach((L, k) => {
@@ -3646,7 +3665,7 @@ function makeOps(md) {
         m.rotation.x = -Math.PI / 2; m.position.set(OPS_SITE[k][0], 0.02, OPS_SITE[k][1]); scene.add(m);
       });
       // ---- ceiling: acoustic tiles + glowing light panels (bloom picks them up)
-      const ceilTex = tex(256, 256, (x, w, h) => { x.fillStyle = "#8e93a8"; x.fillRect(0, 0, w, h); for (let i = 0; i < 1500; i++) { x.fillStyle = "rgba(0,0,0,.08)"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); } x.strokeStyle = "#5d6178"; x.lineWidth = 5; for (let i = 0; i <= 2; i++) { x.beginPath(); x.moveTo(i * 128, 0); x.lineTo(i * 128, h); x.moveTo(0, i * 128); x.lineTo(w, i * 128); x.stroke(); } });
+      const ceilTex = tex(256, 256, (x, w, h) => { x.fillStyle = "#e4e6ee"; x.fillRect(0, 0, w, h); for (let i = 0; i < 300; i++) { x.fillStyle = "rgba(0,0,0,.035)"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); } x.strokeStyle = "#5d6178"; x.lineWidth = 5; for (let i = 0; i <= 2; i++) { x.beginPath(); x.moveTo(i * 128, 0); x.lineTo(i * 128, h); x.moveTo(0, i * 128); x.lineTo(w, i * 128); x.stroke(); } });
       const ceilEm = tex(256, 256, (x, w, h) => { x.fillStyle = "#000"; x.fillRect(0, 0, w, h); x.fillStyle = "rgba(255,244,224,.3)"; x.fillRect(136, 136, 112, 112); x.fillStyle = "#fff4e0"; x.fillRect(146, 146, 92, 92); });
       ceilTex.repeat.set(OG, OG); ceilEm.repeat.set(OG / 2, OG / 2);
       const ceil = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: ceilTex, emissiveMap: ceilEm, emissive: 0xffffff, emissiveIntensity: 1.7, roughness: 0.95 }));
@@ -3686,7 +3705,48 @@ function makeOps(md) {
         walls[k].push([x, z]); }));
       const box = new T.BoxGeometry(CS, OWH, CS);
       mats.forEach((mat, k) => { if (!mat || !walls[k].length) return; const im = new T.InstancedMesh(box, mat, walls[k].length); const m4 = new T.Matrix4(); walls[k].forEach(([x, z], i) => { m4.makeTranslation(x * CS + CS / 2, OWH / 2, z * CS + CS / 2); im.setMatrixAt(i, m4); }); scene.add(im); });
-      // skirting trim where walls meet the floor (sells the geometry)
+      // ---- stylized pass: trims along every wall (cornice/cap + skirting), soft height shading on wall faces
+      const STY = { office: [0xff7a2f, 0x23262e], farm: [0x4cc9f0, 0x1a1d24], desert: [0xf6e6c6, 0x8a5a36], roof: [0xff8a5c, 0x26282e] }[TH] || [0xff7a2f, 0x23262e];
+      const capM = new T.MeshStandardMaterial({ color: STY[0], roughness: 0.4, metalness: 0.1, emissive: TH === "desert" ? 0x000000 : STY[0], emissiveIntensity: TH === "desert" ? 0 : 0.25 }), baseM = new T.MeshStandardMaterial({ color: STY[1], roughness: 0.55, metalness: 0.2 });
+      const openWalls = walls.flat();
+      [[new T.BoxGeometry(CS + 0.18, outdoor ? 0.2 : 0.12, CS + 0.18), capM, outdoor ? OWH + 0.1 : OWH - 0.3], [new T.BoxGeometry(CS + 0.07, 0.24, CS + 0.07), baseM, 0.12]].forEach(([g0, m0, y]) => {
+        const im = new T.InstancedMesh(g0, m0, openWalls.length), m4 = new T.Matrix4();
+        openWalls.forEach(([x, z], i) => { m4.makeTranslation(x * CS + CS / 2, y, z * CS + CS / 2); im.setMatrixAt(i, m4); }); scene.add(im);
+      });
+      const shadeWall = (m) => { if (!m) return; m.onBeforeCompile = (sh) => {
+        sh.vertexShader = "varying float vWY;\n" + sh.vertexShader.replace("#include <fog_vertex>", "#include <fog_vertex>\n#ifdef USE_INSTANCING\n vWY = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).y;\n#else\n vWY = (modelMatrix * vec4(transformed, 1.0)).y;\n#endif");
+        sh.fragmentShader = "varying float vWY;\n" + sh.fragmentShader.replace("#include <color_fragment>", "#include <color_fragment>\n diffuseColor.rgb *= mix(0.5, 1.06, smoothstep(0.0, 2.4, vWY));");
+      }; };
+      [0, 2, 5, 6].forEach(k => shadeWall(mats[k]));
+      // outdoor skyline dressing: palms / water towers + antennas standing behind the outer walls, and soft clouds
+      if (outdoor) {
+        const trunkM = new T.MeshStandardMaterial({ color: TH === "desert" ? 0x8a6040 : 0x4a4d55, roughness: 0.8 }), frondM = new T.MeshStandardMaterial({ color: 0x3fae5a, roughness: 0.7, side: T.DoubleSide });
+        const tankM = new T.MeshStandardMaterial({ color: 0x7a5236, roughness: 0.75 }), redM = new T.MeshBasicMaterial({ color: new T.Color(3, 0.4, 0.3) });
+        const border = []; OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "#" && (x === 0 || z === 0 || x === OG - 1 || z === OG - 1) && (x * 3 + z * 5) % 4 === 0) border.push([x, z]); }));
+        border.forEach(([x, z], i) => {
+          const g = new T.Group(), px0 = x * CS + CS / 2 + (x === 0 ? -2 : x === OG - 1 ? 2 : 0), pz0 = z * CS + CS / 2 + (z === 0 ? -2 : z === OG - 1 ? 2 : 0);
+          if (TH === "desert") {
+            const hgt = 6 + (i * 37 % 5); const tr = new T.Mesh(new T.CylinderGeometry(0.16, 0.28, hgt, 7), trunkM); tr.position.y = hgt / 2; tr.rotation.z = ((i % 3) - 1) * 0.12; g.add(tr);
+            for (let k = 0; k < 7; k++) { const fr = new T.Mesh(new T.ConeGeometry(0.55, 3.2, 4, 1, true), frondM); fr.scale.set(1, 1, 0.25); fr.position.set(Math.sin(k * 0.9) * 1.3, hgt - 0.3, Math.cos(k * 0.9) * 1.3); fr.rotation.set(Math.cos(k * 0.9) * 1.25, 0, -Math.sin(k * 0.9) * 1.25); g.add(fr); }
+          } else if (i % 3 === 0) {
+            const tk = new T.Mesh(new T.CylinderGeometry(1.4, 1.4, 2.6, 12), tankM); tk.position.y = 6.2; const cap = new T.Mesh(new T.ConeGeometry(1.55, 1.0, 12), tankM); cap.position.y = 8; g.add(tk, cap);
+            [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => { const leg = new T.Mesh(new T.CylinderGeometry(0.08, 0.08, 4.9, 5), trunkM); leg.position.set(a, 2.45, b); g.add(leg); });
+          } else { const an = new T.Mesh(new T.CylinderGeometry(0.05, 0.09, 7, 5), trunkM); an.position.y = 3.5; const tip = new T.Mesh(new T.SphereGeometry(0.14, 8, 6), redM); tip.position.y = 7.05; g.add(an, tip); }
+          g.position.set(px0, 0, pz0); scene.add(g);
+        });
+        const cloudT = GFX.tex(128, 64, (x, w, h) => { x.clearRect(0, 0, w, h); for (let k = 0; k < 7; k++) { const cx = 20 + k * 15, cy = 36 - Math.sin(k / 6 * Math.PI) * 12, r = 14 + Math.sin(k / 6 * Math.PI) * 10; const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, "rgba(255,255,255,.95)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); } });
+        const cloudM = new T.SpriteMaterial({ map: cloudT, transparent: true, depthWrite: false, fog: false, color: TH === "desert" ? 0xffffff : 0x6a5a8a, opacity: TH === "desert" ? 0.9 : 0.5 });
+        for (let k = 0; k < (low ? 6 : 14); k++) { const c = new T.Sprite(cloudM); const a = k / 14 * Math.PI * 2 + Math.random() * 0.3, d = size * 0.9 + Math.random() * 60; c.position.set(size / 2 + Math.cos(a) * d, 38 + Math.random() * 30, size / 2 + Math.sin(a) * d); const sc2 = 40 + Math.random() * 40; c.scale.set(sc2, sc2 / 2, 1); scene.add(c); }
+      }
+      // market awnings over doorways in the desert (above head height, purely visual)
+      if (TH === "desert") {
+        const awnT = (c1, c2) => GFX.tex(64, 64, (x, w, h) => { for (let k = 0; k < 8; k++) { x.fillStyle = k % 2 ? c1 : c2; x.fillRect(k * 8, 0, 8, h); } });
+        const awnMs = [awnT("#e84a3c", "#f6e6c6"), awnT("#2f8fd8", "#f6e6c6"), awnT("#2fae6a", "#f6e6c6"), awnT("#f2a33a", "#7a3a20")].map(t2 => new T.MeshStandardMaterial({ map: t2, roughness: 0.8, side: T.DoubleSide }));
+        let n = 0;
+        for (const [x, z] of OPS_CELLS.open) { if ((x * 11 + z * 7) % 9 !== 0 || n > 22) continue; const d = [[1, 0], [-1, 0], [0, 1], [0, -1]].find(([dx, dz]) => oWall(x + dx, z + dz)); if (!d) continue;
+          const aw = new T.Mesh(new T.PlaneGeometry(2.6, 1.3), awnMs[n % 4]); const px0 = x * CS + CS / 2 + d[0] * (CS / 2 - 0.62), pz0 = z * CS + CS / 2 + d[1] * (CS / 2 - 0.62);
+          aw.position.set(px0, 2.55, pz0); aw.rotation.order = "YXZ"; aw.rotation.y = Math.atan2(-d[0], -d[1]); aw.rotation.x = -1.0; scene.add(aw); n++; }
+      }
       // ---- signs + posters
       const sign = (txt, sub, x, z, ry, col, wdt = 3.4) => {
         const t2 = tex(512, 140, (c, w, h) => { c.fillStyle = "#0a0b0d"; c.fillRect(0, 0, w, h); c.strokeStyle = col; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12); c.fillStyle = col; c.font = "700 50px 'Chakra Petch', sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, w / 2, 56); c.fillStyle = "#c8cde6"; c.font = "700 22px 'JetBrains Mono', monospace"; c.fillText(sub, w / 2, 108); });

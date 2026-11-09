@@ -1,11 +1,24 @@
 // ======================= shared 3D graphics helpers: post-processing (bloom + grade), procedural PBR textures =======================
 const GFX = {
   // animated CC0 "operator" character (Quaternius robot via the three.js examples), loaded on demand
+  // CC0 HDR environment (Poly Haven, via @pmndrs/assets) for realistic image-based lighting and reflections
+  hdri(renderer, name) {
+    GFX._hd = GFX._hd || {};
+    const key = name;
+    if (!GFX._hd[key]) GFX._hd[key] = GFX.operator().then(() => new Promise((res) => {
+      try { new THREE_EXTRAS.EXRLoader().load("models/hdri-" + name + ".exr", (tex) => res(tex), null, () => res(null)); } catch (e) { res(null); }
+    }));
+    return GFX._hd[key].then((tex) => {
+      if (!tex) return null;
+      const pm = new THREE.PMREMGenerator(renderer); tex.mapping = THREE.EquirectangularReflectionMapping;
+      const rt = pm.fromEquirectangular(tex); pm.dispose(); return rt.texture;
+    });
+  },
   operator() {
     if (GFX._op) return GFX._op;
     GFX._op = new Promise((res) => {
       const go = () => { try { new THREE_EXTRAS.GLTFLoader().load("models/operator.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } };
-      if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
+      if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js?v=2"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
     });
     return GFX._op;
   },
@@ -55,8 +68,8 @@ const GFX = {
       fragmentShader: "uniform sampler2D t; uniform float th; varying vec2 vUv; void main(){ vec3 c = texture2D(t, vUv).rgb; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(th, th + 0.8, l), 1.0); }" });
     const blur = new T.ShaderMaterial({ uniforms: { t: { value: null }, d: { value: new T.Vector2() } }, vertexShader: vs, depthTest: false, depthWrite: false,
       fragmentShader: "uniform sampler2D t; uniform vec2 d; varying vec2 vUv; void main(){ vec3 c = texture2D(t, vUv).rgb * 0.227; c += (texture2D(t, vUv + d * 1.385).rgb + texture2D(t, vUv - d * 1.385).rgb) * 0.316; c += (texture2D(t, vUv + d * 3.231).rgb + texture2D(t, vUv - d * 3.231).rgb) * 0.070; gl_FragColor = vec4(c, 1.0); }" });
-    const comp = new T.ShaderMaterial({ defines: P.useAO ? { USE_AO: 1 } : {}, uniforms: { t: { value: null }, aoT: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: P.strength }, vig: { value: P.vignette }, tint: { value: P.tint }, tm: { value: 0 }, hurt: { value: 0 } }, vertexShader: vs, depthTest: false, depthWrite: false,
-      fragmentShader: "uniform sampler2D t, b1, b2, aoT; uniform float k, vig, tm, hurt; uniform vec3 tint; varying vec2 vUv;\n#include <common>\nvoid main(){ vec3 c = texture2D(t, vUv).rgb;\n#ifdef USE_AO\n c *= texture2D(aoT, vUv).r;\n#endif\n c += (texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.9) * k; c *= tint; vec2 q = vUv - 0.5; float v = 1.0 - dot(q, q) * vig * 2.6; c *= clamp(v, 0.0, 1.0); c = mix(c, c * vec3(1.6, 0.35, 0.35), hurt * smoothstep(0.15, 0.7, length(q))); float n = fract(sin(dot(vUv * (tm + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.018; gl_FragColor = vec4(max(c, 0.0), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}" });
+    const comp = new T.ShaderMaterial({ defines: P.useAO ? { USE_AO: 1 } : {}, uniforms: { t: { value: null }, aoT: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: P.strength }, vig: { value: P.vignette }, tint: { value: P.tint }, tm: { value: 0 }, hurt: { value: 0 }, sat: { value: opt.sat || 1 } }, vertexShader: vs, depthTest: false, depthWrite: false,
+      fragmentShader: "uniform sampler2D t, b1, b2, aoT; uniform float k, vig, tm, hurt, sat; uniform vec3 tint; varying vec2 vUv;\n#include <common>\nvoid main(){ vec3 c = texture2D(t, vUv).rgb;\n#ifdef USE_AO\n c *= texture2D(aoT, vUv).r;\n#endif\n c += (texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.9) * k; c *= tint; c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, sat); vec2 q = vUv - 0.5; float v = 1.0 - dot(q, q) * vig * 2.6; c *= clamp(v, 0.0, 1.0); c = mix(c, c * vec3(1.6, 0.35, 0.35), hurt * smoothstep(0.15, 0.7, length(q))); float n = fract(sin(dot(vUv * (tm + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.018; gl_FragColor = vec4(max(c, 0.0), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}" });
     const quad = new T.Mesh(new T.PlaneGeometry(2, 2), bright); quad.frustumCulled = false;
     const sc = new T.Scene(); sc.add(quad); const oc = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const pass = (mat, target) => { quad.material = mat; renderer.setRenderTarget(target); renderer.render(sc, oc); };

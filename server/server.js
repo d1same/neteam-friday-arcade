@@ -53,11 +53,11 @@ const server = http.createServer((req, res) => {
       res.end(buf);
     });
   }
-  if (url.startsWith("/models/") && /^\/models\/[a-z0-9._-]+\.(glb|jpg|png)$/i.test(url)) {
+  if (url.startsWith("/models/") && /^\/models\/[a-z0-9._-]+\.(glb|jpg|png|exr)$/i.test(url)) {
     const f = path.join(PUBLIC, url), ext = url.split(".").pop().toLowerCase();
     return fs.readFile(f, (err, buf) => {
       if (err) { res.writeHead(404); return res.end("Not found"); }
-      res.writeHead(200, { "content-type": ext === "glb" ? "model/gltf-binary" : ext === "png" ? "image/png" : "image/jpeg", "cache-control": "public, max-age=604800" });
+      res.writeHead(200, { "content-type": ext === "glb" ? "model/gltf-binary" : ext === "exr" ? "image/x-exr" : ext === "png" ? "image/png" : "image/jpeg", "cache-control": "public, max-age=604800" });
       res.end(buf);
     });
   }
