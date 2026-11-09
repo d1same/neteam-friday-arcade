@@ -53,6 +53,31 @@ const SFX = {
     const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
     s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.12);
   },
+  // explosion: sharp crack, low rumble that rolls off, sub-bass thump and a debris rattle
+  blast(vol = 1, pan = 0, big = 0, far = 0) {
+    const a = this.ensure(); if (!a || !this.on || vol < 0.01) return; const t = a.currentTime, o = this.out(a, 0.5 * vol, pan), L = big ? 1.45 : 1.0, lp = 1 - far * 0.7;
+    const c = a.createBufferSource(); c.buffer = this.noiseBuf(a); const cf = a.createBiquadFilter(); cf.type = "lowpass"; cf.frequency.setValueAtTime(9000 * lp + 500, t); cf.frequency.exponentialRampToValueAtTime(300, t + 0.25);
+    const cg = a.createGain(); cg.gain.setValueAtTime(1.1, t); cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.35); c.connect(cf).connect(cg).connect(o); c.start(t, Math.random() * 0.3, 0.4);
+    const r = a.createBufferSource(); r.buffer = this.noiseBuf(a); r.playbackRate.value = 0.5; const rf = a.createBiquadFilter(); rf.type = "lowpass"; rf.frequency.setValueAtTime(900 * lp + 100, t); rf.frequency.exponentialRampToValueAtTime(90, t + L * 1.6);
+    const rg = a.createGain(); rg.gain.setValueAtTime(0.0001, t); rg.gain.exponentialRampToValueAtTime(1.4, t + 0.03); rg.gain.exponentialRampToValueAtTime(0.0001, t + L * 1.9); r.connect(rf).connect(rg).connect(o); r.start(t, 0, 1.5);
+    const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(big ? 75 : 95, t); th.frequency.exponentialRampToValueAtTime(28, t + 0.6);
+    tg.gain.setValueAtTime(1.6 * (1 - far * 0.4), t); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.8 * L); th.connect(tg).connect(o); th.start(t); th.stop(t + L);
+    if (far < 0.7) for (let k = 0; k < 6; k++) { const d = 0.25 + Math.random() * 0.7 * L, s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = 1800 + Math.random() * 2500; f.Q.value = 3; const g = a.createGain(); g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(0.25, t + d + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.07); s.connect(f).connect(g).connect(o); s.start(t + d, Math.random(), 0.1); }
+  },
+  // smoke grenade popping: a long airy hiss
+  hiss(vol = 0.6, pan = 0) {
+    const a = this.ensure(); if (!a || !this.on || vol < 0.01) return; const t = a.currentTime, o = this.out(a, 0.3 * vol, pan);
+    const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); s.loop = true; const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(5200, t); f.frequency.exponentialRampToValueAtTime(2200, t + 2.2); f.Q.value = 0.6;
+    const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6); s.connect(f).connect(g).connect(o); s.start(t); s.stop(t + 2.7);
+    this.tone(180, 0.08, "square", 0.05 * vol);
+  },
+  // prop breaking: 0 wood/cardboard crunch, 1 glass + electrical pop
+  crash(kind = 0, vol = 0.6, pan = 0) {
+    const a = this.ensure(); if (!a || !this.on || vol < 0.01) return; const t = a.currentTime, o = this.out(a, 0.45 * vol, pan);
+    const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = kind ? "highpass" : "bandpass"; f.frequency.value = kind ? 3500 : 600; f.Q.value = kind ? 0.7 : 0.9;
+    const g = a.createGain(); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + (kind ? 0.5 : 0.3)); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.6);
+    for (let k = 0; k < (kind ? 9 : 4); k++) { const d = 0.04 + Math.random() * 0.35, os = a.createOscillator(), og = a.createGain(); os.type = kind ? "triangle" : "square"; os.frequency.value = kind ? 2500 + Math.random() * 4000 : 140 + Math.random() * 160; og.gain.setValueAtTime(0.0001, t + d); og.gain.exponentialRampToValueAtTime(kind ? 0.12 : 0.18, t + d + 0.004); og.gain.exponentialRampToValueAtTime(0.0001, t + d + (kind ? 0.08 : 0.05)); os.connect(og).connect(o); os.start(t + d); os.stop(t + d + 0.12); }
+  },
   swish(vol = 0.4, pan = 0) {
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, vol * 0.4, pan);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 2; f.frequency.setValueAtTime(800, t); f.frequency.exponentialRampToValueAtTime(5000, t + 0.15);
