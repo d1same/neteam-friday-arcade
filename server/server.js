@@ -53,6 +53,13 @@ const server = http.createServer((req, res) => {
       res.end(buf);
     });
   }
+  if (url.startsWith("/sfx/") && /^\/sfx\/[a-z0-9._-]+\.mp3$/i.test(url)) {
+    return fs.readFile(path.join(PUBLIC, url), (err, buf) => {
+      if (err) { res.writeHead(404); return res.end("Not found"); }
+      res.writeHead(200, { "content-type": "audio/mpeg", "cache-control": "public, max-age=604800" });
+      res.end(buf);
+    });
+  }
   if (url.startsWith("/models/") && /^\/models\/[a-z0-9._-]+\.(glb|jpg|png|exr)$/i.test(url)) {
     const f = path.join(PUBLIC, url), ext = url.split(".").pop().toLowerCase();
     return fs.readFile(f, (err, buf) => {

@@ -248,11 +248,11 @@ const OW = [
   { id: "knife", n: "Patch Knife", short: "KNIFE", slot: 3, cost: 0, dmg: 34, hs: 1, rate: 0.42, mag: 0, rl: 0, spr: 0, mv: 0, range: 2.3, spd: 1.1, auto: true, kick: 0, col: "#9da1a9", snd: "knife", kill: 1500, melee: true, vm: [0.28, 0.04, 0], d: "Always carried · stab from behind" },
   { id: "shotgun", n: "Root Shotgun", short: "SHOTGUN", slot: 1, cost: 1100, dmg: 16, hs: 1.5, rate: 0.85, mag: 7, rl: 3.0, spr: 0.075, mv: 0.02, range: 20, spd: 0.97, auto: false, kick: 0.04, col: "#ff6b57", snd: "shotgun", kill: 900, pel: 8, vm: [0.75, 0.13, 0.32], d: "Devastating up close" },
   { id: "deagle", n: "Kernel Magnum", short: "MAGNUM", slot: 2, cost: 700, dmg: 54, hs: 2.4, rate: 0.48, mag: 7, rl: 2.2, spr: 0.014, mv: 0.06, range: 60, spd: 0.98, auto: false, kick: 0.045, col: "#c084fc", snd: "heavy", kill: 300, vm: [0.38, 0.14, 0.14], d: "Heavy pistol, headshot kills" },
-  { id: "carbine", n: "Proxy Carbine", short: "CARBINE", slot: 1, cost: 2100, dmg: 27, hs: 3.2, rate: 0.095, mag: 25, rl: 2.2, spr: 0.015, mv: 0.045, range: 65, spd: 0.97, auto: true, kick: 0.01, col: "#3ddc97", snd: "rifle", kill: 300, vm: [0.62, 0.13, 0.24], d: "Cheaper rifle" },
+  { id: "carbine", n: "Proxy Carbine", short: "CARBINE", slot: 1, cost: 2100, dmg: 27, hs: 3.2, rate: 0.095, mag: 25, rl: 2.2, spr: 0.015, mv: 0.045, range: 65, spd: 0.97, auto: true, kick: 0.01, col: "#3ddc97", snd: "carbine", kill: 300, vm: [0.62, 0.13, 0.24], d: "Cheaper rifle" },
   { id: "lmg", n: "Botnet LMG", short: "LMG", slot: 1, cost: 5000, dmg: 30, hs: 2.4, rate: 0.088, mag: 100, rl: 5.0, spr: 0.026, mv: 0.06, range: 70, spd: 0.8, auto: true, kick: 0.009, col: "#ff9f1c", snd: "lmg", kill: 300, vm: [0.85, 0.17, 0.3], d: "100 rounds, very slow" },
   { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "sniper", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], d: "Light sniper, move fast" },
-  { id: "rocket", n: "Packet Launcher", short: "ROCKET", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.8, mag: 5, rl: 2.6, spr: 0, mv: 0, range: 120, spd: 0.95, auto: false, kick: 0.06, col: "#ff6a1a", snd: "heavy", kill: 300, rocket: true, vm: [0.8, 0.2, 0.3], d: "Splash damage · rocket jumps" },
-  { id: "laser", n: "Photon Laser", short: "LASER", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.85, mag: 99, rl: 0, spr: 0, mv: 0, range: 160, spd: 1.05, auto: true, kick: 0.025, col: "#ff3df0", snd: "sniper", kill: 300, laser: true, vm: [0.72, 0.14, 0.34], d: "One hit, one kill" },
+  { id: "rocket", n: "Packet Launcher", short: "ROCKET", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.8, mag: 5, rl: 2.6, spr: 0, mv: 0, range: 120, spd: 0.95, auto: false, kick: 0.06, col: "#ff6a1a", snd: "rocket", kill: 300, rocket: true, vm: [0.8, 0.2, 0.3], d: "Splash damage · rocket jumps" },
+  { id: "laser", n: "Photon Laser", short: "LASER", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.85, mag: 99, rl: 0, spr: 0, mv: 0, range: 160, spd: 1.05, auto: true, kick: 0.025, col: "#ff3df0", snd: "laser", kill: 300, laser: true, vm: [0.72, 0.14, 0.34], d: "One hit, one kill" },
 ];
 const OW_PRIMARY = [1, 5, 7, 2, 9, 3, 8], OW_PISTOL = [0, 6], KNIFE = 4, ROCKET = 10, LASER = 11, ARMOR_IT = 20;
 const OW_BUY = [6, 1, 5, 7, 2, 9, 3, 8];
@@ -757,7 +757,7 @@ function makeOps(md) {
       const F = V.fps; if (!F || !this.owned(V).includes(wi) || F.cur === wi) return;
       F.last = F.cur; F.cur = wi; F.reloadT = 0; F.scoped = false; F.fireCd = Math.max(F.fireCd, OW[wi].melee ? 0.2 : 0.35); F.swapT = 0.35; if (OW[wi].melee) SFX.swish(0.25); else SFX.clank(0.5);
     },
-    reload(V) { const F = V.fps, W0 = OW[F.cur]; if (W0.melee || F.reloadT > 0 || F.ammo[F.cur] >= W0.mag) return; F.reloadT = W0.rl; F.scoped = false; SFX.clank(0.6); setTimeout(() => SFX.clank(0.5), W0.rl * 450); setTimeout(() => SFX.clank(0.8), W0.rl * 880); },
+    reload(V) { const F = V.fps, W0 = OW[F.cur]; if (W0.melee || F.reloadT > 0 || F.ammo[F.cur] >= W0.mag) return; F.reloadT = W0.rl; F.scoped = false; if (!SFX.reload(W0.id, W0.rl)) { SFX.clank(0.6); setTimeout(() => SFX.clank(0.5), W0.rl * 450); setTimeout(() => SFX.clank(0.8), W0.rl * 880); } },
     buy(V, it) { const F = V.fps; F.buyReq = [++F.buySeq, it]; SFX.play("blip"); },
     shopOpen(V, on) {
       const F = V.fps; if (!F || !F.shop) return;
@@ -1043,7 +1043,7 @@ function makeOps(md) {
     },
     fireRocket(V) {
       const F = V.fps, me = F.me, W0 = OW[F.cur], EY = F.eyeH || EYE, aimP = me.p + (F.rec || 0), cp = Math.cos(aimP);
-      SFX.shot("heavy", 1); SFX.swish(0.8); F.kick = 1.6; if (F.flash) F.flash.intensity = 18; F.rec = Math.min(0.16, (F.rec || 0) + W0.kick);
+      SFX.shot("rocket", 1); SFX.swish(0.8); F.kick = 1.6; if (F.flash) F.flash.intensity = 18; F.rec = Math.min(0.16, (F.rec || 0) + W0.kick);
       const dir = [-Math.sin(me.a) * cp, Math.sin(aimP), -Math.cos(me.a) * cp];
       F.rkSeq = (F.rkSeq || 0) + 1; F.rk = [F.rkSeq, +me.x.toFixed(2), +(EY - 0.15).toFixed(2), +me.z.toFixed(2), +dir[0].toFixed(3), +dir[1].toFixed(3), +dir[2].toFixed(3)];
       F.shotN++; F.lastShot = [F.shotN, +(me.x + dir[0] * 4).toFixed(2), +(EY + dir[1] * 4).toFixed(2), +(me.z + dir[2] * 4).toFixed(2), F.cur];

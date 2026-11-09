@@ -1,0 +1,8 @@
+All recordings here are CC0 1.0 (public domain), converted to mono MP3.
+shot-*.mp3: The Free Firearm Sound Library (recorded real firearms), CC0.
+rl-*.mp3, click*.mp3: reload and magazine recordings from OpenGameArt.org, CC0.
+step*.mp3: "Metal footsteps on concrete" by Thimras (OpenGameArt.org), CC0.
+boom*.mp3: "25 CC0 bang / firework SFX" by rubberduck (OpenGameArt.org), CC0.
+swing*.mp3: swing/swoosh recordings by qubodup (OpenGameArt.org), CC0.
+hit-*.mp3: Kenney Impact Sounds (kenney.nl), CC0.
+Full source URLs per file: assets-src/SOURCES.md on the assets-realistic branch of the repository.
