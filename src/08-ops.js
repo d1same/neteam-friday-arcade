@@ -622,13 +622,27 @@ function makeOps(md) {
       const coarse = matchMedia("(pointer: coarse)").matches;
       on(cv, "contextmenu", (e) => e.preventDefault());
       const specNext = () => { F.specOff = (F.specOff || 0) + 1; F.specManual = true; F.specAuto = 0; };
-      on(cv, "mousedown", (e) => {
+      // grab the mouse. Browsers refuse a re-grab for about a second after Esc, so a refusal is retried
+      // on the next click instead of giving up; only after several refusals do we fall back to drag-to-look.
+      const lockFail = () => { F.lockFails = (F.lockFails || 0) + 1; F.lockRetryAt = performance.now() + 1100; if (F.lockFails >= 4) F.noLock = true; };
+      const grab = () => {
+        F.lockTry = performance.now();
+        try {
+          const r = cv.requestPointerLock({ unadjustedMovement: true });
+          if (r && r.catch) r.catch(() => { try { const r2 = cv.requestPointerLock(); if (r2 && r2.catch) r2.catch(lockFail); } catch (er) { lockFail(); } });
+        } catch (er) { try { cv.requestPointerLock(); } catch (er2) { lockFail(); } }
+      };
+      on(document, "pointerlockerror", () => { if (APP.V === V) lockFail(); });
+      // listen on the whole stage, not just the canvas, so a leftover overlay can't swallow the click
+      on($("#stagebox"), "mousedown", (e) => {
+        const tg = e.target;
+        if (tg !== cv && tg.closest && tg.closest("button, input, select, textarea, a, .ops-shop, .look-panel, .look-btn, .card")) return;
         if (V.meIdx < 0) { specNext(); return; }
         if (coarse) return;
         if (document.pointerLockElement !== cv) {
-          // first click only grabs the mouse; it never fires. Drag-to-look is the fallback when the browser refuses the lock.
-          if (F.noLock) { F.dragLook = true; if (e.button === 0) F.firing = true; return; }
-          try { const r = cv.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(() => { try { const r2 = cv.requestPointerLock(); if (r2 && r2.catch) r2.catch(() => { F.noLock = true; }); } catch (er) { F.noLock = true; } }); } catch (er) { F.noLock = true; }
+          // first click only grabs the mouse; it never fires. Drag-to-look works meanwhile.
+          if (F.noLock) { F.dragLook = true; if (e.button === 0) F.firing = true; }
+          grab();
           return;
         }
         if (e.button === 0) F.firing = true;
@@ -644,7 +658,7 @@ function makeOps(md) {
         if (Math.abs(mx) > 400 || Math.abs(my) > 400) return;
         F.look.dx += mx; F.look.dy += my;
       });
-      on(document, "pointerlockchange", () => { if (document.pointerLockElement === cv) F.lockAt = performance.now(); else { F.firing = false; F.latch = false; F.dragLook = false; } });
+      on(document, "pointerlockchange", () => { if (document.pointerLockElement === cv) { F.lockAt = performance.now(); F.lockFails = 0; F.noLock = false; } else { F.firing = false; F.latch = false; F.dragLook = false; } });
       on(window, "wheel", (e) => { if (APP.view !== "game") return; const o = this.owned(V); const k = o.indexOf(F.cur); this.switchTo(V, o[(k + (e.deltaY > 0 ? 1 : o.length - 1)) % o.length]); }, { passive: true });
       on(window, "keydown", (e) => {
         if (APP.view !== "game" || (e.target && e.target.tagName === "INPUT")) return;
@@ -767,7 +781,7 @@ function makeOps(md) {
         if (F.stick) { const vx = F.stick.x - F.stick.bx, vy = F.stick.y - F.stick.by, d = Math.hypot(vx, vy); if (d > 6) { const k = Math.min(1, d / 55); sx = vx / d * k; fx = -vy / d * k; soft = k < 0.6; } }
         // Shift (or a light push on the touch stick) walks: half speed, steadier aim, no footsteps
         const walk = KEYS.has("ShiftLeft") || KEYS.has("ShiftRight") || soft;
-        const crouchKey = KEYS.has("KeyC") || KEYS.has("ControlLeft") || F.crouchT;
+        const crouchKey = KEYS.has("KeyC") || (KEYS.has("ControlLeft") && kbLocked()) || F.crouchT;
         F.cr = lerp(F.cr || 0, crouchKey && !F.jh ? 1 : 0, 1 - Math.pow(0.0001, dt));
         const top = 5.4 * W0.spd * (walk ? 0.5 : 1) * (F.scoped ? 0.55 : 1) * (1 - 0.55 * F.cr);
         const sa = Math.sin(F.me.a), ca = Math.cos(F.me.a);
@@ -1769,7 +1783,7 @@ function makeOps(md) {
       }
       if (F.stick) { const s = APP.gameScale || 1, r = $("#gameCanvas").getBoundingClientRect(); ctx.strokeStyle = "rgba(245,241,230,.35)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((F.stick.bx - r.left) / s, (F.stick.by - r.top) / s, 55 / s, 0, 7); ctx.stroke(); ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc((F.stick.x - r.left) / s, (F.stick.y - r.top) / s, 22 / s, 0, 7); ctx.fill(); }
       if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !matchMedia("(pointer: coarse)").matches && (!F.shop || F.shop.hidden) && !(team && g.ph === "buy")) {
-        ctx.textAlign = "center"; ctx.font = "700 18px 'Chakra Petch', sans-serif"; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - 100, H / 2 + 40, 200, 40, 12); ctx.fill(); ctx.fillStyle = "#ffd23f"; ctx.fillText("CLICK TO PLAY", W / 2, H / 2 + 61);
+        ctx.textAlign = "center"; ctx.font = "700 18px 'Chakra Petch', sans-serif"; ctx.fillStyle = "rgba(10,11,13,.75)"; const msg = F.noLock ? "HOLD CLICK TO LOOK · CLICK AGAIN TO LOCK" : performance.now() < (F.lockRetryAt || 0) ? "ONE SEC… CLICK AGAIN" : "CLICK TO PLAY", bw = F.noLock ? 420 : 240; ctx.beginPath(); ctx.roundRect(W / 2 - bw / 2, H / 2 + 40, bw, 40, 12); ctx.fill(); ctx.fillStyle = "#ffd23f"; if (F.noLock) ctx.font = "700 14px 'Chakra Petch', sans-serif"; ctx.fillText(msg, W / 2, H / 2 + 61);
       }
     },
   };

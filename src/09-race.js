@@ -332,8 +332,8 @@ const race = {
     const cv = $("#gameCanvas"), unb = F.unbind = [];
     const on = (el, ev, fn, o) => { el.addEventListener(ev, fn, o); unb.push(() => el.removeEventListener(ev, fn, o)); };
     on(window, "keydown", (e) => { if (APP.view !== "game") return; if (e.code === "Space") { F.drift = true; e.preventDefault(); } if (e.repeat) return; if (e.code === "KeyR") this.reset(V); if (e.code === "KeyE" || e.code === "ShiftLeft" || e.code === "ShiftRight" || e.code === "KeyF") this.useItem2(V); if (e.code === "KeyC") { F.cam = (F.cam + 1) % 3; toast(["Chase camera", "Far chase camera", "Hood camera"][F.cam]); } });
-    on(window, "keyup", (e) => { if (e.code === "Space") F.drift = false; if (e.code === "KeyQ" || e.code === "Enter" || e.code === "ControlLeft" || e.code === "ControlRight") F.firing = false; });
-    on(window, "keydown", (e) => { if (APP.view !== "game") return; if (e.code === "KeyQ" || e.code === "Enter" || e.code === "ControlLeft" || e.code === "ControlRight") { F.firing = true; e.preventDefault(); } });
+    on(window, "keyup", (e) => { if (e.code === "Space") F.drift = false; if (e.code === "KeyQ" || e.code === "Enter") F.firing = false; });
+    on(window, "keydown", (e) => { if (APP.view !== "game") return; if (e.code === "KeyQ" || e.code === "Enter") { F.firing = true; e.preventDefault(); } });
     on(cv, "mousedown", (e) => { if (e.button === 0) F.firing = true; });
     on(window, "mouseup", (e) => { if (e.button === 0) F.firing = false; });
     const coarse = matchMedia("(pointer: coarse)").matches; F.coarse = coarse;

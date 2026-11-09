@@ -114,6 +114,9 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .game-card .meta b { color: var(--bulb); font-weight: 700; }
 .start-row { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; margin-top: 14px; }
 .start-row .hint { color: var(--muted); font-size: 13px; flex: 1; min-width: 200px; }
+body.playing { -webkit-user-select: none; user-select: none; overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+body.playing #gameView { touch-action: none; }
+body.playing #gameView input, body.playing #gameView textarea { -webkit-user-select: text; user-select: text; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); cursor: pointer; user-select: none; }
 .toggle input { width: 18px; height: 18px; accent-color: var(--bulb); }
 

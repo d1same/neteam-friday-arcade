@@ -173,6 +173,34 @@ function endSession() {
 const KEYS = new Set();
 const JOY = { on: false, id: null, bx: 0, by: 0, x: 0, y: 0 };
 let pendingDash = false;
+// ---------- game focus guard ----------
+// While a game is open the page behaves like a game, not a web page: no text selection, no browser
+// shortcuts (Ctrl+A/S/D/F/P, Alt menus, F1/F3/F5/F7, quick-find, zoom), no right-click menu, no
+// mouse back/forward, no scrolling, and closing or reloading the tab asks first.
+const typing = (t) => t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+function inMatch() { return APP.view === "game" && !!APP.V && !$("#editor").open; }
+function kbLocked() { return !!APP.kbLock; }
+(function guard() {
+  const pass = new Set(["Escape", "F11", "F12"]);
+  addEventListener("keydown", (e) => {
+    if (!inMatch() || typing(e.target)) return;
+    if (!pass.has(e.code)) e.preventDefault();
+    const a = document.activeElement; if (a && a !== document.body && a.tagName === "BUTTON") a.blur();
+  }, true);
+  addEventListener("keyup", (e) => { if (inMatch() && !typing(e.target) && !pass.has(e.code)) e.preventDefault(); }, true);
+  for (const ev of ["contextmenu", "selectstart", "dragstart"]) addEventListener(ev, (e) => { if (inMatch() && !typing(e.target)) e.preventDefault(); }, true);
+  // mouse side buttons would navigate back/forward and drop you out of the match
+  for (const ev of ["mousedown", "mouseup", "auxclick"]) addEventListener(ev, (e) => { if (inMatch() && (e.button === 3 || e.button === 4)) { e.preventDefault(); e.stopPropagation(); } }, true);
+  addEventListener("wheel", (e) => { if (inMatch() && (e.ctrlKey || e.metaKey)) e.preventDefault(); }, { passive: false, capture: true });
+  addEventListener("beforeunload", (e) => { if (APP.view === "game" && APP.V && (APP.V.meIdx >= 0 || APP.V.ready || (APP.S && APP.S.id === APP.V.sid))) { e.preventDefault(); e.returnValue = ""; } });
+  // in fullscreen, also grab keys the browser normally keeps (Ctrl+W, Ctrl+T, the Windows key)
+  const sync = () => {
+    const kb = navigator.keyboard;
+    if (fsElement() && kb && kb.lock) kb.lock().then(() => { APP.kbLock = true; }).catch(() => { APP.kbLock = false; });
+    else { APP.kbLock = false; try { kb && kb.unlock && kb.unlock(); } catch (err) {} }
+  };
+  document.addEventListener("fullscreenchange", sync); document.addEventListener("webkitfullscreenchange", sync);
+})();
 function enterGame(host) {
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
   const h = host.h, mod = GAMES[h.game];
@@ -187,7 +215,8 @@ function enterGame(host) {
   V.ready = h.ph === "ready";
   if (V.ready) { V.myRdy = 0; V.myVote = ""; setPresence({ rdy: { s: h.id, v: V.myRdy, mv: "" }, in: null }); }
   else mod.clientEnter(V);
-  APP.view = "game"; APP.myIn = null;
+  APP.view = "game"; APP.myIn = null; document.body.classList.add("playing");
+  try { const a = document.activeElement; if (a && a !== document.body) a.blur(); getSelection().removeAllRanges(); } catch (e) {}
   $("#lobbyView").hidden = true; $("#gameView").hidden = false;
   $("#hudName").textContent = mod.title;
   $("#spectateTag").hidden = meIdx >= 0 || V.ready || !!mod.md;
@@ -199,7 +228,7 @@ function enterGame(host) {
 }
 function exitGame() {
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
-  APP.view = "lobby"; APP.V = null; APP.myIn = null;
+  APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
   $("#gameView").hidden = true; $("#lobbyView").hidden = false;
