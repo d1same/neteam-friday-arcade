@@ -23,15 +23,27 @@ function rcBuild(P) {
       raw.push([0, 1].map(j => 0.5 * (2 * p1[j] + (-p0[j] + p2[j]) * t + (2 * p0[j] - 5 * p1[j] + 4 * p2[j] - p3[j]) * t2 + (-p0[j] + 3 * p1[j] - 3 * p2[j] + p3[j]) * t3)));
     }
   }
-  let len = 0; const cum = [0];
-  for (let i = 1; i <= raw.length; i++) { const a = raw[i - 1], b = raw[i % raw.length]; len += Math.hypot(b[0] - a[0], b[1] - a[1]); cum.push(len); }
-  const N = Math.round(len / 1.6), pts = [];
-  let j = 0;
-  for (let k = 0; k < N; k++) {
-    const d = k / N * len; while (cum[j + 1] < d) j++;
-    const a = raw[j], b = raw[(j + 1) % raw.length], f = (d - cum[j]) / (cum[j + 1] - cum[j] || 1);
-    pts.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+  const resample = (src) => {
+    let len = 0; const cum = [0];
+    for (let i = 1; i <= src.length; i++) { const a = src[i - 1], b = src[i % src.length]; len += Math.hypot(b[0] - a[0], b[1] - a[1]); cum.push(len); }
+    const N = Math.round(len / 1.6), out = []; let j = 0;
+    for (let k = 0; k < N; k++) {
+      const d = k / N * len; while (cum[j + 1] < d) j++;
+      const a = src[j], b = src[(j + 1) % src.length], f = (d - cum[j]) / (cum[j + 1] - cum[j] || 1);
+      out.push([a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f]);
+    }
+    return { out, len };
+  };
+  // round off any corner tighter than the barriers: otherwise the inner wall folds over itself and cars get snapped around
+  const radius = (q) => { const M = q.length; return q.map((p, i) => { const a = q[(i - 4 + M) % M], c = q[(i + 4) % M]; const ab = Math.hypot(p[0] - a[0], p[1] - a[1]), bc = Math.hypot(c[0] - p[0], c[1] - p[1]), ac = Math.hypot(c[0] - a[0], c[1] - a[1]); const cr = Math.abs((p[0] - a[0]) * (c[1] - a[1]) - (p[1] - a[1]) * (c[0] - a[0])); return cr < 1e-6 ? 1e9 : ab * bc * ac / (2 * cr); }); };
+  let q = resample(raw).out;
+  for (let it = 0; it < 400; it++) {
+    const r = radius(q), M = q.length, mark = new Uint8Array(M); let bad = 0;
+    for (let i = 0; i < M; i++) if (r[i] < 24) { bad++; for (let k = -4; k <= 4; k++) mark[(i + k + M) % M] = 1; }
+    if (!bad) break;
+    q = q.map((p, jj) => { if (!mark[jj]) return p; const a = q[(jj - 1 + M) % M], c = q[(jj + 1) % M]; return [p[0] + ((a[0] + c[0]) / 2 - p[0]) * 0.4, p[1] + ((a[1] + c[1]) / 2 - p[1]) * 0.4]; });
   }
+  const rs = resample(q), pts = rs.out, N = pts.length, len = rs.len;
   const tan = pts.map((p, i) => { const q = pts[(i + 1) % N], o = pts[(i - 1 + N) % N]; const dx = q[0] - o[0], dz = q[1] - o[1], l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; });
   const curv = pts.map((p, i) => { const a = tan[(i - 3 + N) % N], b = tan[(i + 3) % N]; return Math.abs(Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1])); });
   let mnx = 1e9, mxx = -1e9, mnz = 1e9, mxz = -1e9; pts.forEach(p => { mnx = Math.min(mnx, p[0]); mxx = Math.max(mxx, p[0]); mnz = Math.min(mnz, p[1]); mxz = Math.max(mxz, p[1]); });

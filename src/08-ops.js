@@ -160,6 +160,10 @@ const OW_PRIMARY = [1, 5, 7, 2, 9, 3, 8], OW_PISTOL = [0, 6], KNIFE = 4, ARMOR_I
 const OW_BUY = [6, 1, 5, 7, 2, 9, 3, 8];
 const ARMOR_COST = 650;
 const TEAM = [{ n: "Red Team", short: "RED", hex: "#ff4d5e", sub: "Attackers · pen testers", cols: [0, 6, 5, 1, 7] }, { n: "Blue Team", short: "BLUE", hex: "#3fa9ff", sub: "Defenders · SOC", cols: [3, 8, 4, 2, 9] }];
+// team colours: strong red/blue by default; colour-blind mode swaps red for orange and adds shapes (▲ red side, ■ blue side)
+function opsColorBlind() { return !!(store("nfa-cb") || {}).on; }
+function opsApplyTeamColors() { const cb = opsColorBlind(); TEAM[0].hex = cb ? "#ffa31a" : "#ff2d3f"; TEAM[1].hex = cb ? "#2f7dff" : "#1f8fff"; }
+opsApplyTeamColors();
 const OPS_ANN = ["", "Red Team eliminated", "Blue Team eliminated", "Time ran out", "Payload defused", "Payload detonated"];
 const OPS_EXTRA_BOTS = ["Kernel Bot", "Proxy Bot", "Daemon Bot", "Sudo Bot", "Root Bot", "Packet Bot", "Byte Bot", "Cron Bot", "Hash Bot", "Socket Bot"];
 
@@ -428,6 +432,7 @@ function makeOps(md) {
 
     // ---------------- client ----------------
     clientEnter(V) {
+      opsApplyTeamColors();
       const F = V.fps = { ready: false, failed: false, me: { x: OG * CS / 2, z: OG * CS / 2, a: 0, p: 0 }, rsq: -1, cur: 0, last: KNIFE, stepT: 0, ammo: OW.map(w => w.mag), reloadT: 0, fireCd: 0, firing: false, latch: false, scoped: false, bloom: 0, kick: 0,
         shotN: 0, claimN: 0, claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: 0, buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
       loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
@@ -558,7 +563,9 @@ function makeOps(md) {
       // aim settings (shared with the other 3D game)
       const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.textContent = "⚙ Settings";
       const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
-      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><label class="sl">Graphics <select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label><button type="button" class="btn" data-close>Done</button>';
+      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><label><input type="checkbox" data-cb> Color-blind team colors</label><label class="sl">Graphics <select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label><button type="button" class="btn" data-close>Done</button>';
+      const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
+      cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
       const qs = sp.querySelector("[data-q]"); qs.value = (store("nfa-gfx") || {}).q || "auto";
       qs.addEventListener("change", () => { store("nfa-gfx", { q: qs.value }); toast("Graphics: " + qs.options[qs.selectedIndex].text + ". Applies from the next game."); });
       sb.addEventListener("click", (e) => { e.stopPropagation(); if (document.pointerLockElement) try { document.exitPointerLock(); } catch (er) {} sp.hidden = !sp.hidden; syncLookPanel(F); });
@@ -573,7 +580,7 @@ function makeOps(md) {
       const pl = g.pl && g.pl[me];
       const alive = !pl || pl[1] === 1;
       if (pl && pl[7] !== F.rsq) { // (re)spawn
-        F.rsq = pl[7]; F.me.x = pl[8]; F.me.z = pl[9]; F.me.p = 0; F.ammo = OW.map(w => w.mag); F.reloadT = 0; F.scoped = false;
+        F.rsq = pl[7]; F.me.x = pl[8]; F.me.z = pl[9]; F.me.p = 0; F.spawnHintT = team ? 0 : 5; F.hurtDir = null; F.ammo = OW.map(w => w.mag); F.reloadT = 0; F.scoped = false;
         F.me.a = team ? (pl[2] === 0 ? 0 : Math.PI) : Math.random() * 6.28;
         F.cur = pl[12] >= 0 ? pl[12] : (pl[15] != null ? pl[15] : 0);
       }
@@ -639,7 +646,7 @@ function makeOps(md) {
         best = i; bd = d;
       });
       F.shotN++; F.lastShot = [F.shotN, +(me.x + fx).toFixed(2), 1.1, +(me.z + fz).toFixed(2), KNIFE];
-      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; SFX.thud ? SFX.thud() : SFX.tone(140, 0.09, "square", 0.08); }
+      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.thud ? SFX.thud() : SFX.tone(140, 0.09, "square", 0.08); }
     },
     fire(V) {
       const F = V.fps, me = F.me, W0 = OW[F.cur];
@@ -651,7 +658,7 @@ function makeOps(md) {
       const aimA = me.a, aimP = me.p + (F.rec || 0);
       F.rec = Math.min(0.16, (F.rec || 0) + W0.kick * (0.55 + Math.random() * 0.4)); me.a += (Math.random() - 0.5) * W0.kick * 0.25;
       const start = [me.x - Math.sin(aimA) * 0.6 + Math.cos(aimA) * 0.2, EYE - 0.16, me.z - Math.cos(aimA) * 0.6 - Math.sin(aimA) * 0.2];
-      const pel = W0.pel || 1; let hitAny = false, headAny = false, lastEnd = null;
+      const pel = W0.pel || 1; let hitAny = false, headAny = false, lastEnd = null; const dmgAcc = {}, headIdx = {};
       for (let k = 0; k < pel; k++) {
         const ya = aimA + (Math.random() - 0.5) * 2 * spread, pa = aimP + (Math.random() - 0.5) * 2 * spread * (pel > 1 ? 0.6 : 1);
         const cp = Math.cos(pa), dir = [-Math.sin(ya) * cp, Math.sin(pa), -Math.cos(ya) * cp];
@@ -676,13 +683,19 @@ function makeOps(md) {
         if (hitIdx >= 0) {
           const pls = V.g.pl, mine = pls[V.meIdx];
           const friendly = team && pls[hitIdx][2] === mine[2];
-          if (!friendly) { const head = hitY > 1.22; F.claims.push([++F.claimN, hitIdx, head ? 1 : 0, F.cur]); hitAny = true; headAny = headAny || head; }
+          if (!friendly) {
+            const head = hitY > 1.22; F.claims.push([++F.claimN, hitIdx, head ? 1 : 0, F.cur]); hitAny = true; headAny = headAny || head;
+            const av = F.remote[hitIdx], dd = av ? Math.hypot(av.x - me.x, av.z - me.z) : 0, est = W0.dmg * (head ? W0.hs : 1) * clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1);
+            dmgAcc[hitIdx] = (dmgAcc[hitIdx] || 0) + est; if (head) headIdx[hitIdx] = 1;
+          }
         }
       }
       F.shotN++; F.lastShot = [F.shotN, +lastEnd[0].toFixed(2), +lastEnd[1].toFixed(2), +lastEnd[2].toFixed(2), F.cur];
-      if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.tone(headAny ? 2400 : 1700, 0.06, "square", 0.05); }
+      if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.tone(headAny ? 2400 : 1700, 0.06, "square", 0.05); if (headAny) SFX.tone(3200, 0.08, "triangle", 0.05, 0, 0.05); }
+      Object.keys(dmgAcc).forEach(k => this.pop(F, Math.round(dmgAcc[k]), !!headIdx[k]));
       if (W0.scope) F.scoped = false;
     },
+    pop(F, n, head, tag) { F.pops = F.pops || []; F.pops.push({ n, head, tag, life: 0.9, x: (Math.random() - 0.5) * 60, y: -30 - Math.random() * 20 }); if (F.pops.length > 8) F.pops.shift(); },
     panOf(F, x, z, d) { const a = F.me.a; return d > 0.01 ? Math.max(-1, Math.min(1, ((x - F.me.x) * Math.cos(a) - (z - F.me.z) * Math.sin(a)) / d)) * 0.85 : 0; },
     charTex(c, hex, name, ringHex) { return frenzy.charTex(c, hex, name); },
     build(V) {
@@ -887,6 +900,7 @@ function makeOps(md) {
       bomb.add(bb, strap, scr, halo, led); bomb.visible = false; scene.add(bomb); F.bomb = bomb; F.bombLed = led; F.bombScr = scr; F.bombHalo = halo;
       // ---- players: character card + soft shadow + team glow ring + gun + muzzle flash
       const shadowM = new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false });
+      F.markTex = (t, hx) => GFX.tex(64, 64, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = hx; x.strokeStyle = "#0a0b0d"; x.lineWidth = 6; x.beginPath(); if (t === 0) { x.moveTo(w / 2, 8); x.lineTo(w - 8, h - 10); x.lineTo(8, h - 10); x.closePath(); } else x.rect(12, 12, w - 24, h - 24); x.stroke(); x.fill(); });
       const AVG = { torso: new T.CapsuleGeometry(0.27, 0.42, 4, 12), vest: new T.BoxGeometry(0.5, 0.42, 0.38), stripe: new T.BoxGeometry(0.4, 0.05, 0.02), leg: new T.BoxGeometry(0.17, 0.72, 0.2), boot: new T.BoxGeometry(0.19, 0.12, 0.3), arm: new T.CapsuleGeometry(0.075, 0.38, 3, 8) };
       F.avatars = V.ro.map((r, i) => {
         const grp = new T.Group(), bd = new T.Group(); grp.add(bd);
@@ -903,12 +917,15 @@ function makeOps(md) {
         const spr = new T.Sprite(mat); spr.scale.set(1.05, 1.31, 1); spr.position.y = 1.95;
         const ring = new T.Mesh(new T.RingGeometry(0.45, 0.62, 32), new T.MeshBasicMaterial({ color: new T.Color(r.hex), transparent: true, opacity: 0.85, side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03;
+        const mark = new T.Sprite(new T.SpriteMaterial({ transparent: true, depthWrite: false })); mark.scale.set(0.42, 0.42, 1); mark.position.y = 2.78; mark.visible = false;
+        const rim = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true, opacity: 0.55, blending: T.AdditiveBlending, depthWrite: false })); rim.scale.set(1.9, 2.9, 1); rim.position.y = 1.25; rim.visible = false;
+        grp.add(mark, rim);
         const sh = new T.Mesh(new T.PlaneGeometry(1.4, 1.4), shadowM); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.02;
         const gun = new T.Group(); const gb = new T.Mesh(new T.BoxGeometry(0.1, 0.12, 0.62), metal); const gs = new T.Mesh(new T.BoxGeometry(0.105, 0.03, 0.5), mStd({ color: 0xffd23f, emissive: 0xffd23f, emissiveIntensity: 0.6 })); gs.position.y = 0.06; gun.add(gb, gs); gun.position.set(0.36, 0.95, -0.2);
         const fl = new T.Sprite(new T.SpriteMaterial({ map: GFX.flashTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false, color: new T.Color(2, 1.8, 1.4) })); fl.scale.set(0.7, 0.7, 1); fl.position.set(0.36, 0.97, -0.62); fl.visible = false;
         gun.position.set(0.12, 1.2, -0.42); fl.position.set(0.12, 1.22, -0.84);
         bd.add(gun, fl); grp.add(sh, spr, ring); scene.add(grp);
-        return { grp, bd, legs, arms, suit, spr, ring, gun, fl, flT: 0, ph: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
+        return { grp, bd, legs, arms, suit, stripeM: stripe.material, mark, rim, tmKey: "", spr, ring, gun, fl, flT: 0, ph: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
       });
       // ---- view-model guns
       F.guns = OW.map((w0, k) => {
@@ -987,6 +1004,7 @@ function makeOps(md) {
       F.cv.style.left = gc.offsetLeft + "px"; F.cv.style.top = gc.offsetTop + "px"; pinToStage(F, w, h);
       const fov = F.scoped ? 22 : 74; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
       // players
+      const mypl0 = V.meIdx >= 0 && g.pl ? g.pl[V.meIdx] : null;
       V.ro.forEach((r, i) => {
         const av = F.avatars[i]; const pl = g.pl && g.pl[i];
         let x, z, a;
@@ -1017,7 +1035,21 @@ function makeOps(md) {
         av.spr.position.y = alive ? 1.95 + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
         if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
         av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3); av.suit.emissive.setRGB(av.hurtT * 6, 0, 0);
-        if (team && pl) av.ring.material.color.set(TEAM[pl[2]].hex);
+        if (team && pl) {
+          av.ring.material.color.set(TEAM[pl[2]].hex);
+          // whole body in team colour, a glow behind it and a shape marker over the head so sides read from across the map
+          const key = pl[2] + (opsColorBlind() ? "c" : "n");
+          if (av.tmKey !== key) {
+            av.tmKey = key; const hx = TEAM[pl[2]].hex;
+            av.suit.color.set(hx).multiplyScalar(0.9); av.stripeM.color.set(hx); av.stripeM.emissive.set(hx);
+            av.rim.material.color.set(hx).multiplyScalar(1.6);
+            av.mark.material.map = F.markTex(pl[2], hx); av.mark.material.needsUpdate = true;
+          }
+          const mate = mypl0 && pl[2] === mypl0[2];
+          av.mark.visible = alive; av.rim.visible = alive;
+          av.mark.material.depthTest = !mate; av.mark.renderOrder = mate ? 10 : 0; // teammates' markers show through walls
+          av.mark.scale.setScalar(mate ? 0.42 : 0.5);
+        }
         av.flT = Math.max(0, av.flT - dt); av.fl.visible = av.flT > 0; if (av.fl.visible) av.fl.material.rotation = Math.random() * 6;
         const shot = r.b ? (g.bs && g.bs[i]) : (V.inputOf(i) || {}).sh;
         if (Array.isArray(shot) && shot[0] !== F.shSeen[i]) {
@@ -1029,6 +1061,7 @@ function makeOps(md) {
             if (!W1.melee) this.addTracer(V, [sx, 0.97, sz], [shot[1], shot[2], shot[3]], wcol, true); else av.flT = 0;
             const d = Math.hypot(av.x - F.me.x, av.z - F.me.z);
             const pan = this.panOf(F, av.x, av.z, d);
+            if (Math.hypot(shot[1] - F.me.x, shot[3] - F.me.z) < 2.5 || W1.melee && d < 3.5) F.lastAttacker = { x: av.x, z: av.z, t: performance.now() };
             if (W1.melee) { if (d < 8) SFX.swish(0.5 * (1 - d / 8), pan); }
             else if (d < 70) SFX.shot(W1.snd, Math.max(0.12, 1 - d / 70) * 0.8, pan, Math.min(1, d / 50));
           }
@@ -1098,7 +1131,26 @@ function makeOps(md) {
         if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "wrong"); if (a[2] === 5) SFX.play("boom"); }
         if (a[0] === 4) { F.ann = { big: "GO GO GO", sub: "", col: "#ff8a3d", life: 1.6 }; SFX.play("go"); }
       }
-      if (pl) { if (pl[0] < F.lastHp && pl[1]) { F.hurtT = 0.45; SFX.play("bump"); } F.lastHp = pl[0]; }
+      if (pl) { if (pl[0] < F.lastHp && pl[1]) { F.hurtT = 0.45; SFX.play("bump"); F.hurtN = { n: F.lastHp - pl[0], life: 1 }; const la = F.lastAttacker; if (la && performance.now() - la.t < 700) F.hurtDir = { x: la.x, z: la.z, life: 1.4 }; } F.lastHp = pl[0]; }
+      // which way the damage came from: a red arc at the screen edge
+      if (F.hurtDir && F.hurtDir.life > 0 && pl && pl[1]) {
+        F.hurtDir.life -= dt; const dx = F.hurtDir.x - F.me.x, dz = F.hurtDir.z - F.me.z;
+        const fwdx = -Math.sin(F.me.a), fwdz = -Math.cos(F.me.a), rx = Math.cos(F.me.a), rz = -Math.sin(F.me.a);
+        const ang = Math.atan2(dx * rx + dz * rz, dx * fwdx + dz * fwdz); // 0 = ahead, +right
+        ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(ang); ctx.globalAlpha = Math.min(1, F.hurtDir.life);
+        ctx.strokeStyle = "#ff3b4e"; ctx.lineWidth = 10; ctx.lineCap = "round"; ctx.beginPath(); ctx.arc(0, 0, 150, -Math.PI / 2 - 0.35, -Math.PI / 2 + 0.35); ctx.stroke();
+        ctx.fillStyle = "#ff3b4e"; ctx.beginPath(); ctx.moveTo(0, -178); ctx.lineTo(-14, -160); ctx.lineTo(14, -160); ctx.fill(); ctx.restore(); ctx.globalAlpha = 1;
+      }
+      // damage you deal: numbers pop near the crosshair, gold for headshots
+      if (F.pops && F.pops.length) {
+        ctx.textAlign = "center"; F.pops.forEach(o => { o.life -= dt; o.y -= dt * 50; ctx.globalAlpha = Math.max(0, Math.min(1, o.life * 2));
+          ctx.font = (o.head ? "700 30px" : "700 22px") + " 'Chakra Petch', sans-serif"; ctx.lineWidth = 5; ctx.strokeStyle = "rgba(10,11,13,.85)";
+          const txt = (o.head ? "◎ " : "") + o.n; ctx.strokeText(txt, W / 2 + 40 + o.x, H / 2 + o.y); ctx.fillStyle = o.head ? "#ffd23f" : "#f5f1e6"; ctx.fillText(txt, W / 2 + 40 + o.x, H / 2 + o.y);
+          if (o.head && o.life > 0.5) { ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("HEADSHOT", W / 2, H / 2 + 46); } });
+        ctx.globalAlpha = 1; F.pops = F.pops.filter(o => o.life > 0);
+      }
+      // gun hint after spawning
+      if (pl && pl[1] && F.spawnHintT > 0 && (!F.shop || F.shop.hidden)) { F.spawnHintT -= dt; ctx.globalAlpha = Math.min(1, F.spawnHintT); ctx.textAlign = "center"; ctx.font = "700 14px 'JetBrains Mono', monospace"; const tx = matchMedia("(pointer: coarse)").matches ? "TAP BUY FOR GUNS" : "PRESS B FOR GUNS"; const tw = ctx.measureText(tx).width + 28; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.72 - 16, tw, 32, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText(tx, W / 2, H * 0.72); ctx.globalAlpha = 1; }
       F.hurtT = Math.max(0, F.hurtT - dt);
       if (F.hurtT > 0 && !F.post) { const gr = ctx.createRadialGradient(W / 2, H / 2, 160, W / 2, H / 2, 560); gr.addColorStop(0, "rgba(255,40,60,0)"); gr.addColorStop(1, "rgba(255,40,60," + F.hurtT * 1.3 + ")"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
       const alive = pl && pl[1];
@@ -1158,7 +1210,7 @@ function makeOps(md) {
           ctx.textAlign = "center"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(tm === 0 ? "PLANTING PAYLOAD…" : "DEFUSING…", W / 2, H * 0.62 + 14);
         } else if (hint) { ctx.textAlign = "center"; ctx.font = "700 16px Inter, sans-serif"; ctx.lineWidth = 5; ctx.strokeStyle = "rgba(10,11,13,.8)"; ctx.strokeText(hint, W / 2, H * 0.64); ctx.fillStyle = "#ff8a3d"; ctx.fillText(hint, W / 2, H * 0.64); }
       }
-      if (team && pl && g.ph === "buy" && alive) { ctx.textAlign = "center"; ctx.font = "700 15px Inter, sans-serif"; ctx.fillStyle = "#ff8a3d"; if (F.shop && F.shop.hidden) { ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "rgba(10,11,13,.7)"; ctx.beginPath(); ctx.roundRect(W / 2 - 40, H * 0.36 - 14, 80, 28, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText("B  BUY", W / 2, H * 0.36); } }
+      if (team && pl && g.ph === "buy" && alive) { ctx.textAlign = "center"; ctx.font = "700 15px Inter, sans-serif"; ctx.fillStyle = "#ff8a3d"; if (F.shop && F.shop.hidden) { ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "rgba(10,11,13,.7)"; ctx.beginPath(); ctx.roundRect(W / 2 - 75, H * 0.36 - 14, 150, 28, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText("B  BUY GUNS", W / 2, H * 0.36); } }
       // bottom-left: health/armor
       if (pl) {
         box(14, H - 66, 250, 52);
