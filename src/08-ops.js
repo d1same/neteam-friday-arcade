@@ -184,7 +184,7 @@ function makeOps(md) {
     // ---------------- host ----------------
     hostStart(S) {
       const n = S.ro.length, mp = opsPickMap(n); opsSetMap(mp);
-      const P = S.ro.map((r, i) => ({ tm: 0, x: 0, z: 0, a: 0, hp: 100, alive: 1, k: 0, d: 0, hsk: 0, arm: 0, w: -1, cur: 0, cr: 800, rsq: 0, rx: 0, rz: 0, lastClaim: 0, lastHitT: -9, actT: 0, ax: 0, az: 0, rT: 0, bs: 0, shot: null,
+      const P = S.ro.map((r, i) => ({ tm: 0, x: 0, z: 0, a: 0, hp: 100, alive: 1, k: 0, d: 0, hsk: 0, as: 0, dmg: 0, pln: 0, dfs: 0, hb: {}, idle: 0, seen: 0, gone: 0, arm: 0, w: -1, cur: 0, cr: 800, rsq: 0, rx: 0, rz: 0, lastClaim: 0, lastHitT: -9, actT: 0, ax: 0, az: 0, rT: 0, bs: 0, shot: null,
         bot: r.b ? { path: [], pT: 0, fT: 0.5, tgt: -1, react: 0, strafe: 1, sT: 0, boss: !!r.boss, goal: null, gT: 0 } : null }));
       if (team) {
         // humans alternate, bots fill the smaller side
@@ -205,7 +205,7 @@ function makeOps(md) {
         if (!p.alive || g.rd === 1) { p.w = -1; p.pw = 0; p.arm = 0; }
         const c = cellC(spots[p.tm][k[p.tm]++ % spots[p.tm].length]);
         p.x = p.rx = c[0] + (Math.random() - 0.5); p.z = p.rz = c[1] + (Math.random() - 0.5);
-        p.a = p.tm === 0 ? Math.PI : 0; p.hp = 100; p.alive = 1; p.rsq++; p.actT = 0; p.cur = p.w >= 0 ? p.w : p.pw;
+        p.a = p.tm === 0 ? Math.PI : 0; p.hp = 100; p.alive = p.gone ? 0 : 1; p.hb = {}; p.rsq++; p.actT = 0; p.cur = p.w >= 0 ? p.w : p.pw;
         if (p.bot) { p.bot.path = []; p.bot.goal = null; p.bot.tgt = -1; this.botBuy(p); p.bot.site = (i % 2); }
       });
       this.say(S, [1, g.rd]);
@@ -224,7 +224,7 @@ function makeOps(md) {
       const others = g.P.filter((q, j) => j !== i && q.alive);
       let best = null, bs = -1;
       for (let k = 0; k < 24; k++) { const c = cellC(OPS_CELLS.open[rint(0, OPS_CELLS.open.length - 1)]); const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
-      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.rsq++; p.actT = 0; p.spT = g.t;
+      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.rsq++; p.actT = 0; p.spT = g.t; p.hb = {};
       if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.cur = p.w = [1, 2, 2, 3, 5, 7, 8, 9][rint(0, 7)]; p.pw = Math.random() < 0.5 ? 6 : 0; }
     },
     damage(S, tgt, from, wi, head, raw) {
@@ -233,10 +233,15 @@ function makeOps(md) {
       let dmg = raw != null ? raw : W0.dmg * (head ? W0.hs : 1);
       if (from >= 0 && from !== tgt && !W0.melee) { const f = g.P[from], dd = Math.hypot(f.x - q.x, f.z - q.z); dmg *= clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1); }
       if (q.arm > 0) { const ab = Math.min(q.arm, dmg * 0.45); q.arm -= ab; dmg -= ab; }
+      const real = Math.max(0, Math.min(dmg, q.hp));
+      if (from >= 0 && from !== tgt) { g.P[from].dmg += real; q.hb[from] = (q.hb[from] || 0) + real; }
       q.hp -= dmg;
       if (q.hp <= 0) {
         q.hp = 0; q.alive = 0; q.d++; q.actT = 0; q.rT = 3;
         if (from >= 0 && from !== tgt) { const f = g.P[from]; f.k++; if (head) f.hsk++; f.cr = Math.min(16000, f.cr + (W0.kill || 300)); }
+        // assist: anyone else who did 40+ damage to this life
+        for (const j in q.hb) if (+j !== from && q.hb[j] >= 40 && g.P[j]) g.P[j].as++;
+        q.hb = {};
         g.kf.push([from, tgt, wi, head ? 1 : 0, ++g.kseq]); if (g.kf.length > 5) g.kf.shift();
       }
     },
@@ -253,9 +258,9 @@ function makeOps(md) {
       if (Math.hypot(p.x - p.ax, p.z - p.az) > 0.6) { p.actT = 0; return; }
       p.actT += dt;
       if (canPlant && p.actT >= this.PLANT) {
-        g.bomb = { st: 1, x: p.x, z: p.z, t: this.BOMB, site: ch === "a" ? 0 : 1 }; p.actT = 0; p.cr = Math.min(9000, p.cr + 300);
+        g.bomb = { st: 1, x: p.x, z: p.z, t: this.BOMB, site: ch === "a" ? 0 : 1, by: i }; p.pln++; p.actT = 0; p.cr = Math.min(9000, p.cr + 300);
         this.say(S, [2, g.bomb.site]);
-      } else if (canDefuse && p.actT >= this.DEFUSE) { b.st = 2; p.actT = 0; p.cr = Math.min(9000, p.cr + 300); }
+      } else if (canDefuse && p.actT >= this.DEFUSE) { b.st = 2; p.dfs++; p.actT = 0; p.cr = Math.min(9000, p.cr + 300); }
     },
     endRound(S, win, why) {
       const g = S.g; g.sc[win]++; g.ph = "post"; g.pt = this.POST;
@@ -267,7 +272,12 @@ function makeOps(md) {
       const g = S.g; g.t += dt; const P = g.P;
       if (team) { g.pt -= dt; if (g.ph === "buy" && g.pt <= 0) { g.ph = "live"; g.pt = this.ROUND; this.say(S, [4]); } else if (g.ph === "post" && g.pt <= 0) { if (g.sc[0] >= this.WIN || g.sc[1] >= this.WIN) g.over = true; else this.startRound(S); } }
       P.forEach((p, i) => {
-        if (!p.alive) { if (!team) { p.rT -= dt; if (p.rT <= 0) this.spawnFFA(S, i); } return; }
+        // a human who closed the tab stops sending input: take them out so rounds can still end
+        if (!p.bot) {
+          if (inputs[i]) { p.idle = 0; p.seen = 1; if (p.gone) { p.gone = 0; p.rT = 1; } }
+          else { p.idle += dt; if (!p.gone && p.idle > (p.seen ? 8 : 25)) { p.gone = 1; if (p.alive) { p.alive = 0; p.hp = 0; } } }
+        }
+        if (!p.alive) { if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) this.spawnFFA(S, i); } return; }
         if (p.bot) { this.botTick(S, i, dt); return; }
         const inp = inputs[i]; if (!inp) return;
         if (Number.isFinite(inp.x) && Number.isFinite(inp.z) && inp.q === p.rsq && !(team && g.ph === "buy" && Math.hypot(inp.x - p.rx, inp.z - p.rz) > 1.5)) { p.x = clamp(inp.x, 0, OG * CS); p.z = clamp(inp.z, 0, OG * CS); p.a = +inp.a || 0; }
@@ -316,11 +326,11 @@ function makeOps(md) {
       const b = g.bomb;
       if (b.st === 1) {
         b.t -= dt;
-        if (b.t <= 0) { b.st = 3; P.forEach((q, j) => { if (q.alive && Math.hypot(q.x - b.x, q.z - b.z) < 9) { q.alive = 0; q.hp = 0; q.d++; } }); this.endRound(S, 0, 5); return; }
+        if (b.t <= 0) { b.st = 3; P.forEach((q, j) => { if (q.alive && Math.hypot(q.x - b.x, q.z - b.z) < 9) { q.alive = 0; q.hp = 0; q.d++; q.hb = {}; const f = P[b.by]; if (f && q.tm !== f.tm) { f.k++; g.kf.push([b.by, j, -1, 0, ++g.kseq]); if (g.kf.length > 5) g.kf.shift(); } } }); this.endRound(S, 0, 5); return; }
       }
       if (b.st === 2) { this.endRound(S, 1, 4); return; }
       const alive = [0, 0]; P.forEach(p => { if (p.alive) alive[p.tm]++; });
-      const has = [0, 0]; P.forEach(p => has[p.tm]++);
+      const has = [0, 0]; P.forEach(p => { if (!p.gone) has[p.tm]++; });
       if (has[1] && alive[1] === 0) { this.endRound(S, 0, 2); return; }
       if (has[0] && alive[0] === 0 && b.st !== 1) { this.endRound(S, 1, 1); return; }
       if (g.pt <= 0 && b.st === 0) { this.endRound(S, 1, 3); return; }
@@ -387,7 +397,7 @@ function makeOps(md) {
       const g = S.g, b = g.bomb;
       return {
         md, mp: g.mp, rd: g.rd, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
-        pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw]),
+        pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as]),
         bt: g.P.map(p => p.bot ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)] : 0),
         bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann,
       };
@@ -398,6 +408,24 @@ function makeOps(md) {
       const g = S.g, win = g.sc[0] === g.sc[1] ? -1 : g.sc[0] > g.sc[1] ? 0 : 1;
       return g.P.map((p, i) => ({ i, v: p.k, de: p.d, w: team && p.tm === win ? 1 : 0, label: (team ? TEAM[p.tm].short + " · " : "") + p.k + " elim" + (p.k === 1 ? "" : "s") + " · " + p.d + " death" + (p.d === 1 ? "" : "s"), rec: p.k }))
         .sort((a, b) => (b.w - a.w) || (b.v - a.v) || (a.de - b.de));
+    },
+    board(S) {
+      const g = S.g;
+      const rows = g.P.map((p, i) => {
+        const kd = p.d ? p.k / p.d : p.k, hs = p.k ? Math.round(100 * p.hsk / p.k) : 0;
+        const v = [p.k, p.d, p.as, kd.toFixed(2), hs + "%", Math.round(p.dmg)];
+        if (team) v.push(p.pln + p.dfs);
+        return { i, tm: team ? p.tm : -1, v, score: p.k * 2 + p.as + (p.pln + p.dfs) * 2 + p.dmg / 100 - p.d * 0.3 };
+      });
+      let mvp = -1, bs = -1e9; rows.forEach(r => { if (r.score > bs) { bs = r.score; mvp = r.i; } });
+      rows.sort((a, b) => (a.tm - b.tm) || (b.v[0] - a.v[0]) || (a.v[1] - b.v[1]) || (b.v[5] - a.v[5]));
+      return {
+        cols: team ? ["K", "D", "A", "K/D", "HS", "DMG", "OBJ"] : ["K", "D", "A", "K/D", "HS", "DMG"],
+        tips: team ? ["Kills", "Deaths", "Assists (40+ damage on someone a teammate finished)", "Kills per death", "Headshot kill %", "Damage dealt", "Plants + defuses"] : ["Kills", "Deaths", "Assists", "Kills per death", "Headshot kill %", "Damage dealt"],
+        rows: rows.map(r => ({ i: r.i, tm: r.tm, v: r.v })), mvp,
+        teams: team ? [{ n: TEAM[0].n, hex: TEAM[0].hex, sc: g.sc[0] }, { n: TEAM[1].n, hex: TEAM[1].hex, sc: g.sc[1] }] : null,
+        sub: team ? "Rounds " + g.sc[0] + " – " + g.sc[1] + " · " + (OPS_MAPS[g.mp] ? OPS_MAPS[g.mp].n : "") : (OPS_MAPS[g.mp] ? OPS_MAPS[g.mp].n : ""),
+      };
     },
     chip(V, i) { const pl = V.g && V.g.pl && V.g.pl[i]; return pl ? pl[3] : 0; },
 
@@ -1018,7 +1046,7 @@ function makeOps(md) {
           if (av.spd > 3.6) { av.stepT = (av.stepT || 0) + v * dt; if (av.stepT > 2.1) { av.stepT = 0; const d = Math.hypot(av.x - F.me.x, av.z - F.me.z); if (d < 26) SFX.step(0.75 * (1 - d / 26), this.panOf(F, av.x, av.z, d), i & 1); } }
         }
         F.remote[i] = { x: av.x, z: av.z, a };
-        av.grp.position.set(av.x, 0, av.z); av.grp.rotation.y = a + Math.PI;
+        av.grp.position.set(av.x, 0, av.z); av.grp.rotation.y = a + Math.PI; av.grp.visible = !(pl && pl[16]);
         const alive = !!(pl && pl[1]);
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
@@ -1243,7 +1271,7 @@ function makeOps(md) {
         const [a, b, wi, hs] = o.k, A = V.ro[a], B = V.ro[b]; if (!B) return;
         const pa = g.pl && g.pl[a], pb = g.pl && g.pl[b];
         const ca = team && pa ? TEAM[pa[2]].hex : A ? A.hex : "#fff", cb = team && pb ? TEAM[pb[2]].hex : B.hex;
-        const mid = " " + (OW[wi] || OW[0]).short + (hs ? " ◎ " : " "), an = A && a !== b ? A.n : "💥", bn = B.n;
+        const mid = " " + (wi === -1 ? "PAYLOAD" : (OW[wi] || OW[0]).short) + (hs ? " ◎ " : " "), an = A && a !== b ? A.n : "💥", bn = B.n;
         ctx.font = "700 13px Inter, sans-serif"; const wa = ctx.measureText(an).width, wm = ctx.measureText(mid).width, wb = ctx.measureText(bn).width, w = wa + wm + wb + 22;
         const y = 76 + k * 28, x = W - w - 14;
         ctx.globalAlpha = Math.min(1, o.life); box(x, y, w, 24, 8, 0.75);
@@ -1269,9 +1297,9 @@ function makeOps(md) {
       // scoreboard (Tab)
       if (F.tab) {
         box(W / 2 - 300, 80, 600, 40 + V.ro.length * 24, 14, 0.9);
-        ctx.font = "700 12px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.textAlign = "left"; ctx.fillText("PLAYER", W / 2 - 280, 100); ctx.textAlign = "right"; ctx.fillText("K", W / 2 + 130, 100); ctx.fillText("D", W / 2 + 180, 100); ctx.fillText(team ? "$" : "HS", W / 2 + 270, 100);
+        ctx.font = "700 12px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.textAlign = "left"; ctx.fillText("PLAYER", W / 2 - 280, 100); ctx.textAlign = "right"; ctx.fillText("K", W / 2 + 90, 100); ctx.fillText("D", W / 2 + 135, 100); ctx.fillText("A", W / 2 + 180, 100); ctx.fillText(team ? "$" : "HS", W / 2 + 270, 100);
         const order = V.ro.map((r, i) => i).sort((a, b) => team ? (g.pl[a][2] - g.pl[b][2]) || (g.pl[b][3] - g.pl[a][3]) : (g.pl[b][3] - g.pl[a][3]));
-        order.forEach((i, k) => { const r = V.ro[i], q = g.pl[i]; const y = 124 + k * 24; ctx.textAlign = "left"; ctx.fillStyle = team ? TEAM[q[2]].hex : r.hex; ctx.font = (i === me ? "800" : "600") + " 14px Inter, sans-serif"; ctx.fillText((q[1] ? "" : "✖ ") + r.n + (r.b ? " (bot)" : ""), W / 2 - 280, y); ctx.textAlign = "right"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(String(q[3]), W / 2 + 130, y); ctx.fillText(String(q[4]), W / 2 + 180, y); ctx.fillText(team ? (!pl || q[2] === pl[2] ? "$" + q[10] : "—") : String(q[14]), W / 2 + 270, y); });
+        order.forEach((i, k) => { const r = V.ro[i], q = g.pl[i]; const y = 124 + k * 24; ctx.textAlign = "left"; ctx.fillStyle = team ? TEAM[q[2]].hex : r.hex; ctx.font = (i === me ? "800" : "600") + " 14px Inter, sans-serif"; ctx.fillText((q[1] ? "" : "✖ ") + r.n + (r.b ? " (bot)" : q[16] ? " (left)" : ""), W / 2 - 280, y); ctx.textAlign = "right"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(String(q[3]), W / 2 + 90, y); ctx.fillText(String(q[4]), W / 2 + 135, y); ctx.fillText(String(q[17] || 0), W / 2 + 180, y); ctx.fillText(team ? (!pl || q[2] === pl[2] ? "$" + q[10] : "—") : String(q[14]), W / 2 + 270, y); });
       }
       if (F.stick) { const s = APP.gameScale || 1, r = $("#gameCanvas").getBoundingClientRect(); ctx.strokeStyle = "rgba(245,241,230,.35)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((F.stick.bx - r.left) / s, (F.stick.by - r.top) / s, 55 / s, 0, 7); ctx.stroke(); ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc((F.stick.x - r.left) / s, (F.stick.y - r.top) / s, 22 / s, 0, 7); ctx.fill(); }
       if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !matchMedia("(pointer: coarse)").matches && (!F.shop || F.shop.hidden) && !(team && g.ph === "buy")) {

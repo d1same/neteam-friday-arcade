@@ -87,7 +87,7 @@ function packH() {
     id: S.id, since: S.since, game: S.game, ph: S.ph, seed: S.seed, sq: ++S.sq,
     tl: S.ph === "play" ? mod.timeLeft(S) : S.phT,
     ro: S.ro.map(r => ({ k: r.k, n: r.n, c: r.c, col: r.col, u: r.u, b: r.b, boss: r.boss || 0 })),
-    g: mod.pack(S), res: S.res, saved: S.saved,
+    g: mod.pack(S), res: S.res, saved: S.saved, bd: S.ph === "results" ? S.board : null,
   };
 }
 function finishSession() {
@@ -100,7 +100,8 @@ function finishSession() {
     if (!r.b) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
     return { i: o.i, l: o.label, pt, hp, rec: o.rec };
   });
-  S.ph = "results"; S.phT = 14000;
+  S.board = mod.board ? mod.board(S) : null;
+  S.ph = "results"; S.phT = 20000;
   const humans = S.res.filter(o => !S.ro[o.i].b && S.ro[o.i].u);
   // every match with a signed-in human is saved. Solo matches vs bots keep records/personal bests but don't award league points.
   const solo = humans.length < 2;
@@ -296,6 +297,7 @@ function renderOverlay(V, full) {
     const res = V.h.res || [];
     const win = res[0] && V.ro[res[0].i];
     const h2 = document.createElement("h2"); h2.textContent = win ? win.n + " wins!" : "Round over";
+    if (V.h.bd && V.h.bd.teams) { const T = V.h.bd.teams, w = T[0].sc === T[1].sc ? -1 : T[0].sc > T[1].sc ? 0 : 1; h2.textContent = w < 0 ? "Draw" : T[w].n + " wins!"; if (w >= 0) h2.style.color = T[w].hex; }
     const cv = document.createElement("canvas"); cv.className = "podium"; V.podium = cv;
     const list = document.createElement("div"); list.className = "res-list";
     res.forEach((o, k) => {
@@ -323,7 +325,42 @@ function renderOverlay(V, full) {
     }
     const cnt = document.createElement("span"); cnt.className = "res-note"; cnt.id = "resCount";
     act.append(cnt);
-    card.append(h2, cv, list, note, act);
+    const bd = V.h.bd;
+    let sub = null;
+    if (bd && bd.rows) {
+      list.textContent = ""; list.className = "res-board";
+      if (bd.sub) { sub = document.createElement("div"); sub.className = "res-sub"; sub.textContent = bd.sub; }
+      const ptOf = {}; res.forEach(o => ptOf[o.i] = o.pt);
+      const tbl = document.createElement("table"); tbl.className = "sb";
+      const head = (label, hex, sc) => {
+        const tr = document.createElement("tr"); tr.className = "sb-h";
+        const th0 = document.createElement("th"); th0.colSpan = 2; th0.className = "sb-name";
+        if (hex) { th0.style.color = hex; th0.textContent = label + (sc != null ? "  " + sc : ""); } else th0.textContent = "Player";
+        tr.append(th0);
+        bd.cols.forEach((c, k) => { const th = document.createElement("th"); th.textContent = c; th.title = (bd.tips && bd.tips[k]) || ""; tr.append(th); });
+        const thp = document.createElement("th"); thp.textContent = "PTS"; thp.title = "League points"; tr.append(thp);
+        tbl.append(tr);
+      };
+      let lastTm = null;
+      bd.rows.forEach(rw => {
+        const r = V.ro[rw.i]; if (!r) return;
+        if (bd.teams && rw.tm !== lastTm) { lastTm = rw.tm; const t = bd.teams[rw.tm]; head(t.n, t.hex, t.sc); }
+        else if (!bd.teams && lastTm === null) { lastTm = 0; head("", null, null); }
+        const tr = document.createElement("tr"); if (rw.i === V.meIdx) tr.className = "me";
+        const tdA = document.createElement("td"); tdA.className = "sb-av"; tdA.append(avatarCanvas(r.c, 26, r.hex));
+        const tdN = document.createElement("td"); tdN.className = "sb-name"; tdN.textContent = r.n + (r.b ? " (bot)" : "");
+        if (bd.teams) tdN.style.color = bd.teams[rw.tm].hex;
+        if (rw.i === bd.mvp) { const m = document.createElement("span"); m.className = "mvp"; m.textContent = "MVP"; tdN.append(m); }
+        tr.append(tdA, tdN);
+        rw.v.forEach(x => { const td = document.createElement("td"); td.textContent = String(x); tr.append(td); });
+        const tdP = document.createElement("td"); tdP.className = "sb-pt"; tdP.textContent = r.b || !ptOf[rw.i] ? "" : "+" + ptOf[rw.i]; tr.append(tdP);
+        tbl.append(tr);
+      });
+      list.append(tbl);
+    }
+    card.append(h2);
+    if (sub) card.append(sub);
+    card.append(cv, list, note, act);
     ov.append(card);
     V.resCard = card;
     const top = res.slice(0, 3).map(o => o.i);

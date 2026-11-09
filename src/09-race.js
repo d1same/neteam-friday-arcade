@@ -120,7 +120,7 @@ const race = {
     const P = S.ro.map((r, i) => {
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
       const idx = RC.N - 6 - row * 5, pos = rcAt(idx, side * 3.6);
-      return { x: pos[0], z: pos[1], a: rcHead(idx), v: 0, i: idx, dist: idx - RC.N, ld: 0, lt: [], fin: 0, ft: 0, rsq: 1, bo: 0, it: 0, sh: 0, hitN: 0, hitK: 0, hitF: 0, boN: 0, useSeq: 0, itT: 0,
+      return { x: pos[0], z: pos[1], a: rcHead(idx), v: 0, i: idx, dist: idx - RC.N, ld: 0, lt: [], fin: 0, ft: 0, rsq: 1, bo: 0, it: 0, sh: 0, hitN: 0, hitK: 0, hitF: 0, boN: 0, useSeq: 0, itT: 0, hl: 0, iu: 0, idle: 0, seen: 0, gone: 0,
         bot: r.b ? { skill: (r.boss ? 0.97 : 0.86) + Math.random() * 0.07, lane: (Math.random() - 0.5) * 6, lT: 0, dr: 0 } : null, skill: r.b ? 1 : 1 };
     });
     P.forEach(p => { if (p.bot) p.skill = p.bot.skill; });
@@ -136,6 +136,7 @@ const race = {
         if (go) this.botTick(S, i, dt);
       } else {
         const inp = inputs[i];
+        if (inp) { p.idle = 0; p.seen = 1; p.gone = 0; } else if (go) { p.idle += dt; if (p.idle > (p.seen ? 10 : 25)) p.gone = 1; }
         if (inp && go && Number.isInteger(inp.use) && inp.use !== p.useSeq) { p.useSeq = inp.use; if (p.it) this.useItem(S, i); }
         if (inp && go && Number.isFinite(inp.x) && Number.isFinite(inp.z)) {
           const n = rcNearest(inp.x, inp.z, p.i);
@@ -164,7 +165,7 @@ const race = {
   hit(S, j, kind, from) {
     const g = S.g, q = g.P[j]; if (!q || q.fin) return;
     if (q.sh > 0) { g.ev.push([++g.evN, 6, from, j]); return; }
-    q.hitN++; q.hitK = kind; q.hitF = from;
+    q.hitN++; q.hitK = kind; q.hitF = from; if (from >= 0 && from !== j && g.P[from]) g.P[from].hl++;
     if (q.bot) {
       if (kind === 1) q.slow = 2.6;
       if (kind === 2) { q.spin = 0.9; q.spinDir = Math.random() < 0.5 ? -1 : 1; q.v *= 0.5; }
@@ -172,7 +173,7 @@ const race = {
     }
   },
   useItem(S, i) {
-    const g = S.g, p = g.P[i], kind = p.it; p.it = 0;
+    const g = S.g, p = g.P[i], kind = p.it; p.it = 0; if (kind) p.iu++;
     if (kind === 1) {
       let best = -1, bd = 1e9; g.P.forEach((q, j) => { if (j === i || q.fin) return; const d = q.dist - p.dist; if (d > 0 && d < bd) { bd = d; best = j; } });
       if (best < 0) g.P.forEach((q, j) => { if (j === i || q.fin) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < bd) { bd = d; best = j; } });
@@ -218,12 +219,23 @@ const race = {
       bt: g.P.map(p => p.bot ? [+p.x.toFixed(2), +p.z.toFixed(2), +p.a.toFixed(3), +p.v.toFixed(1), p.bo > 0 ? 1 : 0, +(p.slip || 0).toFixed(2)] : 0) };
   },
   timeLeft(S) { const g = S.g; if (g.t < 0) return -g.t * 1000; if (g.firstFin) return Math.max(0, (g.firstFin + this.GRACE - g.t) * 1000); return (this.LIMIT - g.t) * 1000; },
-  done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b); return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
+  done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b && !p.gone); return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
   rank(S) {
     const g = S.g;
     return g.P.map((p, i) => ({ i, p, best: p.lt.length ? Math.min(...p.lt) : 0 }))
       .sort((a, b) => (a.p.fin || 99) - (b.p.fin || 99) || b.p.dist - a.p.dist)
       .map(o => ({ i: o.i, v: o.p.fin ? -o.p.ft : o.p.dist, label: o.p.fin ? "Finished " + (o.p.ft / 1000).toFixed(1) + " s" + (o.best ? " · best lap " + (o.best / 1000).toFixed(2) : "") : "DNF · lap " + Math.min(RC_LAPS, o.p.ld + 1) + "/" + RC_LAPS, rec: o.best }));
+  },
+  board(S) {
+    const g = S.g;
+    const fmt = v => { if (!v) return "—"; const m = Math.floor(v / 60000), sec = (v % 60000) / 1000; return m ? m + ":" + sec.toFixed(2).padStart(5, "0") : sec.toFixed(2) + "s"; };
+    const ord = g.P.map((p, i) => ({ i, p })).sort((a, b) => (a.p.fin || 99) - (b.p.fin || 99) || b.p.dist - a.p.dist);
+    let fast = -1, fv = 1e12; g.P.forEach((p, i) => { const b = p.lt.length ? Math.min(...p.lt) : 0; if (b && b < fv) { fv = b; fast = i; } });
+    return {
+      cols: ["TIME", "BEST LAP", "LAPS", "HITS", "ITEMS"], tips: ["Finish time", "Fastest lap", "Laps completed", "Items that hit someone", "Items used"],
+      rows: ord.map(o => { const p = o.p, b = p.lt.length ? Math.min(...p.lt) : 0; return { i: o.i, tm: -1, v: [p.fin ? fmt(p.ft) : p.gone ? "LEFT" : "DNF", fmt(b) + (o.i === fast ? " ★" : ""), Math.min(RC_LAPS, p.lt.length) + "/" + RC_LAPS, p.hl, p.iu] }; }),
+      mvp: -1, teams: null, sub: (RC_TRACKS[g.tr] ? RC_TRACKS[g.tr].n : "") + (fast >= 0 ? " · fastest lap " + fmt(fv) + " by " + S.ro[fast].n : ""),
+    };
   },
   chip(V, i) { const q = V.g && V.g.pl && V.g.pl[i]; if (!q) return ""; return q[2] ? "P" + q[2] + " 🏁" : "L" + Math.min(RC_LAPS, q[1] + 1); },
   places(V) {
