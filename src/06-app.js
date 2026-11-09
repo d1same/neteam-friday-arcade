@@ -37,7 +37,8 @@ function roomState(S) {
   return lobbyPeers().map(p => {
     const r = p.presence.rdy, mine = p.peer === myPeer;
     const v = mine ? 1 : r && r.s === S.id ? (r.v === 1 ? 1 : r.v === -1 ? -1 : 0) : -2; // 1 ready, 0 not ready, -1 left, -2 still joining
-    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0 };
+    const mv = r && r.s === S.id && typeof r.mv === "string" ? r.mv.slice(0, 24) : "";
+    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0, mv };
   }).filter(r => r.v !== -1).slice(0, 24);
 }
 function startSession(gameId) {
@@ -60,10 +61,19 @@ function startSession(gameId) {
   setPresence({ h: packH(), rdy: { s: S.id, v: 1 } });
   SFX.play("start");
 }
+// most-voted map wins (ties broken at random); no votes = picked automatically from the player count
+function tallyVotes(mod, room) {
+  if (!mod.mapList) return null;
+  const ids = new Set(mod.mapList().map(m => m.id)), cnt = {};
+  room.forEach(r => { if (r.mv && ids.has(r.mv)) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
+  const best = Math.max(0, ...Object.values(cnt)); if (!best) return null;
+  const top = Object.keys(cnt).filter(k => cnt[k] === best); return top[Math.floor(Math.random() * top.length)];
+}
 function launchSession() {
   const S = APP.S, mod = GAMES[S.game];
   const myPeer = NET.myPeerLabel();
-  const okKeys = new Set(roomState(S).filter(r => r.v === 1).map(r => r.k));
+  const room = roomState(S), okKeys = new Set(room.filter(r => r.v === 1).map(r => r.k));
+  S.mapPick = tallyVotes(mod, room);
   const humans = lobbyPeers().filter(p => okKeys.has(p.peer)).slice(0, 16);
   const ro = humans.map(p => ({ k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], u: p.by || (typeof p.presence.uid === "string" ? p.presence.uid.slice(0, 80) : null), b: 0 }));
   if (!ro.length) ro.push({ k: myPeer, n: APP.me.nick || "You", c: APP.me.c, u: NET.uid, b: 0 });
@@ -171,7 +181,7 @@ function enterGame(host) {
   };
   FX.clear();
   V.ready = h.ph === "ready";
-  if (V.ready) { V.myRdy = APP.S && APP.S.id === h.id ? 1 : 0; setPresence({ rdy: { s: h.id, v: V.myRdy }, in: null }); }
+  if (V.ready) { V.myRdy = APP.S && APP.S.id === h.id ? 1 : 0; V.myVote = ""; setPresence({ rdy: { s: h.id, v: V.myRdy, mv: "" }, in: null }); }
   else mod.clientEnter(V);
   APP.view = "game"; APP.myIn = null;
   $("#lobbyView").hidden = true; $("#gameView").hidden = false;
@@ -305,7 +315,7 @@ function gameFrame(dt, t) {
 }
 function readyFrame(V, dt, t) {
   const tl = Math.max(0, (V.h.tl || 0) - V.age);
-  const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy;
+  const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy + "|" + V.myVote;
   if (key !== V.rrKey || V.prevPh !== "ready") { V.rrKey = key; V.prevPh = "ready"; renderReady(V); }
   const c = $("#rdyCount"); if (c) c.textContent = "Starts in " + Math.ceil(tl / 1000) + "s, or as soon as everyone is ready";
   $("#hudTimer").textContent = fmtTime(tl); $("#hudTimer").classList.toggle("low", tl < 10000);
@@ -318,7 +328,8 @@ function readyFrame(V, dt, t) {
   ctx.fillStyle = "rgba(8,9,11,.55)"; ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
-function setReady(V, v) { V.myRdy = v; setPresence({ rdy: { s: V.sid, v } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
+function setReady(V, v) { V.myRdy = v; setPresence({ rdy: { s: V.sid, v, mv: V.myVote || "" } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
+function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; setPresence({ rdy: { s: V.sid, v: V.myRdy, mv: V.myVote } }); SFX.play("blip"); renderReady(V); }
 function renderReady(V) {
   const ov = $("#overlay"); ov.textContent = "";
   const isHost = APP.S && APP.S.id === V.sid;
@@ -337,6 +348,21 @@ function renderReady(V) {
     const st = document.createElement("span"); st.className = "st"; st.textContent = r.v === 1 ? "READY" : r.v === -2 ? "JOINING…" : "NOT READY"; row.append(st);
     list.append(row);
   });
+  // map vote
+  let maps = null;
+  if (V.mod.mapList) {
+    const ml = V.mod.mapList(), cnt = {}; rr.forEach(r => { if (r.mv) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
+    maps = document.createElement("div"); maps.className = "map-vote";
+    const lab = document.createElement("div"); lab.className = "map-lab"; lab.textContent = (V.mod.id === "race" ? "VOTE FOR A TRACK · NO VOTES = RANDOM" : "VOTE FOR A MAP · NO VOTES = AUTO-PICK BY PLAYER COUNT"); maps.append(lab);
+    const grid = document.createElement("div"); grid.className = "map-grid";
+    ml.forEach(m => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "map-btn" + (V.myVote === m.id ? " on" : "");
+      const t1 = document.createElement("b"); t1.textContent = m.n; const t2 = document.createElement("span"); t2.textContent = m.sub || "";
+      const c = document.createElement("i"); c.textContent = cnt[m.id] ? String(cnt[m.id]) : ""; b.append(t1, t2, c);
+      b.addEventListener("click", () => setVote(V, m.id)); grid.append(b);
+    });
+    maps.append(grid);
+  }
   const act = document.createElement("div"); act.className = "res-actions";
   if (isHost) {
     const go = document.createElement("button"); go.className = "btn primary"; go.textContent = nReady === rr.length ? "Start now" : "Start with " + nReady + " ready";
@@ -353,7 +379,7 @@ function renderReady(V) {
   }
   const note = document.createElement("div"); note.className = "res-note"; note.id = "rdyCount";
   const hint = document.createElement("div"); hint.className = "res-note"; hint.textContent = "Not ready when it starts? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty slots." : "");
-  card.append(tag, h2, p, cnt, list, act, note, hint);
+  card.append(tag, h2, p, cnt, list); if (maps) card.append(maps); card.append(act, note, hint);
   ov.append(card);
 }
 function renderOverlay(V, full) {

@@ -179,11 +179,12 @@ function makeOps(md) {
     rec: { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: 300, GOAL: 25,
+    mapList() { return Object.keys(OPS_MAPS).map(id => ({ id, n: OPS_MAPS[id].n, sub: id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
     fill(nHumans) { if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
     // ---------------- host ----------------
     hostStart(S) {
-      const n = S.ro.length, mp = opsPickMap(n); opsSetMap(mp);
+      const n = S.ro.length, mp = S.mapPick && OPS_MAPS[S.mapPick] ? S.mapPick : opsPickMap(n); opsSetMap(mp);
       const P = S.ro.map((r, i) => ({ tm: 0, x: 0, z: 0, a: 0, hp: 100, alive: 1, k: 0, d: 0, hsk: 0, as: 0, dmg: 0, pln: 0, dfs: 0, hb: {}, idle: 0, seen: 0, gone: 0, arm: 0, w: -1, cur: 0, cr: 800, rsq: 0, rx: 0, rz: 0, lastClaim: 0, lastHitT: -9, actT: 0, ax: 0, az: 0, rT: 0, bs: 0, shot: null,
         bot: r.b ? { path: [], pT: 0, fT: 0.5, tgt: -1, react: 0, strafe: 1, sT: 0, boss: !!r.boss, goal: null, gT: 0 } : null }));
       if (team) {

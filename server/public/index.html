@@ -200,6 +200,15 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .ready-row.ok .st { color: var(--mint); }
 .ready-row.me { box-shadow: inset 0 0 0 1px var(--bulb); }
 .ready-btn { min-width: 170px; }
+.map-vote { margin: 2px 0 14px; text-align: left; }
+.map-lab { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .08em; color: var(--muted); margin-bottom: 6px; }
+.map-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
+.map-btn { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--line); background: var(--panel-2); color: var(--text); cursor: pointer; text-align: left; font: inherit; }
+.map-btn b { font-family: var(--f-display); font-size: 14px; letter-spacing: .02em; }
+.map-btn span { font-size: 11.5px; color: var(--muted); }
+.map-btn i { position: absolute; top: 6px; right: 8px; font-style: normal; font-family: var(--f-mono); font-weight: 800; font-size: 12px; color: var(--bulb); }
+.map-btn:hover { border-color: #4a4d55; }
+.map-btn.on { border-color: var(--bulb); box-shadow: inset 0 0 0 1px var(--bulb); background: color-mix(in srgb, var(--bulb) 12%, var(--panel-2)); }
 .ready-btn.on { background: var(--mint) !important; color: #0c0d0f !important; }
 .res-sub { font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); margin-top: -4px; }
 .res-board { margin: 10px 0; overflow-x: auto; }
@@ -2973,11 +2982,12 @@ function makeOps(md) {
     rec: { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: 300, GOAL: 25,
+    mapList() { return Object.keys(OPS_MAPS).map(id => ({ id, n: OPS_MAPS[id].n, sub: id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
     fill(nHumans) { if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
     // ---------------- host ----------------
     hostStart(S) {
-      const n = S.ro.length, mp = opsPickMap(n); opsSetMap(mp);
+      const n = S.ro.length, mp = S.mapPick && OPS_MAPS[S.mapPick] ? S.mapPick : opsPickMap(n); opsSetMap(mp);
       const P = S.ro.map((r, i) => ({ tm: 0, x: 0, z: 0, a: 0, hp: 100, alive: 1, k: 0, d: 0, hsk: 0, as: 0, dmg: 0, pln: 0, dfs: 0, hb: {}, idle: 0, seen: 0, gone: 0, arm: 0, w: -1, cur: 0, cr: 800, rsq: 0, rx: 0, rz: 0, lastClaim: 0, lastHitT: -9, actT: 0, ax: 0, az: 0, rT: 0, bs: 0, shot: null,
         bot: r.b ? { path: [], pT: 0, fT: 0.5, tgt: -1, react: 0, strafe: 1, sT: 0, boss: !!r.boss, goal: null, gT: 0 } : null }));
       if (team) {
@@ -4188,6 +4198,16 @@ const RC_TRACKS = {
   manhattan: { n: "Midnight Manhattan", ctrl: [[0, 0], [70, -8], [135, 0], [178, 32], [186, 84], [160, 126], [116, 134], [92, 108], [66, 98], [42, 128], [0, 146], [-48, 132], [-70, 92], [-48, 58], [-72, 26], [-52, -6]] },
   midtown: { n: "Midtown Grid", ctrl: [[0, 0], [80, -4], [128, 14], [140, 56], [112, 84], [72, 86], [50, 112], [56, 138], [16, 162], [-42, 150], [-68, 110], [-44, 78], [-68, 42], [-46, 6]] },
   bridge: { n: "Bridge Loop", ctrl: [[0, 0], [120, 0], [220, 10], [262, 52], [240, 96], [180, 106], [120, 94], [60, 112], [0, 106], [-50, 80], [-62, 36], [-40, 8]] },
+  harbor: { n: "Harbor Sunrise", sky: "dawn", ctrl: [[0, 0], [90, -10], [170, 0], [230, 40], [240, 100], [200, 140], [150, 130], [120, 160], [60, 170], [0, 150], [-40, 110], [-30, 60], [-50, 20]] },
+  neon: { n: "Neon Hairpins", sky: "neon", ctrl: [[0, 0], [70, 0], [130, 12], [150, 50], [120, 80], [70, 82], [50, 115], [75, 150], [130, 150], [165, 180], [140, 222], [60, 232], [-20, 215], [-55, 170], [-35, 125], [-60, 75], [-45, 25]] },
+  queens: { n: "Queens Express", sky: "storm", ctrl: [[0, 0], [150, 0], [260, 10], [300, 50], [290, 100], [240, 120], [150, 110], [90, 135], [20, 135], [-30, 100], [-40, 50], [-25, 15]] },
+};
+// sky looks per track: gradient stops, fog colour/density, hemisphere sky/ground, key light colour/intensity, street-lamp strength
+const RC_SKY = {
+  dusk: { st: [[0, "#05061a"], [0.35, "#1a1446"], [0.47, "#5a2a6a"], [0.5, "#ff8a5c"], [0.53, "#2a1a48"], [1, "#120e26"]], fog: 0x1c1438, fd: 0.0042, hs: 0x8a90ff, hg: 0x2a1830, hi: 1.1, kc: 0xffd7b0, ki: 1.6, lamp: 30, exp: 1.0 },
+  dawn: { st: [[0, "#2a3c6e"], [0.3, "#6b77b0"], [0.44, "#e89aa0"], [0.5, "#ffc48a"], [0.53, "#7a6a8a"], [1, "#3a3048"]], fog: 0x9a8090, fd: 0.0036, hs: 0xffd2b8, hg: 0x4a3a40, hi: 1.9, kc: 0xffc890, ki: 2.6, lamp: 8, exp: 1.05 },
+  neon: { st: [[0, "#06010f"], [0.35, "#22063a"], [0.47, "#5a0a5a"], [0.5, "#ff2fd0"], [0.53, "#1a0636"], [1, "#0a0216"]], fog: 0x2a0838, fd: 0.005, hs: 0xd070ff, hg: 0x10203a, hi: 1.0, kc: 0x5cf0ff, ki: 1.4, lamp: 34, exp: 1.0 },
+  storm: { st: [[0, "#0a1014"], [0.35, "#1c2a30"], [0.47, "#33464c"], [0.5, "#7a9aa0"], [0.53, "#25343a"], [1, "#0e1416"]], fog: 0x24323a, fd: 0.0055, hs: 0x9fc4d0, hg: 0x1a2024, hi: 1.3, kc: 0xcfe6ff, ki: 1.2, lamp: 30, exp: 1.0 },
 };
 const RC_HW = 8, RC_WALL = 13, RC_LAPS = 3;
 let RC_ID = "", RC = null, RC_PADS = [], RC_BOXES = [];
@@ -4301,7 +4321,7 @@ const race = {
   GRID: 4, LIMIT: 300, GRACE: 25,
   fill(n) { return Math.max(6, Math.min(8, n)); },
   hostStart(S) {
-    const tr = Object.keys(RC_TRACKS)[Math.floor(Math.random() * 3)]; rcSetTrack(tr);
+    const ids = Object.keys(RC_TRACKS), tr = S.mapPick && RC_TRACKS[S.mapPick] ? S.mapPick : ids[Math.floor(Math.random() * ids.length)]; rcSetTrack(tr);
     const P = S.ro.map((r, i) => {
       const row = Math.floor(i / 2), side = i % 2 ? 1 : -1;
       const idx = RC.N - 6 - row * 5, pos = rcAt(idx, side * 3.6);
@@ -4405,6 +4425,7 @@ const race = {
   },
   timeLeft(S) { const g = S.g; if (g.t < 0) return -g.t * 1000; if (g.firstFin) return Math.max(0, (g.firstFin + this.GRACE - g.t) * 1000); return (this.LIMIT - g.t) * 1000; },
   done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b && !p.gone); return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
+  mapList() { const sub = { dusk: "Dusk", dawn: "Sunrise", neon: "Neon night", storm: "Storm" }, d = { manhattan: "flowing", midtown: "tight grid", bridge: "long and fast", harbor: "sweepers", neon: "hairpins", queens: "high speed" }; return Object.keys(RC_TRACKS).map(id => ({ id, n: RC_TRACKS[id].n, sub: sub[RC_TRACKS[id].sky || "dusk"] + " · " + (d[id] || "") })); },
   rank(S) {
     const g = S.g;
     return g.P.map((p, i) => ({ i, p, best: p.lt.length ? Math.min(...p.lt) : 0 }))
@@ -4537,19 +4558,19 @@ const race = {
     const low = GFX.lowEnd();
     try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
     renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
-    renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
+    renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; const SK = RC_SKY[RC_TRACKS[RC_ID].sky || "dusk"]; renderer.toneMappingExposure = SK.exp;
     F.renderer = renderer;
     F.post = GFX.post(renderer, { strength: 1.0, threshold: 1.0, vignette: 0.5, low });
     const scene = new T.Scene(); F.scene = scene;
-    scene.fog = new T.FogExp2(0x1c1438, 0.0042);
+    scene.fog = new T.FogExp2(SK.fog, SK.fd);
     const cam = new T.PerspectiveCamera(68, 16 / 10, 0.1, 900); F.cam3 = cam;
     const mk = (w, h, fn) => { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); const t = new T.CanvasTexture(c); t.colorSpace = T.SRGBColorSpace; t.anisotropy = 8; return t; };
     // sky dome with a dusk gradient and stars
-    const skyTex = mk(32, 512, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#05061a"); g.addColorStop(0.35, "#1a1446"); g.addColorStop(0.47, "#5a2a6a"); g.addColorStop(0.5, "#ff8a5c"); g.addColorStop(0.53, "#2a1a48"); g.addColorStop(1, "#120e26"); x.fillStyle = g; x.fillRect(0, 0, w, h); x.fillStyle = "#fff"; for (let i = 0; i < 40; i++) x.fillRect(Math.random() * w, Math.random() * h * 0.4, 1, 1); });
+    const skyTex = mk(32, 512, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); SK.st.forEach(([o, c]) => g.addColorStop(o, c)); x.fillStyle = g; x.fillRect(0, 0, w, h); x.fillStyle = "#fff"; for (let i = 0; i < 40; i++) x.fillRect(Math.random() * w, Math.random() * h * 0.4, 1, 1); });
     const sky = new T.Mesh(new T.SphereGeometry(800, 32, 16), new T.MeshBasicMaterial({ map: skyTex, side: T.BackSide, fog: false })); scene.add(sky); F.sky = sky;
     scene.environment = GFX.env(renderer, { base: 0x120f28, panels: [[0, 8.9, 0, 10, 0.1, 10, 0x2a2060, 2], [-9.9, 4, 0, 0.1, 4, 16, 0xff9a5c, 2.5], [9.9, 3, 0, 0.1, 6, 16, 0x5c8aff, 1.5], [0, 2, -9.9, 16, 3, 0.1, 0xffd58a, 3], [0, 2, 9.9, 16, 3, 0.1, 0x9fd8ff, 2]] });
-    scene.add(new T.HemisphereLight(0x8a90ff, 0x2a1830, 1.1));
-    const moon = new T.DirectionalLight(0xffd7b0, 1.6); moon.position.set(-200, 160, -120); scene.add(moon);
+    scene.add(new T.HemisphereLight(SK.hs, SK.hg, SK.hi));
+    const moon = new T.DirectionalLight(SK.kc, SK.ki); moon.position.set(-200, 160, -120); scene.add(moon);
     const [mnx, mxx, mnz, mxz] = RC.box, cx = (mnx + mxx) / 2, cz = (mnz + mxz) / 2;
     // ground: park grass inside and around the track
     const grassTex = mk(256, 256, (x, w, h) => { x.fillStyle = "#1f4a32"; x.fillRect(0, 0, w, h); for (let i = 0; i < 3000; i++) { x.fillStyle = Math.random() < 0.5 ? "rgba(80,160,90,.18)" : "rgba(0,0,0,.15)"; x.fillRect(Math.random() * w, Math.random() * h, 2, 3); } });
@@ -4643,7 +4664,7 @@ const race = {
     // street lamps
     const lampHead = new T.MeshBasicMaterial({ color: new T.Color(4, 3.4, 2.4) }), lampGlow = new T.SpriteMaterial({ map: GFX.glowTex(), color: 0xffcf8a, transparent: true, blending: T.AdditiveBlending, depthWrite: false, opacity: 0.8 });
     for (let k = 0; k < RC.N; k += 22) { [-1, 1].forEach(s => { const p = rcAt(k + (s > 0 ? 11 : 0), s * (RC_WALL + 2)); const pole = new T.Mesh(new T.CylinderGeometry(0.12, 0.16, 7, 6), steel); pole.position.set(p[0], 3.5, p[1]); const hd = new T.Mesh(new T.SphereGeometry(0.4, 10, 8), lampHead); hd.position.set(p[0], 7.1, p[1]); const gl = new T.Sprite(lampGlow); gl.scale.set(4, 4, 1); gl.position.copy(hd.position); scene.add(pole, hd, gl); }); }
-    for (let k = 0; k < RC.N; k += 66) { const p = rcAt(k, 0); const l = new T.PointLight(0xffd7a0, 30, 60, 1.6); l.position.set(p[0], 9, p[1]); scene.add(l); }
+    for (let k = 0; k < RC.N; k += 66) { const p = rcAt(k, 0); const l = new T.PointLight(0xffd7a0, SK.lamp, 60, 1.6); l.position.set(p[0], 9, p[1]); scene.add(l); }
     // trees in the park
     const trunkM = new T.MeshStandardMaterial({ color: 0x4a3222 }), leafM = new T.MeshStandardMaterial({ color: 0x2f7a46, roughness: 0.9 });
     const trees = [];
@@ -4887,7 +4908,8 @@ function roomState(S) {
   return lobbyPeers().map(p => {
     const r = p.presence.rdy, mine = p.peer === myPeer;
     const v = mine ? 1 : r && r.s === S.id ? (r.v === 1 ? 1 : r.v === -1 ? -1 : 0) : -2; // 1 ready, 0 not ready, -1 left, -2 still joining
-    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0 };
+    const mv = r && r.s === S.id && typeof r.mv === "string" ? r.mv.slice(0, 24) : "";
+    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0, mv };
   }).filter(r => r.v !== -1).slice(0, 24);
 }
 function startSession(gameId) {
@@ -4910,10 +4932,19 @@ function startSession(gameId) {
   setPresence({ h: packH(), rdy: { s: S.id, v: 1 } });
   SFX.play("start");
 }
+// most-voted map wins (ties broken at random); no votes = picked automatically from the player count
+function tallyVotes(mod, room) {
+  if (!mod.mapList) return null;
+  const ids = new Set(mod.mapList().map(m => m.id)), cnt = {};
+  room.forEach(r => { if (r.mv && ids.has(r.mv)) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
+  const best = Math.max(0, ...Object.values(cnt)); if (!best) return null;
+  const top = Object.keys(cnt).filter(k => cnt[k] === best); return top[Math.floor(Math.random() * top.length)];
+}
 function launchSession() {
   const S = APP.S, mod = GAMES[S.game];
   const myPeer = NET.myPeerLabel();
-  const okKeys = new Set(roomState(S).filter(r => r.v === 1).map(r => r.k));
+  const room = roomState(S), okKeys = new Set(room.filter(r => r.v === 1).map(r => r.k));
+  S.mapPick = tallyVotes(mod, room);
   const humans = lobbyPeers().filter(p => okKeys.has(p.peer)).slice(0, 16);
   const ro = humans.map(p => ({ k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], u: p.by || (typeof p.presence.uid === "string" ? p.presence.uid.slice(0, 80) : null), b: 0 }));
   if (!ro.length) ro.push({ k: myPeer, n: APP.me.nick || "You", c: APP.me.c, u: NET.uid, b: 0 });
@@ -5021,7 +5052,7 @@ function enterGame(host) {
   };
   FX.clear();
   V.ready = h.ph === "ready";
-  if (V.ready) { V.myRdy = APP.S && APP.S.id === h.id ? 1 : 0; setPresence({ rdy: { s: h.id, v: V.myRdy }, in: null }); }
+  if (V.ready) { V.myRdy = APP.S && APP.S.id === h.id ? 1 : 0; V.myVote = ""; setPresence({ rdy: { s: h.id, v: V.myRdy, mv: "" }, in: null }); }
   else mod.clientEnter(V);
   APP.view = "game"; APP.myIn = null;
   $("#lobbyView").hidden = true; $("#gameView").hidden = false;
@@ -5155,7 +5186,7 @@ function gameFrame(dt, t) {
 }
 function readyFrame(V, dt, t) {
   const tl = Math.max(0, (V.h.tl || 0) - V.age);
-  const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy;
+  const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy + "|" + V.myVote;
   if (key !== V.rrKey || V.prevPh !== "ready") { V.rrKey = key; V.prevPh = "ready"; renderReady(V); }
   const c = $("#rdyCount"); if (c) c.textContent = "Starts in " + Math.ceil(tl / 1000) + "s, or as soon as everyone is ready";
   $("#hudTimer").textContent = fmtTime(tl); $("#hudTimer").classList.toggle("low", tl < 10000);
@@ -5168,7 +5199,8 @@ function readyFrame(V, dt, t) {
   ctx.fillStyle = "rgba(8,9,11,.55)"; ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
-function setReady(V, v) { V.myRdy = v; setPresence({ rdy: { s: V.sid, v } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
+function setReady(V, v) { V.myRdy = v; setPresence({ rdy: { s: V.sid, v, mv: V.myVote || "" } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
+function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; setPresence({ rdy: { s: V.sid, v: V.myRdy, mv: V.myVote } }); SFX.play("blip"); renderReady(V); }
 function renderReady(V) {
   const ov = $("#overlay"); ov.textContent = "";
   const isHost = APP.S && APP.S.id === V.sid;
@@ -5187,6 +5219,21 @@ function renderReady(V) {
     const st = document.createElement("span"); st.className = "st"; st.textContent = r.v === 1 ? "READY" : r.v === -2 ? "JOINING…" : "NOT READY"; row.append(st);
     list.append(row);
   });
+  // map vote
+  let maps = null;
+  if (V.mod.mapList) {
+    const ml = V.mod.mapList(), cnt = {}; rr.forEach(r => { if (r.mv) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
+    maps = document.createElement("div"); maps.className = "map-vote";
+    const lab = document.createElement("div"); lab.className = "map-lab"; lab.textContent = (V.mod.id === "race" ? "VOTE FOR A TRACK · NO VOTES = RANDOM" : "VOTE FOR A MAP · NO VOTES = AUTO-PICK BY PLAYER COUNT"); maps.append(lab);
+    const grid = document.createElement("div"); grid.className = "map-grid";
+    ml.forEach(m => {
+      const b = document.createElement("button"); b.type = "button"; b.className = "map-btn" + (V.myVote === m.id ? " on" : "");
+      const t1 = document.createElement("b"); t1.textContent = m.n; const t2 = document.createElement("span"); t2.textContent = m.sub || "";
+      const c = document.createElement("i"); c.textContent = cnt[m.id] ? String(cnt[m.id]) : ""; b.append(t1, t2, c);
+      b.addEventListener("click", () => setVote(V, m.id)); grid.append(b);
+    });
+    maps.append(grid);
+  }
   const act = document.createElement("div"); act.className = "res-actions";
   if (isHost) {
     const go = document.createElement("button"); go.className = "btn primary"; go.textContent = nReady === rr.length ? "Start now" : "Start with " + nReady + " ready";
@@ -5203,7 +5250,7 @@ function renderReady(V) {
   }
   const note = document.createElement("div"); note.className = "res-note"; note.id = "rdyCount";
   const hint = document.createElement("div"); hint.className = "res-note"; hint.textContent = "Not ready when it starts? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty slots." : "");
-  card.append(tag, h2, p, cnt, list, act, note, hint);
+  card.append(tag, h2, p, cnt, list); if (maps) card.append(maps); card.append(act, note, hint);
   ov.append(card);
 }
 function renderOverlay(V, full) {
