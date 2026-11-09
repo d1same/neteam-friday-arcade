@@ -764,7 +764,7 @@ function makeOps(md) {
       renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
       renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
       F.renderer = renderer;
-      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.45, low });
+      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.45, low, ao: true, aoRadius: 0.6, aoStrength: 1.1 });
       const scene = new T.Scene(); F.scene = scene;
       const TH = OPS_M.theme, outdoor = TH === "desert" || TH === "roof";
       const skyGrad = (stops) => { const t2 = GFX.tex(8, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); stops.forEach(([o, c]) => g.addColorStop(o, c)); x.fillStyle = g; x.fillRect(0, 0, w, h); }); t2.wrapS = t2.wrapT = T.ClampToEdgeWrapping; return t2; };

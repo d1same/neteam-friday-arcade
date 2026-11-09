@@ -2761,22 +2761,34 @@ const GFX = {
     const T = THREE, gl2 = renderer.capabilities.isWebGL2;
     if (!gl2) return null;
     const mkRT = (s) => new T.WebGLRenderTarget(1, 1, { type: T.HalfFloatType, samples: s || 0 });
-    const P = { main: mkRT(opt.low ? 0 : 4), a1: mkRT(), b1: mkRT(), a2: mkRT(), b2: mkRT(), strength: opt.strength || 0.9, threshold: opt.threshold || 0.85, vignette: opt.vignette == null ? 0.38 : opt.vignette, tint: new T.Vector3(...(opt.tint || [1, 1, 1])), w: 0, h: 0 };
+    const P = { main: mkRT(opt.low ? 0 : 4), a1: mkRT(), b1: mkRT(), a2: mkRT(), b2: mkRT(), ao1: mkRT(), ao2: mkRT(), useAO: !!opt.ao && !opt.low, strength: opt.strength || 0.9, threshold: opt.threshold || 0.85, vignette: opt.vignette == null ? 0.38 : opt.vignette, tint: new T.Vector3(...(opt.tint || [1, 1, 1])), w: 0, h: 0 };
+    if (P.useAO) { P.main.depthTexture = new T.DepthTexture(1, 1); P.main.depthTexture.type = T.UnsignedIntType; }
     const vs = "varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }";
+    // screen-space ambient occlusion from depth only: compares inverse depth of opposite samples (planes stay flat,
+    // creases and contact areas darken), with a range cut so foreground objects don't halo the background
+    const aoM = new T.ShaderMaterial({ uniforms: { dT: { value: null }, n: { value: 0.1 }, f: { value: 100 }, r: { value: 0.5 }, asp: { value: 1 }, st: { value: opt.aoStrength || 1.0 } }, vertexShader: vs, depthTest: false, depthWrite: false,
+      fragmentShader: "uniform sampler2D dT; uniform float n, f, r, asp, st; varying vec2 vUv;\nfloat ld(vec2 uv){ float d = texture2D(dT, uv).x; return n * f / (f - d * (f - n)); }\nvoid main(){ float z = ld(vUv); if (z > f * 0.8) { gl_FragColor = vec4(1.0); return; } float iz = 1.0 / z; float rad = r / z; float occ = 0.0; float h = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 6.2831;\n for (int i = 0; i < 8; i++) { float a = float(i) * 0.3927 + h; float s = 0.35 + 0.65 * fract(float(i) * 0.618 + h); vec2 o = vec2(cos(a) / asp, sin(a)) * rad * s; float z1 = ld(vUv + o), z2 = ld(vUv - o); float c = ((1.0 / z1 + 1.0 / z2) * 0.5 - iz) / iz; float rng = 1.0 - smoothstep(0.6, 1.6, max(z - min(z1, z2), 0.0)); occ += clamp(c * 9.0, 0.0, 1.0) * rng; }\n float ao = 1.0 - occ / 8.0 * st; gl_FragColor = vec4(vec3(clamp(ao, 0.25, 1.0)), 1.0); }" });
     const bright = new T.ShaderMaterial({ uniforms: { t: { value: null }, th: { value: P.threshold } }, vertexShader: vs, depthTest: false, depthWrite: false,
       fragmentShader: "uniform sampler2D t; uniform float th; varying vec2 vUv; void main(){ vec3 c = texture2D(t, vUv).rgb; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(th, th + 0.8, l), 1.0); }" });
     const blur = new T.ShaderMaterial({ uniforms: { t: { value: null }, d: { value: new T.Vector2() } }, vertexShader: vs, depthTest: false, depthWrite: false,
       fragmentShader: "uniform sampler2D t; uniform vec2 d; varying vec2 vUv; void main(){ vec3 c = texture2D(t, vUv).rgb * 0.227; c += (texture2D(t, vUv + d * 1.385).rgb + texture2D(t, vUv - d * 1.385).rgb) * 0.316; c += (texture2D(t, vUv + d * 3.231).rgb + texture2D(t, vUv - d * 3.231).rgb) * 0.070; gl_FragColor = vec4(c, 1.0); }" });
-    const comp = new T.ShaderMaterial({ uniforms: { t: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: P.strength }, vig: { value: P.vignette }, tint: { value: P.tint }, tm: { value: 0 }, hurt: { value: 0 } }, vertexShader: vs, depthTest: false, depthWrite: false,
-      fragmentShader: "uniform sampler2D t, b1, b2; uniform float k, vig, tm, hurt; uniform vec3 tint; varying vec2 vUv;\n#include <common>\nvoid main(){ vec3 c = texture2D(t, vUv).rgb; c += (texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.9) * k; c *= tint; vec2 q = vUv - 0.5; float v = 1.0 - dot(q, q) * vig * 2.6; c *= clamp(v, 0.0, 1.0); c = mix(c, c * vec3(1.6, 0.35, 0.35), hurt * smoothstep(0.15, 0.7, length(q))); float n = fract(sin(dot(vUv * (tm + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.018; gl_FragColor = vec4(max(c, 0.0), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}" });
+    const comp = new T.ShaderMaterial({ defines: P.useAO ? { USE_AO: 1 } : {}, uniforms: { t: { value: null }, aoT: { value: null }, b1: { value: null }, b2: { value: null }, k: { value: P.strength }, vig: { value: P.vignette }, tint: { value: P.tint }, tm: { value: 0 }, hurt: { value: 0 } }, vertexShader: vs, depthTest: false, depthWrite: false,
+      fragmentShader: "uniform sampler2D t, b1, b2, aoT; uniform float k, vig, tm, hurt; uniform vec3 tint; varying vec2 vUv;\n#include <common>\nvoid main(){ vec3 c = texture2D(t, vUv).rgb;\n#ifdef USE_AO\n c *= texture2D(aoT, vUv).r;\n#endif\n c += (texture2D(b1, vUv).rgb * 0.6 + texture2D(b2, vUv).rgb * 0.9) * k; c *= tint; vec2 q = vUv - 0.5; float v = 1.0 - dot(q, q) * vig * 2.6; c *= clamp(v, 0.0, 1.0); c = mix(c, c * vec3(1.6, 0.35, 0.35), hurt * smoothstep(0.15, 0.7, length(q))); float n = fract(sin(dot(vUv * (tm + 1.0), vec2(12.9898, 78.233))) * 43758.5453); c += (n - 0.5) * 0.018; gl_FragColor = vec4(max(c, 0.0), 1.0);\n#include <tonemapping_fragment>\n#include <colorspace_fragment>\n}" });
     const quad = new T.Mesh(new T.PlaneGeometry(2, 2), bright); quad.frustumCulled = false;
     const sc = new T.Scene(); sc.add(quad); const oc = new T.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const pass = (mat, target) => { quad.material = mat; renderer.setRenderTarget(target); renderer.render(sc, oc); };
     P.comp = comp;
     P.render = (scene, cam, t) => {
       const sz = renderer.getDrawingBufferSize(new T.Vector2()), w = sz.x, h = sz.y;
-      if (w !== P.w || h !== P.h) { P.w = w; P.h = h; P.main.setSize(w, h); P.a1.setSize(w >> 1, h >> 1); P.b1.setSize(w >> 1, h >> 1); P.a2.setSize(w >> 2, h >> 2); P.b2.setSize(w >> 2, h >> 2); }
+      if (w !== P.w || h !== P.h) { P.w = w; P.h = h; P.main.setSize(w, h); P.ao1.setSize(w >> 1, h >> 1); P.ao2.setSize(w >> 1, h >> 1); P.a1.setSize(w >> 1, h >> 1); P.b1.setSize(w >> 1, h >> 1); P.a2.setSize(w >> 2, h >> 2); P.b2.setSize(w >> 2, h >> 2); }
       renderer.setRenderTarget(P.main); renderer.render(scene, cam);
+      if (P.useAO) {
+        aoM.uniforms.dT.value = P.main.depthTexture; aoM.uniforms.n.value = cam.near; aoM.uniforms.f.value = Math.min(cam.far, 120); aoM.uniforms.asp.value = w / h;
+        aoM.uniforms.r.value = (opt.aoRadius || 0.55) / Math.tan(cam.fov * Math.PI / 360) * 0.5; pass(aoM, P.ao1);
+        blur.uniforms.t.value = P.ao1.texture; blur.uniforms.d.value.set(1.5 / w, 0); pass(blur, P.ao2);
+        blur.uniforms.t.value = P.ao2.texture; blur.uniforms.d.value.set(0, 1.5 / h); pass(blur, P.ao1);
+        comp.uniforms.aoT.value = P.ao1.texture;
+      }
       bright.uniforms.t.value = P.main.texture; pass(bright, P.a1);
       blur.uniforms.t.value = P.a1.texture; blur.uniforms.d.value.set(2 / w, 0); pass(blur, P.b1);
       blur.uniforms.t.value = P.b1.texture; blur.uniforms.d.value.set(0, 2 / h); pass(blur, P.a1);
@@ -2787,7 +2799,7 @@ const GFX = {
       comp.uniforms.t.value = P.main.texture; comp.uniforms.b1.value = P.a1.texture; comp.uniforms.b2.value = P.a2.texture; comp.uniforms.tm.value = (t || 0) % 100;
       pass(comp, null);
     };
-    P.dispose = () => { [P.main, P.a1, P.b1, P.a2, P.b2].forEach(r => r.dispose()); [bright, blur, comp].forEach(m => m.dispose()); };
+    P.dispose = () => { [P.main, P.a1, P.b1, P.a2, P.b2, P.ao1, P.ao2].forEach(r => r.dispose()); [bright, blur, comp, aoM].forEach(m => m.dispose()); };
     return P;
   },
 };
@@ -3567,7 +3579,7 @@ function makeOps(md) {
       renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
       renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
       F.renderer = renderer;
-      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.45, low });
+      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.45, low, ao: true, aoRadius: 0.6, aoStrength: 1.1 });
       const scene = new T.Scene(); F.scene = scene;
       const TH = OPS_M.theme, outdoor = TH === "desert" || TH === "roof";
       const skyGrad = (stops) => { const t2 = GFX.tex(8, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); stops.forEach(([o, c]) => g.addColorStop(o, c)); x.fillStyle = g; x.fillRect(0, 0, w, h); }); t2.wrapS = t2.wrapT = T.ClampToEdgeWrapping; return t2; };
