@@ -4993,21 +4993,21 @@ function setPresence(patch) { if (NET.room) NET.room.presence(patch).catch(() =>
 function myPresence() { return { v: 1, nick: APP.me.nick || "New tech", c: APP.me.c, uid: NET.uid }; }
 
 // ---------- host ----------
-const READY_MS = 40000;
+const READY_MS = 60000, ALL_READY_MS = 3000;
 // everyone in the NOC is pulled into a ready room; the match starts when all have tapped Ready
 // (or the host starts it / the timer runs out). Anyone not ready watches and plays the next one.
 function roomState(S) {
   const myPeer = NET.myPeerLabel();
   return lobbyPeers().map(p => {
     const r = p.presence.rdy, mine = p.peer === myPeer;
-    const v = mine ? 1 : r && r.s === S.id ? (r.v === 1 ? 1 : r.v === -1 ? -1 : 0) : -2; // 1 ready, 0 not ready, -1 left, -2 still joining
-    const mv = r && r.s === S.id && typeof r.mv === "string" ? r.mv.slice(0, 24) : "";
+    const v = mine ? (S.hr ? 1 : 0) : r && r.s === S.id ? (r.v === 1 ? 1 : r.v === -1 ? -1 : 0) : -2; // 1 ready, 0 not ready, -1 left, -2 still joining
+    const mv = mine ? (S.hv || "") : r && r.s === S.id && typeof r.mv === "string" ? r.mv.slice(0, 24) : "";
     return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0, mv };
   }).filter(r => r.v !== -1).slice(0, 24);
 }
 function startSession(gameId) {
   if (findHost()) { toast("A game is already running. Hop in when it ends."); return; }
-  const S = { id: randId(8), since: Date.now(), game: gameId, ph: "ready", phT: READY_MS, seed: (Math.random() * 1e9) | 0, ro: [], rr: [], sq: 0, saved: null, res: null, rdyT: 0 };
+  const S = { id: randId(8), since: Date.now(), game: gameId, ph: "ready", phT: READY_MS, seed: (Math.random() * 1e9) | 0, ro: [], rr: [], sq: 0, saved: null, res: null, rdyT: 0, hr: 0, hv: "", allT: 0 };
   APP.S = S; APP.optOut = null;
   S.rr = roomState(S);
   let last = now(), lastSend = 0;
@@ -5022,7 +5022,7 @@ function startSession(gameId) {
       setPresence({ h: packH() });
     }
   }, 1000 / 60);
-  setPresence({ h: packH(), rdy: { s: S.id, v: 1 } });
+  setPresence({ h: packH(), rdy: { s: S.id, v: 0 } });
   SFX.play("start");
 }
 // most-voted map wins (ties broken at random); no votes = picked automatically from the player count
@@ -5067,11 +5067,15 @@ function hostTick(dtMs) {
     return i && i.s === S.id ? i : null;
   });
   if (S.ph === "ready") {
+    // the host is a normal player here: nothing starts until everyone (host included) has tapped Ready,
+    // then a short countdown lets anyone change their vote or un-ready
     S.phT -= dtMs; S.rdyT += dtMs;
+    if (S.allT > 0) S.allT -= dtMs;
     if (S.rdyT > 250) {
       S.rdyT = 0; S.rr = roomState(S);
       const allReady = S.rr.length > 0 && S.rr.every(r => r.v === 1);
-      if (S.go || S.phT <= 0 || (allReady && S.phT < READY_MS - 1500)) launchSession();
+      if (!allReady) S.allT = 0; else if (S.allT === 0) S.allT = ALL_READY_MS;
+      if (S.go || S.phT <= 0 || (allReady && S.allT <= 1)) { launchSession(); return; }
     }
     return;
   }
@@ -5090,7 +5094,7 @@ function packH() {
   const S = APP.S, mod = GAMES[S.game];
   return {
     id: S.id, since: S.since, game: S.game, ph: S.ph, seed: S.seed, sq: ++S.sq,
-    tl: S.ph === "play" ? mod.timeLeft(S) : S.phT,
+    tl: S.ph === "play" ? mod.timeLeft(S) : S.ph === "ready" && S.allT > 0 ? Math.min(S.phT, S.allT) : S.phT, aR: S.ph === "ready" && S.allT > 0 ? 1 : 0,
     ro: S.ro.map(r => ({ k: r.k, n: r.n, c: r.c, col: r.col, u: r.u, b: r.b, boss: r.boss || 0 })),
     g: S.g ? mod.pack(S) : null, rr: S.ph === "ready" ? S.rr : null, res: S.res, saved: S.saved, bd: S.ph === "results" ? S.board : null,
   };
@@ -5145,7 +5149,7 @@ function enterGame(host) {
   };
   FX.clear();
   V.ready = h.ph === "ready";
-  if (V.ready) { V.myRdy = APP.S && APP.S.id === h.id ? 1 : 0; V.myVote = ""; setPresence({ rdy: { s: h.id, v: V.myRdy, mv: "" }, in: null }); }
+  if (V.ready) { V.myRdy = 0; V.myVote = ""; setPresence({ rdy: { s: h.id, v: V.myRdy, mv: "" }, in: null }); }
   else mod.clientEnter(V);
   APP.view = "game"; APP.myIn = null;
   $("#lobbyView").hidden = true; $("#gameView").hidden = false;
@@ -5281,7 +5285,7 @@ function readyFrame(V, dt, t) {
   const tl = Math.max(0, (V.h.tl || 0) - V.age);
   const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy + "|" + V.myVote;
   if (key !== V.rrKey || V.prevPh !== "ready") { V.rrKey = key; V.prevPh = "ready"; renderReady(V); }
-  const c = $("#rdyCount"); if (c) c.textContent = "Starts in " + Math.ceil(tl / 1000) + "s, or as soon as everyone is ready";
+  const c = $("#rdyCount"); if (c) c.textContent = V.h.aR ? "Everyone's ready. Starting in " + Math.ceil(tl / 1000) + "s…" : "Starts in " + Math.ceil(tl / 1000) + "s, or when everyone (host too) is ready";
   $("#hudTimer").textContent = fmtTime(tl); $("#hudTimer").classList.toggle("low", tl < 10000);
   const cv = $("#gameCanvas");
   const cw = parseFloat(cv.style.width) || W, ch = parseFloat(cv.style.height) || H;
@@ -5292,8 +5296,8 @@ function readyFrame(V, dt, t) {
   ctx.fillStyle = "rgba(8,9,11,.55)"; ctx.fillRect(0, 0, W, H);
   ctx.restore();
 }
-function setReady(V, v) { V.myRdy = v; setPresence({ rdy: { s: V.sid, v, mv: V.myVote || "" } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
-function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; setPresence({ rdy: { s: V.sid, v: V.myRdy, mv: V.myVote } }); SFX.play("blip"); renderReady(V); }
+function setReady(V, v) { V.myRdy = v; if (APP.S && APP.S.id === V.sid) APP.S.hr = v; setPresence({ rdy: { s: V.sid, v, mv: V.myVote || "" } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
+function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; if (APP.S && APP.S.id === V.sid) APP.S.hv = V.myVote; setPresence({ rdy: { s: V.sid, v: V.myRdy, mv: V.myVote } }); SFX.play("blip"); renderReady(V); }
 function renderReady(V) {
   const ov = $("#overlay"); ov.textContent = "";
   const isHost = APP.S && APP.S.id === V.sid;
@@ -5328,18 +5332,18 @@ function renderReady(V) {
     maps.append(grid);
   }
   const act = document.createElement("div"); act.className = "res-actions";
+  const rb = document.createElement("button"); rb.className = "btn primary ready-btn" + (V.myRdy ? " on" : ""); rb.textContent = V.myRdy ? "✓ Ready" : "I'm ready";
+  rb.addEventListener("click", () => setReady(V, V.myRdy ? 0 : 1));
   if (isHost) {
-    const go = document.createElement("button"); go.className = "btn primary"; go.textContent = nReady === rr.length ? "Start now" : "Start with " + nReady + " ready";
+    const go = document.createElement("button"); go.className = "btn"; go.textContent = "Force start (" + nReady + " ready)";
     go.addEventListener("click", () => { if (APP.S && APP.S.ph === "ready") APP.S.go = 1; });
     const cancel = document.createElement("button"); cancel.className = "btn"; cancel.textContent = "Cancel";
     cancel.addEventListener("click", () => endSession());
-    act.append(go, cancel);
+    act.append(rb, go, cancel);
   } else {
-    const b = document.createElement("button"); b.className = "btn primary ready-btn" + (V.myRdy ? " on" : ""); b.textContent = V.myRdy ? "✓ Ready" : "I'm ready";
-    b.addEventListener("click", () => setReady(V, V.myRdy ? 0 : 1));
     const back = document.createElement("button"); back.className = "btn"; back.textContent = "Sit this one out";
     back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
-    act.append(b, back);
+    act.append(rb, back);
   }
   const note = document.createElement("div"); note.className = "res-note"; note.id = "rdyCount";
   const hint = document.createElement("div"); hint.className = "res-note"; hint.textContent = "Not ready when it starts? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty slots." : "");
@@ -5798,7 +5802,7 @@ function bindEvents() {
     KEYS.add(e.code);
     if (e.repeat) return;
     if (e.code === "KeyF" && !e.ctrlKey && !e.metaKey) toggleFullscreen();
-    if (V.ready) { if ((e.code === "KeyR" || e.code === "Enter") && !(APP.S && APP.S.id === V.sid)) setReady(V, V.myRdy ? 0 : 1); return; }
+    if (V.ready) { if ((e.code === "KeyR" || e.code === "Enter")) setReady(V, V.myRdy ? 0 : 1); return; }
     if (V.mod.id === "sumo" && e.code === "Space") pendingDash = true;
     if (V.mod.id === "alert" && (e.code === "Space" || e.code === "Enter")) alert.tap(V);
     if (V.mod.id === "alert" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) alert.tap(V, +e.code.slice(-1) - 1);
