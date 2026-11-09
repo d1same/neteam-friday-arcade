@@ -53,6 +53,14 @@ const server = http.createServer((req, res) => {
       res.end(buf);
     });
   }
+  if (url.startsWith("/models/") && /^\/models\/[a-z0-9._-]+\.(glb|jpg|png)$/i.test(url)) {
+    const f = path.join(PUBLIC, url), ext = url.split(".").pop().toLowerCase();
+    return fs.readFile(f, (err, buf) => {
+      if (err) { res.writeHead(404); return res.end("Not found"); }
+      res.writeHead(200, { "content-type": ext === "glb" ? "model/gltf-binary" : ext === "png" ? "image/png" : "image/jpeg", "cache-control": "public, max-age=604800" });
+      res.end(buf);
+    });
+  }
   if (url === "/api/avatar" && req.method === "POST") {
     if (!avAllowed(req.socket.remoteAddress || "")) { res.writeHead(429); return res.end("Too many uploads"); }
     const chunks = []; let size = 0, tooBig = false;

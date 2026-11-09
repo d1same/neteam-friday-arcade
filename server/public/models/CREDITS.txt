@@ -1,0 +1,2 @@
+operator.glb: "RobotExpressive" by Tomás Laulhé (Quaternius), CC0 1.0, via the three.js examples (modified by Don McCurdy).
+https://github.com/mrdoob/three.js/tree/r159/examples/models/gltf/RobotExpressive

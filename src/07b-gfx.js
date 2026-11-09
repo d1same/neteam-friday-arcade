@@ -1,5 +1,14 @@
 // ======================= shared 3D graphics helpers: post-processing (bloom + grade), procedural PBR textures =======================
 const GFX = {
+  // animated CC0 "operator" character (Quaternius robot via the three.js examples), loaded on demand
+  operator() {
+    if (GFX._op) return GFX._op;
+    GFX._op = new Promise((res) => {
+      const go = () => { try { new THREE_EXTRAS.GLTFLoader().load("models/operator.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } };
+      if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
+    });
+    return GFX._op;
+  },
   // quality: phones get a lighter pipeline
   lowEnd() { const q = (store("nfa-gfx") || {}).q; if (q === "low") return true; if (q === "high") return false; return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4; },
   tex(w, h, fn) { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.userData.canvas = c; return t; },

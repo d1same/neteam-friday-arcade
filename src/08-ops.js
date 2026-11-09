@@ -467,7 +467,7 @@ function makeOps(md) {
       this.bind(V);
     },
     clientExit(V) {
-      const F = V.fps; if (!F) return;
+      const F = V.fps; if (!F) return; F.gone = true;
       (F.unbind || []).forEach(f => f());
       if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
       if (F.post) try { F.post.dispose(); } catch (e) {}
@@ -755,12 +755,12 @@ function makeOps(md) {
       scene.environment = GFX.env(renderer, TH === "desert" ? { base: 0x9a8a70 } : {});
       if (TH === "desert") {
         scene.add(new T.HemisphereLight(0xfff1d6, 0x8a6a40, 2.4));
-        const sun = new T.DirectionalLight(0xffe0b0, 3.2); sun.position.set(30, 50, 12); scene.add(sun);
+        const sun = new T.DirectionalLight(0xffe0b0, 2.7); sun.position.set(30, 50, 12); scene.add(sun); F.key = sun;
         const sunG = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(3, 2.6, 1.8), transparent: true, blending: T.AdditiveBlending, depthWrite: false, fog: false })); sunG.scale.set(40, 40, 1); sunG.position.set(OG * CS / 2 + 90, 120, OG * CS / 2 + 36); scene.add(sunG);
       } else if (TH === "roof") {
         scene.add(new T.HemisphereLight(0x8fa0d8, 0x2a2030, 1.2));
-        const moon = new T.DirectionalLight(0x9fb4ff, 0.9); moon.position.set(-20, 40, -10); scene.add(moon);
-      } else scene.add(new T.HemisphereLight(TH === "farm" ? 0xcfe4ff : 0xdfe4ff, 0x3a3040, 1.6));
+        const moon = new T.DirectionalLight(0x9fb4ff, 0.9); moon.position.set(-20, 40, -10); scene.add(moon); F.key = moon;
+      } else { scene.add(new T.HemisphereLight(TH === "farm" ? 0xcfe4ff : 0xdfe4ff, 0x3a3040, 1.6)); const top = new T.DirectionalLight(0xfff0dc, 0.9); top.position.set(6, 40, 9); scene.add(top); F.key = top; }
       const tex = (w, h, fn) => GFX.tex(w, h, fn);
       const size = OG * CS;
       // ---- lights: warm office panels in corridors, coloured at sites and spawns
@@ -959,6 +959,34 @@ function makeOps(md) {
         bd.add(gun, fl); grp.add(sh, spr, ring); scene.add(grp);
         return { grp, bd, legs, arms, suit, stripeM: stripe.material, mark, rim, tmKey: "", spr, ring, gun, fl, flT: 0, ph: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
       });
+      // swap the simple capsule bodies for animated operators once the model has loaded
+      GFX.operator().then((gl) => {
+        if (!gl || F.gone || !F.avatars) return;
+        const SU = THREE_EXTRAS.SkeletonUtils;
+        F.avatars.forEach((av) => {
+          try {
+            const m = SU.clone(gl.scene); m.scale.setScalar(0.56); m.rotation.y = Math.PI;
+            const main = [];
+            m.traverse(o => {
+              if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows;
+              const one = !Array.isArray(o.material), mats = one ? [o.material] : o.material;
+              const nm = mats.map(mt => { if (mt.name === "Main") { const c = mt.clone(); c.roughness = 0.45; c.metalness = 0.25; main.push(c); return c; } if (mt.name === "Grey") { const c = mt.clone(); c.color.set(0x2a2d33); c.roughness = 0.6; c.metalness = 0.5; return c; } return mt; });
+              o.material = one ? nm[0] : nm;
+            });
+            const head = m.getObjectByName("Head_1"); if (head) head.visible = false;
+            av.bd.children.forEach(c => { if (c !== av.gun && c !== av.fl) c.visible = false; });
+            av.bd.add(m);
+            // gun in the right hand
+            const hand = m.getObjectByName("Palm2R") || m.getObjectByName("LowerArmR");
+            if (hand) { m.updateMatrixWorld(true); const ws = new THREE.Vector3(); hand.getWorldScale(ws); const s0 = 1 / (ws.x || 1) * av.bd.scale.x;
+              const gw = av.gun; av.bd.remove(gw); hand.add(gw); gw.scale.setScalar(s0 * 1.1); gw.position.set(0, 0, 0); gw.rotation.set(0, 0, 0); av.handGun = true; av.gunS = s0; }
+            const mixer = new THREE.AnimationMixer(m), act = {};
+            gl.animations.forEach(c => { act[c.name] = mixer.clipAction(c); });
+            if (act.Death) { act.Death.setLoop(THREE.LoopOnce); act.Death.clampWhenFinished = true; }
+            av.rb = { m, mixer, act, cur: "", main };
+          } catch (e) { console.warn("operator model", e); }
+        });
+      });
       // ---- view-model guns
       F.guns = OW.map((w0, k) => {
         const g = new T.Group();
@@ -1005,6 +1033,24 @@ function makeOps(md) {
       F.tracers = []; F.parts = [];
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
       F.partM = new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false });
+      // real-time shadows from the key light: characters, walls and props ground the scene
+      if (!low && F.key) {
+        renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+        const L = F.key, c = OG * CS / 2, dir = L.position.clone().normalize();
+        L.position.set(c + dir.x * 80, dir.y * 80, c + dir.z * 80); L.target.position.set(c, 0, c); scene.add(L.target);
+        L.castShadow = true; L.shadow.mapSize.set(2048, 2048); L.shadow.bias = -0.0006; L.shadow.normalBias = 0.04;
+        const sc2 = L.shadow.camera; sc2.left = sc2.bottom = -c * 1.15; sc2.right = sc2.top = c * 1.15; sc2.near = 1; sc2.far = 200; sc2.updateProjectionMatrix();
+        L.shadow.radius = 3;
+        const ceilY = OWH - 0.2;
+        scene.traverse(o => {
+          if (!o.isMesh || o.parent === cam || !(o.material && (o.material.isMeshStandardMaterial || o.material.isMeshPhysicalMaterial))) return;
+          o.receiveShadow = true;
+          const pl = o.geometry && o.geometry.type === "PlaneGeometry";
+          o.castShadow = !pl && !(o.position.y > ceilY);
+        });
+        (F.avatars || []).forEach(av => av.bd.traverse(o => { if (o.isMesh) o.castShadow = true; }));
+        F.shadows = true;
+      }
       F.ready = true;
     },
     burst(V, at, hex, n, spd) {
@@ -1055,14 +1101,23 @@ function makeOps(md) {
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
         else if (av.wasAlive) av.deadT = 0.001;
-        if (!alive && av.deadT > 0) { av.deadT += dt; const k = Math.min(1, av.deadT * 3.5); av.bd.rotation.x = -k * 1.45; av.bd.position.y = k * 0.18; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.6) * 1.5); av.bd.visible = av.deadT < 1.4; }
+        if (!alive && av.deadT > 0 && av.rb) { av.deadT += dt; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 1.2) * 1.5); av.bd.visible = av.deadT < 2.4; }
+        else if (!alive && av.deadT > 0) { av.deadT += dt; const k = Math.min(1, av.deadT * 3.5); av.bd.rotation.x = -k * 1.45; av.bd.position.y = k * 0.18; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.6) * 1.5); av.bd.visible = av.deadT < 1.4; }
         else { av.bd.rotation.x = 0; av.bd.position.y = 0; av.bd.visible = true; }
         // walk cycle from actual movement speed
         const spd = i === V.meIdx ? 0 : (av.spd || 0), sw = Math.min(1, spd / 4.5);
         av.ph += dt * (4 + spd * 1.6); av.legs[0].rotation.x = Math.sin(av.ph) * 0.65 * sw; av.legs[1].rotation.x = -Math.sin(av.ph) * 0.65 * sw;
-        av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
+        if (av.rb) {
+          // pick the animation from how fast they're actually moving
+          const want = !alive ? "Death" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle", R = av.rb;
+          if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); R.cur = want; }
+          if (want === "Running") R.act.Running.timeScale = clamp(spd / 6.2, 0.7, 1.3);
+          if (want === "Walking") R.act.Walking.timeScale = clamp(spd / 2.2, 0.6, 1.4);
+          R.mixer.update(dt);
+          R.main.forEach(mt => { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); });
+        } else av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
         av.wasAlive = alive;
-        av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < 1.4));
+        av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb ? 2.4 : 1.4)));
         av.ring.visible = av.gun.visible = alive;
         av.spr.position.y = alive ? 1.95 + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
         if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
