@@ -2978,7 +2978,7 @@ function makeOps(md) {
     tag: team ? "Red Team vs Blue Team · 3D" : "Free-for-all shooter · 3D",
     blurb: team ? "Red plants the payload. Blue stops it. First to 7 rounds." : "Everyone for themselves. First to 25 wins.",
     how: [],
-    keys: team ? ["WASD move", "Shift walk (silent)", "1 2 3 weapons", "E plant / defuse", "B buy"] : ["WASD move", "Shift walk (silent)", "1 2 3 weapons", "B loadout", "Right-click scope / stab"],
+    keys: team ? ["WASD move", "Space jump", "C crouch", "Shift walk (silent)", "1 2 3 weapons", "E plant / defuse", "B buy"] : ["WASD move", "Space jump", "C crouch", "Shift walk (silent)", "1 2 3 weapons", "B loadout", "Right-click scope / stab"],
     rec: { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: 300, GOAL: 25,
@@ -3336,7 +3336,7 @@ function makeOps(md) {
         if (e.repeat) return;
         const shopOpen = F.shop && !F.shop.hidden;
         if (shopOpen && /^Digit[1-9]$/.test(e.code)) { const k = +e.code.slice(-1) - 1, it = [...OW_BUY, ARMOR_IT][k]; if (it != null) this.buy(V, it); return; }
-        if (e.code === "Space") { F.firing = true; e.preventDefault(); }
+        if (e.code === "Space") { F.wantJump = true; e.preventDefault(); }
         if (e.code === "KeyR") this.reload(V);
         if (e.code === "KeyE") F.act = true;
         if (e.code === "KeyQ") this.switchTo(V, F.last);
@@ -3345,7 +3345,7 @@ function makeOps(md) {
         if (e.code === "Escape" && shopOpen) this.shopOpen(V, false);
         if (e.code === "KeyI") { const L = lookPrefs(); L.iy = !L.iy; saveLookPrefs(L); toast("Mouse look up/down: " + (L.iy ? "inverted" : "normal")); syncLookPanel(F); }
       });
-      on(window, "keyup", (e) => { if (e.code === "Space") { F.firing = false; F.latch = false; } if (e.code === "KeyE") F.act = false; if (e.code === "Tab") F.tab = false; });
+      on(window, "keyup", (e) => { if (e.code === "KeyE") F.act = false; if (e.code === "Tab") F.tab = false; });
       // touch
       on(cv, "touchstart", (e) => {
         if (V.meIdx < 0) { specNext(); return; }
@@ -3372,6 +3372,8 @@ function makeOps(md) {
         mk("FIRE", "t-fire", () => { F.firing = true; }, () => { F.firing = false; F.latch = false; });
         mk("ALT", "t-scope", () => { if (OW[F.cur].scope) F.scoped = !F.scoped; if (OW[F.cur].melee) F.stab = true; });
         mk("R", "t-r", () => this.reload(V));
+        mk("⤒", "t-jump", () => { F.wantJump = true; });
+        mk("⤓", "t-crouch", () => { F.crouchT = !F.crouchT; });
         mk("⇄", "t-swap", () => { const o = this.owned(V); this.switchTo(V, o[(o.indexOf(F.cur) + 1) % o.length]); });
         if (team) mk("USE", "t-use", () => { F.act = true; }, () => { F.act = false; });
         mk("BUY", "t-buy", () => this.shopOpen(V, F.shop.hidden));
@@ -3444,15 +3446,31 @@ function makeOps(md) {
         if (F.stick) { const vx = F.stick.x - F.stick.bx, vy = F.stick.y - F.stick.by, d = Math.hypot(vx, vy); if (d > 6) { const k = Math.min(1, d / 55); sx = vx / d * k; fx = -vy / d * k; soft = k < 0.6; } }
         // Shift (or a light push on the touch stick) walks: half speed, steadier aim, no footsteps
         const walk = KEYS.has("ShiftLeft") || KEYS.has("ShiftRight") || soft;
-        const sp = 5.4 * W0.spd * (walk ? 0.5 : 1) * (F.scoped ? 0.55 : 1) * dt;
+        const crouchKey = KEYS.has("KeyC") || KEYS.has("ControlLeft") || F.crouchT;
+        F.cr = lerp(F.cr || 0, crouchKey && !F.jh ? 1 : 0, 1 - Math.pow(0.0001, dt));
+        const top = 5.4 * W0.spd * (walk ? 0.5 : 1) * (F.scoped ? 0.55 : 1) * (1 - 0.55 * F.cr);
         const sa = Math.sin(F.me.a), ca = Math.cos(F.me.a);
-        const mx = (-sa * fx + ca * sx) * sp, mz = (-ca * fx - sa * sx) * sp;
-        oMove(F.me, mx, mz); moving = Math.hypot(mx, mz) > 0.02 * dt * 60 * 0.05 && Math.hypot(fx, sx) > 0.2;
-        F.bob += Math.hypot(mx, mz) * 2.4;
-        F.moving = moving && !walk; F.walking = walk;
+        // velocity with acceleration / friction instead of instant start-stop; little air control
+        const tvx = (-sa * fx + ca * sx) * top, tvz = (-ca * fx - sa * sx) * top, air = F.jh > 0;
+        const accel = air ? 2.5 : Math.hypot(tvx, tvz) > 0.1 ? 16 : 11, kk = 1 - Math.exp(-accel * dt);
+        F.vel = F.vel || { x: 0, z: 0 }; F.vel.x = lerp(F.vel.x, tvx, kk); F.vel.z = lerp(F.vel.z, tvz, kk);
+        const mx = F.vel.x * dt, mz = F.vel.z * dt, ox0 = F.me.x, oz0 = F.me.z;
+        oMove(F.me, mx, mz);
+        // stop velocity going into walls so you don't stick
+        if (Math.abs(F.me.x - ox0) < Math.abs(mx) * 0.5) F.vel.x *= 0.3; if (Math.abs(F.me.z - oz0) < Math.abs(mz) * 0.5) F.vel.z *= 0.3;
+        const spdNow = Math.hypot(F.vel.x, F.vel.z);
+        moving = spdNow > 1.2;
+        // jump
+        if (F.wantJump && !air && F.cr < 0.5) { F.vy = 5.4; F.jh = 0.001; SFX.step(0.4, 0, true); }
+        F.wantJump = false;
+        if (F.jh > 0) { F.vy -= 17 * dt; F.jh += F.vy * dt; if (F.jh <= 0) { F.jh = 0; F.vy = 0; F.landT = 0.18; SFX.step(0.7, 0, false); } }
+        F.landT = Math.max(0, (F.landT || 0) - dt);
+        F.bob += spdNow * dt * 2.4 * (air ? 0 : 1);
+        F.moving = moving && !walk && F.cr < 0.5 && !air; F.walking = (walk || F.cr >= 0.5) && moving;
         // footsteps: running is loud, Shift-walking is silent
         if (F.moving) { F.stepT += Math.hypot(mx, mz); if (F.stepT > 2.1) { F.stepT = 0; SFX.step(0.55, 0, F.stepAlt = !F.stepAlt); } }
-      } else F.moving = false;
+      } else { F.moving = false; F.vel = { x: 0, z: 0 }; F.jh = 0; F.vy = 0; F.cr = 0; }
+      F.eyeH = EYE - 0.55 * (F.cr || 0) + (F.jh || 0) - (F.landT || 0) * 0.35;
       // weapon
       if (F.reloadT > 0) { F.reloadT -= dt; if (F.reloadT <= 0) { F.reloadT = 0; F.ammo[F.cur] = W0.mag; } }
       F.fireCd -= dt;
@@ -3463,7 +3481,7 @@ function makeOps(md) {
         else { this.reload(V); F.latch = true; }
       }
       const act = F.act && alive;
-      const out = { x: +F.me.x.toFixed(2), z: +F.me.z.toFixed(2), a: +F.me.a.toFixed(2), q: F.rsq, w: F.cur, sh: F.lastShot || 0, hc: F.claims.slice(-12), act: act ? 1 : 0 };
+      const out = { x: +F.me.x.toFixed(2), z: +F.me.z.toFixed(2), a: +F.me.a.toFixed(2), q: F.rsq, w: F.cur, sh: F.lastShot || 0, hc: F.claims.slice(-12), act: act ? 1 : 0, cr: F.cr > 0.5 ? 1 : 0, jh: +(F.jh || 0).toFixed(2) };
       if (F.buyReq) out.buy = F.buyReq;
       return out;
     },
@@ -3488,20 +3506,21 @@ function makeOps(md) {
       const F = V.fps, me = F.me, W0 = OW[F.cur];
       SFX.shot(W0.snd, 1);
       F.kick = 1; if (F.flash) F.flash.intensity = W0.pel ? 22 : 14;
-      let spread = W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom;
+      let spread = (W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom) * (F.cr > 0.5 ? 0.65 : 1) + (F.jh > 0 ? 0.09 : 0);
       if (W0.scope && !F.scoped) spread = 0.07 + (F.moving ? W0.mv : 0);
       F.bloom = Math.min(0.06, F.bloom + (W0.auto ? 0.006 : 0.012));
       const aimA = me.a, aimP = me.p + (F.rec || 0);
       F.rec = Math.min(0.16, (F.rec || 0) + W0.kick * (0.55 + Math.random() * 0.4)); me.a += (Math.random() - 0.5) * W0.kick * 0.25;
-      const start = [me.x - Math.sin(aimA) * 0.6 + Math.cos(aimA) * 0.2, EYE - 0.16, me.z - Math.cos(aimA) * 0.6 - Math.sin(aimA) * 0.2];
+      const EY = F.eyeH || EYE;
+      const start = [me.x - Math.sin(aimA) * 0.6 + Math.cos(aimA) * 0.2, EY - 0.16, me.z - Math.cos(aimA) * 0.6 - Math.sin(aimA) * 0.2];
       const pel = W0.pel || 1; let hitAny = false, headAny = false, lastEnd = null; const dmgAcc = {}, headIdx = {};
       for (let k = 0; k < pel; k++) {
         const ya = aimA + (Math.random() - 0.5) * 2 * spread, pa = aimP + (Math.random() - 0.5) * 2 * spread * (pel > 1 ? 0.6 : 1);
         const cp = Math.cos(pa), dir = [-Math.sin(ya) * cp, Math.sin(pa), -Math.cos(ya) * cp];
         const h = Math.hypot(dir[0], dir[2]) || 1e-6;
         let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, W0.range) / h;
-        if (dir[1] < -1e-4) t = Math.min(t, EYE / -dir[1]);
-        if (dir[1] > 1e-4) t = Math.min(t, (OWH - EYE) / dir[1]);
+        if (dir[1] < -1e-4) t = Math.min(t, EY / -dir[1]);
+        if (dir[1] > 1e-4) t = Math.min(t, (OWH - EY) / dir[1]);
         let hitIdx = -1, hitY = 0;
         V.ro.forEach((r, i) => {
           if (i === V.meIdx) return;
@@ -3511,10 +3530,10 @@ function makeOps(md) {
           const a = dir[0] * dir[0] + dir[2] * dir[2], b = 2 * (ox * dir[0] + oz * dir[2]), c = ox * ox + oz * oz - 0.45 * 0.45;
           const disc = b * b - 4 * a * c; if (disc < 0) return;
           const th = (-b - Math.sqrt(disc)) / (2 * a); if (th <= 0 || th >= t) return;
-          const y = EYE + dir[1] * th; if (y < 0.25 || y > 1.75) return;
+          const yw = EY + dir[1] * th, sc = 1 - 0.3 * (av.cr || 0), y = (yw - (av.jh || 0)) / sc; if (y < 0.25 || y > 1.75) return;
           t = th; hitIdx = i; hitY = y;
         });
-        const end = [me.x + dir[0] * t, EYE + dir[1] * t, me.z + dir[2] * t]; lastEnd = end;
+        const end = [me.x + dir[0] * t, EY + dir[1] * t, me.z + dir[2] * t]; lastEnd = end;
         if (k < 3) this.addTracer(V, start, end, W0.col, hitIdx < 0);
         if (hitIdx >= 0) {
           const pls = V.g.pl, mine = pls[V.meIdx];
@@ -3899,8 +3918,10 @@ function makeOps(md) {
           const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2);
           if (av.spd > 3.6) { av.stepT = (av.stepT || 0) + v * dt; if (av.stepT > 2.1) { av.stepT = 0; const d = Math.hypot(av.x - F.me.x, av.z - F.me.z); if (d < 26) SFX.step(0.75 * (1 - d / 26), this.panOf(F, av.x, av.z, d), i & 1); } }
         }
-        F.remote[i] = { x: av.x, z: av.z, a };
-        av.grp.position.set(av.x, 0, av.z); av.grp.rotation.y = a + Math.PI; av.grp.visible = !(pl && pl[16]);
+        const rin = r.b ? null : V.inputOf(i);
+        av.cr = lerp(av.cr || 0, rin && rin.cr ? 1 : 0, 1 - Math.pow(0.0005, dt)); av.jh = rin && rin.jh > 0 ? lerp(av.jh || 0, rin.jh, 0.5) : Math.max(0, (av.jh || 0) - dt * 6);
+        F.remote[i] = { x: av.x, z: av.z, a, cr: av.cr, jh: av.jh };
+        av.grp.position.set(av.x, av.jh || 0, av.z); av.grp.rotation.y = a + Math.PI; av.bd.scale.y = 1 - 0.3 * (av.cr || 0); av.grp.visible = !(pl && pl[16]);
         const alive = !!(pl && pl[1]);
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
@@ -3923,7 +3944,7 @@ function makeOps(md) {
         av.wasAlive = alive;
         av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb ? 2.4 : 1.4)));
         av.ring.visible = av.gun.visible = alive;
-        av.spr.position.y = alive ? 1.95 + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
+        av.spr.position.y = alive ? 1.95 - 0.55 * (av.cr || 0) + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
         if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
         av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3); av.suit.emissive.setRGB(av.hurtT * 6, 0, 0);
         if (team && pl) {
@@ -3961,7 +3982,7 @@ function makeOps(md) {
       // camera
       const me = V.meIdx, mypl = me >= 0 && g.pl ? g.pl[me] : null;
       const dead = mypl && !mypl[1];
-      let cx = F.me.x, cz = F.me.z, ca = F.me.a, cp = F.me.p + (F.rec || 0), eye = EYE;
+      let cx = F.me.x, cz = F.me.z, ca = F.me.a, cp = F.me.p + (F.rec || 0), eye = F.eyeH || EYE;
       if (me < 0 || (dead && team)) {
         const cands = V.ro.map((r, i) => i).filter(i => g.pl && g.pl[i] && g.pl[i][1] && (me < 0 || g.pl[i][2] === mypl[2]) && F.remote[i]);
         // spectators follow one player; click / Space / arrows switch, otherwise it moves on every 8 s
@@ -3976,7 +3997,7 @@ function makeOps(md) {
         }
         else F.specName = "";
       } else if (dead) { eye = 0.5; }
-      const bob = F.moving ? Math.sin(F.bob) * 0.03 : 0;
+      const bobAmt = F.moving ? 0.045 : F.walking ? 0.018 : 0; F.bobK = lerp(F.bobK || 0, bobAmt, 0.12); const bob = Math.abs(Math.sin(F.bob)) * F.bobK * 1.4 - F.bobK * 0.7;
       F.cam.position.set(cx, eye + bob, cz); F.cam.rotation.order = "YXZ"; F.cam.rotation.set(cp, ca, dead && !team ? 0.5 : F.moving ? Math.sin(F.bob * 0.5) * 0.004 : 0);
       F.guns.forEach((gm, k) => { gm.visible = k === F.cur && me >= 0 && !dead && !F.scoped; });
       const gm = F.guns[F.cur];
