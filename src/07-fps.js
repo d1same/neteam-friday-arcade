@@ -252,7 +252,7 @@ const frenzy = {
         const x0 = vx + side * (W / 2) * (1 - z0 * 0.8), x1 = vx + side * (W / 2) * (1 - z1 * 0.8);
         const t0 = vy - (vy) * (1 - z0 * 0.8), b0 = vy + (H - vy) * (1 - z0 * 0.8);
         const t1 = vy - (vy) * (1 - z1 * 0.8), b1 = vy + (H - vy) * (1 - z1 * 0.8);
-        ctx.fillStyle = k % 2 ? "#151a33" : "#1b2142";
+        ctx.fillStyle = k % 2 ? "#151a33" : "#17191c";
         ctx.beginPath(); ctx.moveTo(x0, t0); ctx.lineTo(x1, t1); ctx.lineTo(x1, b1); ctx.lineTo(x0, b0); ctx.closePath(); ctx.fill();
         ctx.strokeStyle = "#2c355f"; ctx.stroke();
         for (let l = 0; l < 6; l++) { const f = 0.2 + l * 0.12; ctx.fillStyle = ["#3ddc97", "#4cc9f0", "#ffd23f"][(k + l) % 3]; ctx.fillRect(lerp(x0, x1, 0.5) - 3, lerp(lerp(t0, b0, f), lerp(t1, b1, f), 0.5), 6, 4); }
@@ -269,7 +269,7 @@ const frenzy = {
     ctx.fillStyle = ro[0].hex; ctx.fillRect(W * 0.655, H * 0.86, W * 0.1, 8);
     // crosshair
     ctx.strokeStyle = "#f5f1e6"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(vx - 70, vy + 50, 16, 0, Math.PI * 2); ctx.stroke();
-    ctx.font = "400 40px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#ffd23f"; ctx.fillText("3D", 70, 60);
+    ctx.font = "700 40px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = "#ffd23f"; ctx.fillText("3D", 70, 60);
   },
   // ---------------- client ----------------
   clientEnter(V) {
@@ -357,7 +357,7 @@ const frenzy = {
     const cv = document.createElement("canvas"); cv.width = 256; cv.height = 320;
     const ctx = cv.getContext("2d");
     drawChar(ctx, c, 128, 196, 150, { shadow: false, bob: false, blink: false, color: hex });
-    ctx.font = "700 30px Figtree, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "700 30px Inter, system-ui, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     const w = ctx.measureText(name).width + 24;
     ctx.fillStyle = "rgba(11,14,32,.82)"; ctx.beginPath(); ctx.roundRect(128 - w / 2, 14, w, 42, 21); ctx.fill();
     ctx.fillStyle = hex; ctx.fillRect(128 - w / 2 + 12, 50, w - 24, 4);
@@ -439,7 +439,7 @@ const frenzy = {
     });
     // signage
     const sign = (txt, sub, x, z, ry) => {
-      const tex = mk(512, 128, (c, w, h) => { c.fillStyle = "#0b0e20"; c.fillRect(0, 0, w, h); c.strokeStyle = "#ffd23f"; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12); c.fillStyle = "#ffd23f"; c.font = "400 52px Bungee, Impact, sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, w / 2, 54); c.fillStyle = "#a6acd0"; c.font = "700 20px 'JetBrains Mono', monospace"; c.fillText(sub, w / 2, 100); });
+      const tex = mk(512, 128, (c, w, h) => { c.fillStyle = "#0a0b0d"; c.fillRect(0, 0, w, h); c.strokeStyle = "#ffd23f"; c.lineWidth = 6; c.strokeRect(6, 6, w - 12, h - 12); c.fillStyle = "#ffd23f"; c.font = "700 52px 'Chakra Petch', sans-serif"; c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(txt, w / 2, 54); c.fillStyle = "#9da1a9"; c.font = "700 20px 'JetBrains Mono', monospace"; c.fillText(sub, w / 2, 100); });
       const m = new T.Mesh(new T.PlaneGeometry(3.2, 0.8), new T.MeshBasicMaterial({ map: tex }));
       m.position.set(x, 2.6, z); m.rotation.y = ry; scene.add(m);
     };
@@ -573,8 +573,8 @@ const frenzy = {
     const F = V.fps; const g = V.g || {};
     ctx.clearRect(0, 0, W, H);
     if (!F) return;
-    if (F.failed) { ctx.fillStyle = "#0b0e20"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 20px Figtree, sans-serif"; ctx.textAlign = "center"; ctx.fillText("3D isn't available in this browser. Try Chrome, Edge, Firefox or Safari.", W / 2, H / 2); return; }
-    if (!F.ready) { ctx.fillStyle = "#0b0e20"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#ffd23f"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.fillText("BOOTING DATA CENTER…", W / 2, H / 2); return; }
+    if (F.failed) { ctx.fillStyle = "#0a0b0d"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 20px Inter, sans-serif"; ctx.textAlign = "center"; ctx.fillText("3D isn't available in this browser. Try Chrome, Edge, Firefox or Safari.", W / 2, H / 2); return; }
+    if (!F.ready) { ctx.fillStyle = "#0a0b0d"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#ffd23f"; ctx.font = "700 26px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillText("BOOTING DATA CENTER…", W / 2, H / 2); return; }
     this.render3d(V, dt, t);
     this.hud(ctx, V, dt, t);
   },
@@ -670,7 +670,7 @@ const frenzy = {
     if (pl) {
       const x = 24, y = H - 46;
       ctx.fillStyle = "rgba(11,14,32,.75)"; ctx.beginPath(); ctx.roundRect(x - 8, y - 30, 250, 62, 12); ctx.fill();
-      ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#a6acd0"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
+      ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.textAlign = "left"; ctx.textBaseline = "middle";
       ctx.fillText("INTEGRITY", x, y - 16);
       ctx.fillStyle = "rgba(245,241,230,.15)"; ctx.fillRect(x, y - 6, 200, 14);
       ctx.fillStyle = pl[0] > 60 ? "#3ddc97" : pl[0] > 30 ? "#ffd23f" : "#ff6b57"; ctx.fillRect(x, y - 6, 2 * pl[0], 14);
@@ -680,11 +680,11 @@ const frenzy = {
       if (pl[6]) { ctx.fillStyle = "#ffd23f"; ctx.fillText("OVERCLOCK", sx, y + 20); }
       // score
       ctx.fillStyle = "rgba(11,14,32,.75)"; ctx.beginPath(); ctx.roundRect(W - 150, H - 76, 128, 54, 12); ctx.fill();
-      ctx.textAlign = "center"; ctx.fillStyle = "#ffd23f"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.fillText(String(pl[3]), W - 86, H - 56);
-      ctx.fillStyle = "#a6acd0"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillText("TAGS · FIRST TO " + this.GOAL, W - 86, H - 32);
+      ctx.textAlign = "center"; ctx.fillStyle = "#ffd23f"; ctx.font = "700 26px 'Chakra Petch', sans-serif"; ctx.fillText(String(pl[3]), W - 86, H - 56);
+      ctx.fillStyle = "#9da1a9"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillText("TAGS · FIRST TO " + this.GOAL, W - 86, H - 32);
       if (!pl[1]) {
         ctx.fillStyle = "rgba(11,14,32,.55)"; ctx.fillRect(0, 0, W, H);
-        ctx.textAlign = "center"; ctx.fillStyle = "#ff6b57"; ctx.font = "400 44px Bungee, Impact, sans-serif"; ctx.fillText("PATCHED", W / 2, H / 2 - 20);
+        ctx.textAlign = "center"; ctx.fillStyle = "#ff6b57"; ctx.font = "700 44px 'Chakra Petch', sans-serif"; ctx.fillText("PATCHED", W / 2, H / 2 - 20);
         ctx.fillStyle = "#f5f1e6"; ctx.font = "700 18px 'JetBrains Mono', monospace"; ctx.fillText("Rebooting… " + (pl[2] / 10).toFixed(1) + " s", W / 2, H / 2 + 24);
       }
     }
@@ -692,7 +692,7 @@ const frenzy = {
     F.toast.forEach(o => o.life -= dt); F.toast = F.toast.filter(o => o.life > 0);
     F.toast.forEach((o, k) => {
       ctx.globalAlpha = Math.min(1, o.life);
-      ctx.font = "700 13px Figtree, sans-serif"; const w = ctx.measureText(o.txt).width + 20;
+      ctx.font = "700 13px Inter, sans-serif"; const w = ctx.measureText(o.txt).width + 20;
       ctx.fillStyle = "rgba(11,14,32,.75)"; ctx.beginPath(); ctx.roundRect(W - w - 16, 16 + k * 30, w, 24, 8); ctx.fill();
       ctx.fillStyle = o.col; ctx.fillRect(W - w - 16, 16 + k * 30, 4, 24);
       ctx.fillStyle = "#f5f1e6"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillText(o.txt, W - w - 4, 28 + k * 30);
@@ -717,7 +717,7 @@ const frenzy = {
       ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc((F.stick.x - r.left) / s, (F.stick.y - r.top) / s, 22 / s, 0, Math.PI * 2); ctx.fill();
     }
     if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !matchMedia("(pointer: coarse)").matches && t % 2 < 1.6 && !F.firedOnce) {
-      ctx.textAlign = "center"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 15px Figtree, sans-serif"; ctx.fillText("Click to lock your mouse and aim · Esc to release · I = invert up/down", W / 2, H - 20);
+      ctx.textAlign = "center"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 15px Inter, sans-serif"; ctx.fillText("Click to lock your mouse and aim · Esc to release · I = invert up/down", W / 2, H - 20);
     }
     if (document.pointerLockElement) F.firedOnce = true;
   },

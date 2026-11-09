@@ -21,12 +21,12 @@ function smoothTo(V, key, x, y, k = 0.35) {
   return m;
 }
 function nameTag(ctx, text, x, y, me, color) {
-  ctx.font = "700 12px Figtree, system-ui, sans-serif";
+  ctx.font = "700 12px Inter, system-ui, sans-serif";
   const w = ctx.measureText(text).width + 12;
   ctx.fillStyle = me ? "#f5f1e6" : "rgba(11,14,32,.78)";
   ctx.beginPath(); ctx.roundRect(x - w / 2, y - 9, w, 18, 9); ctx.fill();
   if (color) { ctx.fillStyle = color; ctx.fillRect(x - w / 2 + 6, y + 6, w - 12, 2); }
-  ctx.fillStyle = me ? "#12162e" : "#f5f1e6";
+  ctx.fillStyle = me ? "#111316" : "#f5f1e6";
   ctx.textAlign = "center"; ctx.textBaseline = "middle";
   ctx.fillText(text, x, y + 0.5);
 }
@@ -51,8 +51,8 @@ const FX = {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 - k) + 10, 0, Math.PI * 2); ctx.stroke();
       } else if (p.txt) {
         p.y += p.vy * dt;
-        ctx.font = "400 22px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.lineWidth = 5; ctx.strokeStyle = "#0b0e20"; ctx.strokeText(p.txt, p.x, p.y);
+        ctx.font = "700 22px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.lineWidth = 5; ctx.strokeStyle = "#0a0b0d"; ctx.strokeText(p.txt, p.x, p.y);
         ctx.fillStyle = p.color; ctx.fillText(p.txt, p.x, p.y);
       } else {
         p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.94; p.vy *= 0.94;
@@ -169,10 +169,10 @@ const coverage = {
       ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
     }
     // office plan details (non-blocking): room outlines + labels
-    ctx.strokeStyle = "rgba(166,172,208,.18)"; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
+    ctx.strokeStyle = "rgba(157,161,169,.18)"; ctx.lineWidth = 2; ctx.setLineDash([6, 6]);
     [[0, 0, 7, 6, "MIKE'S OFFICE"], [17, 0, 7, 6, "SERVER CLOSET"], [0, 9, 7, 6, "RECEPTION"], [17, 9, 7, 6, "PAVLOS'S OFFICE"], [9, 5, 6, 5, "OPEN DESKS"]].forEach(([x, y, w, h, l]) => {
       ctx.strokeRect(x * CELL + 3, y * CELL + 3, w * CELL - 6, h * CELL - 6);
-      ctx.fillStyle = "rgba(166,172,208,.22)"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+      ctx.fillStyle = "rgba(157,161,169,.22)"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "top";
       ctx.fillText(l, x * CELL + 10, y * CELL + 9);
     });
     ctx.setLineDash([]);
@@ -191,7 +191,7 @@ const coverage = {
       ctx.fillStyle = r.hex;
       ctx.globalAlpha = 0.78;
       ctx.beginPath(); ctx.roundRect(x + pad, y + pad, CELL - pad * 2, CELL - pad * 2, 7); ctx.fill();
-      ctx.globalAlpha = 0.35; ctx.strokeStyle = "#0b0e20"; ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.35; ctx.strokeStyle = "#0a0b0d"; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.arc(x + CELL / 2, y + CELL / 2 + 6, 9, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
       ctx.beginPath(); ctx.arc(x + CELL / 2, y + CELL / 2 + 6, 4, Math.PI * 1.25, Math.PI * 1.75); ctx.stroke();
       ctx.globalAlpha = 1;
@@ -393,7 +393,7 @@ const sumo = {
     const g = V.g || {};
     const r = g.r || 265, cx = W / 2, cy = H / 2;
     // under-floor void: cable trays
-    ctx.fillStyle = "#0a0d1e"; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = "#08090b"; ctx.fillRect(0, 0, W, H);
     ctx.strokeStyle = "rgba(76,201,240,.07)"; ctx.lineWidth = 1;
     for (let x = 0; x < W; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
     for (let y = 0; y < H; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
@@ -415,7 +415,7 @@ const sumo = {
     for (let y = cy - 300; y < cy + 300; y += 50) { ctx.beginPath(); ctx.moveTo(cx - r, y); ctx.lineTo(cx + r, y); ctx.stroke(); }
     ctx.fillStyle = "rgba(76,201,240,.12)";
     for (let x = cx - 275; x < cx + 300; x += 100) for (let y = cy - 275; y < cy + 300; y += 100) { ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill(); }
-    ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.07)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.fillStyle = "rgba(245,241,230,.07)"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText("NETEAM DC-1", cx, cy);
     (g.hl || []).forEach(([tx, ty, st]) => {
       const x = cx - 300 + tx * 50, y = cy - 300 + ty * 50;
@@ -431,7 +431,7 @@ const sumo = {
     if (g.pk) {
       const [px, py, type] = g.pk, bob = Math.sin(t * 4) * 3;
       ctx.strokeStyle = OUTLINE; ctx.lineWidth = 2.5;
-      if (type === "shield") { ctx.fillStyle = "rgba(76,201,240,.35)"; ctx.beginPath(); ctx.arc(px, py + bob, 16, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#4cc9f0"; ctx.stroke(); ctx.fillStyle = "#4cc9f0"; ctx.font = "400 14px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("S", px, py + bob + 1); }
+      if (type === "shield") { ctx.fillStyle = "rgba(76,201,240,.35)"; ctx.beginPath(); ctx.arc(px, py + bob, 16, 0, Math.PI * 2); ctx.fill(); ctx.strokeStyle = "#4cc9f0"; ctx.stroke(); ctx.fillStyle = "#4cc9f0"; ctx.font = "700 14px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("S", px, py + bob + 1); }
       else { ctx.fillStyle = "#9b7bff"; ctx.beginPath(); ctx.moveTo(px - 16, py + 12 + bob); ctx.lineTo(px - 10, py - 10 + bob); ctx.lineTo(px + 10, py - 10 + bob); ctx.lineTo(px + 16, py + 12 + bob); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = "#fff"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("4U", px, py + 3 + bob); }
     }
     if (g.pev && g.pev[2] !== V.pevSeen) {
@@ -574,25 +574,25 @@ const alert = {
     const go = armed && !!L.goAt;
     // room
     const bg = ctx.createLinearGradient(0, 0, 0, H);
-    bg.addColorStop(0, go ? "#3a0f1a" : "#121733"); bg.addColorStop(1, "#0a0d1e");
+    bg.addColorStop(0, go ? "#3a0f1a" : "#121733"); bg.addColorStop(1, "#08090b");
     ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
     // SOC wall: 3 monitors
     const mons = [[90, 40, 200, 120], [310, 30, 340, 210], [670, 40, 200, 120]];
     mons.forEach(([x, y, w, h], k) => {
-      ctx.fillStyle = "#05070f"; ctx.strokeStyle = "#333d73"; ctx.lineWidth = 4;
+      ctx.fillStyle = "#05070f"; ctx.strokeStyle = "#2c3036"; ctx.lineWidth = 4;
       ctx.beginPath(); ctx.roundRect(x, y, w, h, 10); ctx.fill(); ctx.stroke();
       ctx.save(); ctx.beginPath(); ctx.roundRect(x + 6, y + 6, w - 12, h - 12, 6); ctx.clip();
       if (k === 1) {
         if (go) {
           ctx.fillStyle = Math.floor(t * 8) % 2 ? "#ff3b4e" : "#d81f36"; ctx.fillRect(x, y, w, h);
           ctx.fillStyle = "#fff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.font = "400 44px Bungee, Impact, sans-serif"; ctx.fillText("CONTAIN!", x + w / 2, y + h / 2 - 18);
+          ctx.font = "700 44px 'Chakra Petch', sans-serif"; ctx.fillText("CONTAIN!", x + w / 2, y + h / 2 - 18);
           ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.fillText("⚠ CRITICAL · " + ALERTS[g.al || 0][0], x + w / 2, y + h / 2 + 30);
         } else if (armed && !L.done && (g.dc || []).some(([at]) => { const e = now() - L.start; return e >= at && e < at + 750; })) {
           const dc = g.dc.find(([at]) => { const e = now() - L.start; return e >= at && e < at + 750; });
           ctx.fillStyle = "#3a3208"; ctx.fillRect(x, y, w, h);
           ctx.fillStyle = "#ffd23f"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillText("LOW", x + w / 2, y + h / 2 - 16);
+          ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.fillText("LOW", x + w / 2, y + h / 2 - 16);
           ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.fillText("ⓘ " + LOW_ALERTS[dc[1]], x + w / 2, y + h / 2 + 24);
         } else {
           ctx.fillStyle = "#07160f"; ctx.fillRect(x, y, w, h);
@@ -603,8 +603,8 @@ const alert = {
           ctx.font = "700 14px 'JetBrains Mono', monospace";
           const label = g.rp === "reveal" ? "INCIDENT CLOSED" : armed ? (L.done && L.res === -1 ? "FALSE POSITIVE" : "MONITORING… HOLD") : "ROUND " + g.r + " / " + this.ROUNDS + " · STAND BY";
           ctx.fillText("NETEAM SIEM · " + label, x + w / 2, y + 34);
-          if (g.rp === "reveal") { ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(ALERTS[g.al || 0][0], x + w / 2, y + h / 2 - 40); ctx.fillStyle = "#3ddc97"; ctx.font = "400 24px Bungee, Impact, sans-serif"; ctx.fillText("FIX: " + (SOC_ACTS[g.ac] || ""), x + w / 2, y + h / 2 - 12); }
-          if (armed && L.done && L.res === -1) { ctx.fillStyle = "#ff6b57"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.fillText("TOO EARLY −2", x + w / 2, y + h / 2 - 12); }
+          if (g.rp === "reveal") { ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(ALERTS[g.al || 0][0], x + w / 2, y + h / 2 - 40); ctx.fillStyle = "#3ddc97"; ctx.font = "700 24px 'Chakra Petch', sans-serif"; ctx.fillText("FIX: " + (SOC_ACTS[g.ac] || ""), x + w / 2, y + h / 2 - 12); }
+          if (armed && L.done && L.res === -1) { ctx.fillStyle = "#ff6b57"; ctx.font = "700 26px 'Chakra Petch', sans-serif"; ctx.fillText("TOO EARLY −2", x + w / 2, y + h / 2 - 12); }
         }
       } else {
         ctx.fillStyle = "#0b1022"; ctx.fillRect(x, y, w, h);
@@ -619,10 +619,10 @@ const alert = {
     drawChar(ctx, [2, 3, 1, 0, 1], 158, 232, 38, { t, shadow: false, phase: 1 });
     drawChar(ctx, [0, 8, 0, 0, 4], 222, 232, 38, { t, shadow: false, phase: 2 });
     ctx.font = "700 9.5px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.fillStyle = "#ffd23f";
-    ctx.fillText("MIKE & PAVLOS", 190, 270); ctx.fillStyle = "#a6acd0"; ctx.fillText("FOUNDERS · SINCE 2001", 190, 283);
+    ctx.fillText("MIKE & PAVLOS", 190, 270); ctx.fillStyle = "#9da1a9"; ctx.fillText("FOUNDERS · SINCE 2001", 190, 283);
     // desk
-    ctx.fillStyle = "#1b2142"; ctx.fillRect(0, 430, W, 170);
-    ctx.fillStyle = "#2a3263"; ctx.fillRect(0, 430, W, 8);
+    ctx.fillStyle = "#17191c"; ctx.fillRect(0, 430, W, 170);
+    ctx.fillStyle = "#1d2024"; ctx.fillRect(0, 430, W, 8);
     // techs in a row
     const n = V.ro.length, two = n > 8, perRow = two ? Math.ceil(n / 2) : n, gap = Math.min(120, (W - 80) / Math.max(1, perRow));
     V.ro.forEach((ro, i) => {
@@ -642,7 +642,7 @@ const alert = {
         ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.textAlign = "center";
         ctx.fillStyle = rt < 0 ? "#ff6b57" : "#f5f1e6"; ctx.fillText(txt, x, y - (two ? 44 : 58));
         const rp = g.rpts ? g.rpts[i] : 0;
-        ctx.fillStyle = rp > 0 ? "#ffd23f" : "#ff6b57"; ctx.font = "400 18px Bungee, Impact, sans-serif";
+        ctx.fillStyle = rp > 0 ? "#ffd23f" : "#ff6b57"; ctx.font = "700 18px 'Chakra Petch', sans-serif";
         ctx.fillText((rp > 0 ? "+" : "") + rp, x, y - (two ? 64 : 80));
       }
       if (i === V.meIdx && armed && L.done && L.res > 0) {
@@ -651,7 +651,7 @@ const alert = {
       }
     });
     // instruction
-    ctx.textAlign = "center"; ctx.font = "700 16px Figtree, system-ui, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.75)";
+    ctx.textAlign = "center"; ctx.font = "700 16px Inter, system-ui, sans-serif"; ctx.fillStyle = "rgba(245,241,230,.75)";
     const hint = V.meIdx < 0 ? "" : g.rp === "ready" ? "Get ready…" : armed && !L.goAt && !L.done ? "Hold… yellow LOW alerts are decoys" : go && !L.done ? "Pick the right fix! (1–4)" : "";
     ctx.fillText(hint, W / 2, 285);
   },
@@ -817,7 +817,7 @@ const helpdesk = {
     ctx.fillStyle = "#11152c"; ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = "rgba(76,201,240,.05)";
     for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 1);
-    ctx.font = "400 18px Bungee, Impact, sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ffd23f";
+    ctx.font = "700 18px 'Chakra Petch', sans-serif"; ctx.textAlign = "left"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ffd23f";
     ctx.fillText("TICKET QUEUE · RESOLVED", 30, 30);
     const n = V.ro.length;
     const top = 60, laneH = Math.min(46, 270 / Math.max(1, n));
@@ -829,9 +829,9 @@ const helpdesk = {
     V.ro.forEach((ro, i) => {
       const y = top + i * laneH + laneH / 2;
       ctx.fillStyle = i % 2 ? "rgba(255,255,255,.025)" : "rgba(255,255,255,.05)"; ctx.fillRect(20, y - laneH / 2, W - 40, laneH);
-      ctx.font = "700 13px Figtree, system-ui, sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = i === V.meIdx ? "#f5f1e6" : "#a6acd0";
+      ctx.font = "700 13px Inter, system-ui, sans-serif"; ctx.textAlign = "right"; ctx.fillStyle = i === V.meIdx ? "#f5f1e6" : "#9da1a9";
       ctx.fillText(ro.n, x0 - 30, y);
-      ctx.strokeStyle = "rgba(166,172,208,.2)"; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.strokeStyle = "rgba(157,161,169,.2)"; ctx.setLineDash([4, 6]); ctx.beginPath(); ctx.moveTo(x0, y); ctx.lineTo(x1, y); ctx.stroke(); ctx.setLineDash([]);
       const m = smoothTo(V, i, x0 + (x1 - x0) * vals[i] / max, y, 0.12);
       ctx.fillStyle = ro.hex; ctx.globalAlpha = 0.35; ctx.fillRect(x0, y - 3, m.x - x0, 6); ctx.globalAlpha = 1;
       drawChar(ctx, ro.c, m.x, y - 2, Math.min(36, laneH * 0.82), { t, shadow: false, squash: Math.abs(m.vx) > 0.2 ? Math.sin(t * 20) * 0.3 : 0, phase: i, color: ro.hex });

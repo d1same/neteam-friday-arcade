@@ -251,11 +251,11 @@ function gameFrame(dt, t) {
     const n = Math.ceil(tl / 1000);
     if (n !== V.lastCount && n > 0) { V.lastCount = n; SFX.play("count"); }
     const k = (tl % 1000) / 1000;
-    ctx.fillStyle = "rgba(11,14,32,.45)"; ctx.fillRect(0, 0, W, H);
-    ctx.font = "400 " + Math.round(120 + k * 60) + "px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.globalAlpha = 0.4 + k * 0.6; ctx.lineWidth = 10; ctx.strokeStyle = "#0b0e20"; ctx.strokeText(String(Math.max(1, n)), W / 2, H / 2);
-    ctx.fillStyle = "#ffd23f"; ctx.fillText(String(Math.max(1, n)), W / 2, H / 2); ctx.globalAlpha = 1;
-    if (V.meIdx >= 0) { ctx.font = "700 18px Figtree, system-ui, sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText("You're " + V.ro[V.meIdx].n + " in " + PALETTE_NAMES[V.ro[V.meIdx].col], W / 2, H / 2 + 120); }
+    ctx.fillStyle = "rgba(8,9,11,.45)"; ctx.fillRect(0, 0, W, H);
+    ctx.font = "700 " + Math.round(120 + k * 60) + "px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.globalAlpha = 0.4 + k * 0.6; ctx.lineWidth = 10; ctx.strokeStyle = "#0a0b0d"; ctx.strokeText(String(Math.max(1, n)), W / 2, H / 2);
+    ctx.fillStyle = "#ff6a1a"; ctx.fillText(String(Math.max(1, n)), W / 2, H / 2); ctx.globalAlpha = 1;
+    if (V.meIdx >= 0) { ctx.font = "700 18px Inter, system-ui, sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText("You're " + V.ro[V.meIdx].n + " in " + PALETTE_NAMES[V.ro[V.meIdx].col], W / 2, H / 2 + 120); }
   }
   if (JOY.on && (mod.id === "coverage" || mod.id === "sumo")) {
     const s = APP.gameScale || 1, r = cv.getBoundingClientRect();
@@ -349,7 +349,7 @@ function drawPodium(V, t) {
     const r = V.ro[i]; const x = w * fx, bw = Math.min(140, w * 0.26), bh = h * fh, by = h - bh;
     const grd = ctx.createLinearGradient(0, by, 0, h); grd.addColorStop(0, r.hex); grd.addColorStop(1, shade(r.hex, -0.5));
     ctx.fillStyle = grd; ctx.beginPath(); ctx.roundRect(x - bw / 2, by, bw, bh + 10, 10); ctx.fill();
-    ctx.fillStyle = "rgba(11,14,32,.55)"; ctx.font = "400 " + Math.round(Math.min(34, bh * 0.5)) + "px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(8,9,11,.55)"; ctx.font = "700 " + Math.round(Math.min(34, bh * 0.5)) + "px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(String(ri + 1), x, by + bh / 2 + 4);
     const jump = ri === 0 ? Math.abs(Math.sin(t * 5)) * 12 : Math.abs(Math.sin(t * 3 + ri)) * 4;
     drawChar(ctx, r.c, x, by - 34 - jump, 58, { t, mood: ri === 0 ? "happy" : "", phase: ri, color: r.hex });
@@ -371,20 +371,20 @@ function drawStage(t) {
   const w = cv.clientWidth, h = cv.clientHeight; if (!w) return;
   const ctx = fitCanvas(cv, w, h);
   // NOC backdrop: wall of screens
-  const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, "#161b3a"); bg.addColorStop(1, "#1f2550");
+  const bg = ctx.createLinearGradient(0, 0, 0, h); bg.addColorStop(0, "#141518"); bg.addColorStop(1, "#1b1d21");
   ctx.fillStyle = bg; ctx.fillRect(0, 0, w, h);
   const cols = Math.max(4, Math.floor(w / 120));
   for (let k = 0; k < cols; k++) {
     const sx = 14 + k * (w - 28) / cols, sw = (w - 28) / cols - 10;
-    ctx.fillStyle = "#0a0d1e"; ctx.beginPath(); ctx.roundRect(sx, 14, sw, 54, 6); ctx.fill();
+    ctx.fillStyle = "#08090b"; ctx.beginPath(); ctx.roundRect(sx, 14, sw, 54, 6); ctx.fill();
     ctx.strokeStyle = k % 3 === 1 ? "rgba(255,210,63,.6)" : "rgba(61,220,151,.55)"; ctx.lineWidth = 1.5; ctx.beginPath();
     for (let i = 0; i <= 20; i++) { const x = sx + 6 + i * (sw - 12) / 20, y = 46 + Math.sin(i * 0.9 + t * 2 + k) * 8 * Math.sin(t * 0.7 + k * 2); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
     ctx.stroke();
-    ctx.fillStyle = "rgba(166,172,208,.6)"; ctx.font = "700 8px 'JetBrains Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "top";
+    ctx.fillStyle = "rgba(157,161,169,.6)"; ctx.font = "700 8px 'JetBrains Mono', monospace"; ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText(["UPTIME 99.98%", "TICKETS 12 OPEN", "FW · OK", "BACKUPS · OK", "EDR · 0 ALERTS", "LATENCY 18 MS", "VPN · 31 USERS", "PATCH TUE · 96%"][k % 8], sx + 6, 18);
   }
-  ctx.fillStyle = "#2a3263"; ctx.fillRect(0, h - 46, w, 46);
-  ctx.fillStyle = "#333d73"; ctx.fillRect(0, h - 46, w, 3);
+  ctx.fillStyle = "#1d2024"; ctx.fillRect(0, h - 46, w, 46);
+  ctx.fillStyle = "#2c3036"; ctx.fillRect(0, h - 46, w, 3);
   const ps = lobbyPeers();
   const list = ps.length ? ps : [{ peer: "me", sameTab: true, presence: myPresence(), by: null }];
   const n = list.length, gap = Math.min(110, (w - 40) / Math.max(1, n));
@@ -400,7 +400,7 @@ function drawStage(t) {
     const jump = active ? Math.abs(Math.sin((t - ea.at) * 7)) * 16 * Math.max(0, 1 - (t - ea.at) / 2.4) : 0;
     drawChar(ctx, c, x, y - jump, Math.min(64, gap * 0.62), { t, phase: i * 1.3, mood: active ? "happy" : "", look: Math.sin(t * 0.5 + i) * 0.6 });
     nameTag(ctx, cleanNick(p.presence.nick) || "New tech", x, h - 22, p.sameTab, PALETTE[c[1]]);
-    if (host && host.peer === p.peer) { ctx.font = "700 9px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.textAlign = "center"; ctx.fillText("HOSTING", x, y - 56); }
+    if (host && host.peer === p.peer) { ctx.font = "700 9px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ff6a1a"; ctx.textAlign = "center"; ctx.fillText("HOSTING", x, y - 56); }
     if (active) {
       const by = y - 70 - jump * 0.3;
       ctx.fillStyle = "#f5f1e6"; ctx.beginPath(); ctx.roundRect(x - 22, by - 20, 44, 38, 12); ctx.fill();
@@ -537,7 +537,7 @@ function renderBoard() {
     const rows = aggregate(APP.tab === "today" ? todays : APP.matches);
     if (!rows.length) {
       const e = document.createElement("div"); e.className = "empty";
-      e.textContent = APP.tab === "today" ? "No matches yet today. Start a game with 2+ people and the standings show up here." : "No matches yet. Every match with 2+ people adds points here.";
+      e.textContent = APP.tab === "today" ? "No league games yet today. Play with 2+ people to earn points." : "No matches yet. Every match with 2+ people adds points here.";
       body.append(e);
     } else {
       const box = document.createElement("div"); box.className = "rows";

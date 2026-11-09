@@ -154,12 +154,12 @@ const race = {
   },
 
   cardArt(ctx, ro, t) {
-    const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, "#090b24"); sky.addColorStop(0.55, "#3a1a4f"); sky.addColorStop(0.62, "#ff7a59"); sky.addColorStop(0.63, "#14112a"); sky.addColorStop(1, "#0b0e20");
+    const sky = ctx.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, "#08090b"); sky.addColorStop(0.55, "#2a1a14"); sky.addColorStop(0.62, "#ff7a59"); sky.addColorStop(0.63, "#14112a"); sky.addColorStop(1, "#0a0b0d");
     ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
     const rnd = mulberry32(5);
-    for (let x = -20; x < W; x += 34 + rnd() * 30) { const h = 80 + rnd() * 230, w = 30 + rnd() * 50; ctx.fillStyle = "#151a3a"; ctx.fillRect(x, H * 0.62 - h, w, h); ctx.fillStyle = "rgba(255,210,120,.55)"; for (let y = H * 0.62 - h + 8; y < H * 0.62 - 6; y += 12) for (let k = 4; k < w - 6; k += 9) if (rnd() < 0.4) ctx.fillRect(x + k, y, 4, 5); }
+    for (let x = -20; x < W; x += 34 + rnd() * 30) { const h = 80 + rnd() * 230, w = 30 + rnd() * 50; ctx.fillStyle = "#131418"; ctx.fillRect(x, H * 0.62 - h, w, h); ctx.fillStyle = "rgba(255,210,120,.55)"; for (let y = H * 0.62 - h + 8; y < H * 0.62 - 6; y += 12) for (let k = 4; k < w - 6; k += 9) if (rnd() < 0.4) ctx.fillRect(x + k, y, 4, 5); }
     // road in perspective
-    ctx.fillStyle = "#23263a"; ctx.beginPath(); ctx.moveTo(W * 0.46, H * 0.62); ctx.lineTo(W * 0.54, H * 0.62); ctx.lineTo(W * 1.05, H); ctx.lineTo(-W * 0.05, H); ctx.fill();
+    ctx.fillStyle = "#222428"; ctx.beginPath(); ctx.moveTo(W * 0.46, H * 0.62); ctx.lineTo(W * 0.54, H * 0.62); ctx.lineTo(W * 1.05, H); ctx.lineTo(-W * 0.05, H); ctx.fill();
     ctx.strokeStyle = "#ffd23f"; ctx.lineWidth = 4; ctx.setLineDash([26, 22]); ctx.beginPath(); ctx.moveTo(W / 2, H * 0.62); ctx.lineTo(W / 2, H); ctx.stroke(); ctx.setLineDash([]);
     // boost chevrons
     ctx.fillStyle = "rgba(76,201,240,.85)"; for (let k = 0; k < 3; k++) { const y = H * 0.78 + k * 26; ctx.beginPath(); ctx.moveTo(W * 0.3, y + 20); ctx.lineTo(W * 0.34, y); ctx.lineTo(W * 0.38, y + 20); ctx.lineTo(W * 0.34, y + 10); ctx.fill(); }
@@ -173,8 +173,8 @@ const race = {
       drawChar(ctx, c, x, y - 64 * s, 62 * s, { t, color: hex, mood: "", shadow: false });
     };
     car(W * 0.66, H * 0.8, 1.1, ro[0].hex, ro[0].c); car(W * 0.3, H * 0.7, 0.7, ro[1].hex, ro[1].c);
-    ctx.font = "400 58px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ffd23f"; ctx.fillText("GRAND PRIX", W / 2, H * 0.14);
-    ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = "rgba(245,241,230,.8)"; ctx.fillText("3D", 24, H - 30);
+    ctx.font = "700 58px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#ff8a3d"; ctx.fillText("GRAND PRIX", W / 2, H * 0.14);
+    ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.textAlign = "left"; ctx.fillStyle = "rgba(245,241,230,.8)"; ctx.fillText("3D", 24, H - 30);
   },
 
   // ---------------- client ----------------
@@ -286,7 +286,7 @@ const race = {
     const curbMat = new T.MeshStandardMaterial({ map: curb, roughness: 0.6 });
     ribbon(RC_HW + 0.6, RC_HW + 1.6, 0.04, curbMat, 4); ribbon(-RC_HW - 1.6, -RC_HW - 0.6, 0.04, curbMat.clone(), 4);
     // barriers: vertical ribbons with Neteam colors
-    const barTex = mk(512, 64, (x, w, h) => { x.fillStyle = "#1f6fd1"; x.fillRect(0, 0, w, h); x.fillStyle = "#ffd23f"; x.fillRect(0, h - 10, w, 10); x.fillStyle = "#f5f1e6"; x.font = "400 34px Bungee, Impact, sans-serif"; x.textBaseline = "middle"; x.fillText("NETEAM SOLUTIONS", 20, h / 2 - 4); x.fillStyle = "#ffd23f"; x.fillText("IT · NYC", 360, h / 2 - 4); });
+    const barTex = mk(512, 64, (x, w, h) => { x.fillStyle = "#1f6fd1"; x.fillRect(0, 0, w, h); x.fillStyle = "#ffd23f"; x.fillRect(0, h - 10, w, 10); x.fillStyle = "#f5f1e6"; x.font = "700 34px 'Chakra Petch', sans-serif"; x.textBaseline = "middle"; x.fillText("NETEAM SOLUTIONS", 20, h / 2 - 4); x.fillStyle = "#ffd23f"; x.fillText("IT · NYC", 360, h / 2 - 4); });
     barTex.wrapS = T.RepeatWrapping;
     const wall = (lat) => {
       const N = RC.N, pos = [], uv = [], idx = []; let acc = 0;
@@ -301,7 +301,7 @@ const race = {
     sl.rotation.x = -Math.PI / 2; sl.position.y = 0.05; const slG = new T.Group(); slG.add(sl); slG.position.set(RC.pts[0][0], 0, RC.pts[0][1]); slG.rotation.y = rcHead(0); scene.add(slG);
     const gantry = new T.Group(), steel = new T.MeshStandardMaterial({ color: 0x3a3f58, metalness: 0.7, roughness: 0.35 });
     [-1, 1].forEach(s => { const leg = new T.Mesh(new T.BoxGeometry(0.8, 9, 0.8), steel); leg.position.set(s * (RC_WALL + 1.2), 4.5, 0); gantry.add(leg); });
-    const banTex = mk(1024, 128, (x, w, h) => { x.fillStyle = "#0b0e20"; x.fillRect(0, 0, w, h); x.strokeStyle = "#ffd23f"; x.lineWidth = 8; x.strokeRect(4, 4, w - 8, h - 8); x.fillStyle = "#ffd23f"; x.font = "400 70px Bungee, Impact, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("NETEAM GRAND PRIX", w / 2, h / 2 + 4); });
+    const banTex = mk(1024, 128, (x, w, h) => { x.fillStyle = "#0a0b0d"; x.fillRect(0, 0, w, h); x.strokeStyle = "#ffd23f"; x.lineWidth = 8; x.strokeRect(4, 4, w - 8, h - 8); x.fillStyle = "#ffd23f"; x.font = "700 70px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("NETEAM GRAND PRIX", w / 2, h / 2 + 4); });
     const ban = new T.Mesh(new T.BoxGeometry(RC_WALL * 2 + 3.2, 2.6, 0.5), new T.MeshStandardMaterial({ map: banTex, emissiveMap: banTex, emissive: 0xffffff, emissiveIntensity: 0.8 }));
     ban.position.y = 8.2; gantry.add(ban);
     gantry.position.set(RC.pts[0][0], 0, RC.pts[0][1]); gantry.rotation.y = rcHead(0); scene.add(gantry);
@@ -331,11 +331,11 @@ const race = {
     scene.add(bIm);
     // Neteam HQ tower + billboards
     const hqPos = rcAt(Math.round(RC.N * 0.02), -RC_WALL - 20);
-    const hqTex = mk(256, 512, (x, w, h) => { x.fillStyle = "#101634"; x.fillRect(0, 0, w, h); for (let y = 70; y < h; y += 16) for (let k = 8; k < w; k += 16) { x.fillStyle = Math.random() < 0.6 ? "#9fd8ff" : "#1a2148"; x.fillRect(k, y, 10, 9); } x.fillStyle = "#ffd23f"; x.fillRect(0, 0, w, 56); x.fillStyle = "#0b0e20"; x.font = "400 40px Bungee, Impact, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("NETEAM", w / 2, 30); });
+    const hqTex = mk(256, 512, (x, w, h) => { x.fillStyle = "#101634"; x.fillRect(0, 0, w, h); for (let y = 70; y < h; y += 16) for (let k = 8; k < w; k += 16) { x.fillStyle = Math.random() < 0.6 ? "#9fd8ff" : "#1a2148"; x.fillRect(k, y, 10, 9); } x.fillStyle = "#ffd23f"; x.fillRect(0, 0, w, 56); x.fillStyle = "#0a0b0d"; x.font = "700 40px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("NETEAM", w / 2, 30); });
     const hq = new T.Mesh(new T.BoxGeometry(18, 110, 18), new T.MeshStandardMaterial({ map: hqTex, emissiveMap: hqTex, emissive: 0xffffff, emissiveIntensity: 1 })); hq.position.set(hqPos[0], 55, hqPos[1]); scene.add(hq);
     const spire = new T.Mesh(new T.CylinderGeometry(0.3, 0.8, 20, 8), new T.MeshBasicMaterial({ color: 0xff4d5e })); spire.position.set(hqPos[0], 120, hqPos[1]); scene.add(spire); F.spire = spire;
     const bb = (lines, fi, lat, col) => {
-      const tex = mk(512, 256, (x, w, h) => { x.fillStyle = "#0b0e20"; x.fillRect(0, 0, w, h); x.strokeStyle = col; x.lineWidth = 10; x.strokeRect(5, 5, w - 10, h - 10); x.textAlign = "center"; x.textBaseline = "middle"; lines.forEach((l, k) => { x.fillStyle = k ? "#f5f1e6" : col; x.font = (k ? "700 34px Figtree, sans-serif" : "400 56px Bungee, Impact, sans-serif"); x.fillText(l, w / 2, 80 + k * 70); }); });
+      const tex = mk(512, 256, (x, w, h) => { x.fillStyle = "#0a0b0d"; x.fillRect(0, 0, w, h); x.strokeStyle = col; x.lineWidth = 10; x.strokeRect(5, 5, w - 10, h - 10); x.textAlign = "center"; x.textBaseline = "middle"; lines.forEach((l, k) => { x.fillStyle = k ? "#f5f1e6" : col; x.font = (k ? "700 34px Inter, sans-serif" : "700 56px 'Chakra Petch', sans-serif"); x.fillText(l, w / 2, 80 + k * 70); }); });
       const i = Math.round(RC.N * fi), p = rcAt(i, lat), g = new T.Group();
       const board = new T.Mesh(new T.BoxGeometry(14, 7, 0.4), new T.MeshStandardMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.9 })); board.position.y = 8;
       const pole = new T.Mesh(new T.CylinderGeometry(0.3, 0.3, 8, 8), steel); pole.position.y = 4;
@@ -402,8 +402,8 @@ const race = {
   },
   draw(ctx, V, dt, t) {
     const F = V.fps; ctx.clearRect(0, 0, W, H); if (!F) return;
-    if (F.failed) { ctx.fillStyle = "#0b0e20"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 20px Figtree, sans-serif"; ctx.textAlign = "center"; ctx.fillText("3D isn't available in this browser. Try Chrome, Edge, Firefox or Safari.", W / 2, H / 2); return; }
-    if (!F.ready) { ctx.fillStyle = "#0b0e20"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#ffd23f"; ctx.font = "400 26px Bungee, Impact, sans-serif"; ctx.textAlign = "center"; ctx.fillText("WARMING UP THE ENGINES…", W / 2, H / 2); return; }
+    if (F.failed) { ctx.fillStyle = "#0a0b0d"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 20px Inter, sans-serif"; ctx.textAlign = "center"; ctx.fillText("3D isn't available in this browser. Try Chrome, Edge, Firefox or Safari.", W / 2, H / 2); return; }
+    if (!F.ready) { ctx.fillStyle = "#0a0b0d"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#ff8a3d"; ctx.font = "700 26px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillText("WARMING UP THE ENGINES…", W / 2, H / 2); return; }
     this.render3d(V, dt, t); this.hud(ctx, V, dt, t);
   },
   render3d(V, dt, t) {
@@ -458,7 +458,7 @@ const race = {
   },
   hud(ctx, V, dt, t) {
     const F = V.fps, g = V.g || {}, me = V.meIdx, q = me >= 0 && g.pl ? g.pl[me] : null;
-    const box = (x, y, w, h, r = 12, a = 0.72) => { ctx.fillStyle = "rgba(9,11,26," + a + ")"; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); };
+    const box = (x, y, w, h, r = 12, a = 0.72) => { ctx.fillStyle = "rgba(10,11,13," + a + ")"; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); };
     ctx.textBaseline = "middle";
     const gt = (g.t || 0) / 10, pos = this.places(V), n = V.ro.length;
     // speed lines while boosting
@@ -467,18 +467,18 @@ const race = {
     if (gt < 0.9 && V.h.ph === "play") {
       const k = gt < 0 ? Math.ceil(-gt) : 0, s = k > 0 ? String(k) : "GO!";
       if (s !== F.cdShown) { F.cdShown = s; if (k > 0) SFX.play("count"); }
-      ctx.textAlign = "center"; ctx.font = "400 120px Bungee, Impact, sans-serif"; ctx.lineWidth = 12; ctx.strokeStyle = "rgba(9,11,26,.85)"; ctx.strokeText(s, W / 2, H * 0.36); ctx.fillStyle = k > 0 ? "#ff4d5e" : "#3ddc97"; ctx.fillText(s, W / 2, H * 0.36);
+      ctx.textAlign = "center"; ctx.font = "700 120px 'Chakra Petch', sans-serif"; ctx.lineWidth = 12; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.strokeText(s, W / 2, H * 0.36); ctx.fillStyle = k > 0 ? "#ff4d5e" : "#3ddc97"; ctx.fillText(s, W / 2, H * 0.36);
     }
     if (q) {
       // position
       box(14, 14, 150, 86, 14);
-      ctx.textAlign = "left"; ctx.font = "400 54px Bungee, Impact, sans-serif"; ctx.fillStyle = pos[me] === 1 ? "#ffd23f" : "#f5f1e6"; ctx.fillText(String(pos[me] || "-"), 26, 58);
-      ctx.font = "400 20px Bungee, Impact, sans-serif"; ctx.fillStyle = "#a6acd0"; const pw = ctx.measureText(String(pos[me] || "-")).width; ctx.fillText(["", "ST", "ND", "RD"][pos[me]] || "TH", 30 + pw * 2.6, 46); ctx.fillText("/" + n, 30 + pw * 2.6, 72);
+      ctx.textAlign = "left"; ctx.font = "700 54px 'Chakra Petch', sans-serif"; ctx.fillStyle = pos[me] === 1 ? "#ffd23f" : "#f5f1e6"; ctx.fillText(String(pos[me] || "-"), 26, 58);
+      ctx.font = "700 20px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#9da1a9"; const pw = ctx.measureText(String(pos[me] || "-")).width; ctx.fillText(["", "ST", "ND", "RD"][pos[me]] || "TH", 30 + pw * 2.6, 46); ctx.fillText("/" + n, 30 + pw * 2.6, 72);
       // lap + times
       box(W - 214, 14, 200, 70, 14);
-      ctx.textAlign = "right"; ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText("LAP " + Math.min(RC_LAPS, q[1] + 1) + "/" + RC_LAPS, W - 28, 40);
+      ctx.textAlign = "right"; ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText("LAP " + Math.min(RC_LAPS, q[1] + 1) + "/" + RC_LAPS, W - 28, 40);
       const lapStart = (g.t || 0) / 10 * 1000 - 0; const done = q[2];
-      ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.fillStyle = "#a6acd0";
+      ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9";
       const sumPrev = q[1] ? null : 0;
       ctx.fillText("BEST " + (q[4] ? (q[4] / 1000).toFixed(2) : "--.--"), W - 28, 68);
       // lap toasts
@@ -488,18 +488,18 @@ const race = {
       // wrong way
       if (F.lastDist != null && q[0] < F.lastDist - 1 && !done) F.wrongT = Math.min(2, F.wrongT + dt * 3); else F.wrongT = Math.max(0, F.wrongT - dt);
       F.lastDist = q[0];
-      if (F.wrongT > 0.8 && gt > 0) { ctx.textAlign = "center"; ctx.font = "400 40px Bungee, Impact, sans-serif"; ctx.fillStyle = Math.floor(t * 4) % 2 ? "#ff4d5e" : "#ffd23f"; ctx.fillText("WRONG WAY", W / 2, H * 0.3); }
+      if (F.wrongT > 0.8 && gt > 0) { ctx.textAlign = "center"; ctx.font = "700 40px 'Chakra Petch', sans-serif"; ctx.fillStyle = Math.floor(t * 4) % 2 ? "#ff4d5e" : "#ffd23f"; ctx.fillText("WRONG WAY", W / 2, H * 0.3); }
       // speedo
       const c = F.me, mph = Math.round(Math.abs(c ? c.v : 0) * 2.2);
       box(W - 214, H - 108, 200, 94, 14);
       const cx0 = W - 114, cy0 = H - 38, R = 52, k = clamp(Math.abs(c ? c.v : 0) / RC_BOOST, 0, 1);
       ctx.lineWidth = 8; ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.beginPath(); ctx.arc(cx0, cy0, R, Math.PI * 1.05, Math.PI * 1.95); ctx.stroke();
       ctx.strokeStyle = c && c.bo > 0 ? "#4cc9f0" : k > 0.68 ? "#ff6b57" : "#ffd23f"; ctx.beginPath(); ctx.arc(cx0, cy0, R, Math.PI * 1.05, Math.PI * (1.05 + 0.9 * k)); ctx.stroke();
-      ctx.textAlign = "center"; ctx.font = "400 30px Bungee, Impact, sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(String(mph), cx0, cy0 - 14); ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#a6acd0"; ctx.fillText("MPH", cx0, cy0 + 8);
+      ctx.textAlign = "center"; ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(String(mph), cx0, cy0 - 14); ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText("MPH", cx0, cy0 + 8);
       // drift charge
-      if (c && c.dc > 0.1) { const ch = Math.min(1, c.dc / 2.2); box(W / 2 - 110, H - 60, 220, 34, 10); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 96, H - 40, 192, 8); ctx.fillStyle = c.dc > 0.6 ? "#4cc9f0" : "#a6acd0"; ctx.fillRect(W / 2 - 96, H - 40, 192 * ch, 8); ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(c.dc > 0.6 ? "TURBO READY" : "DRIFT", W / 2, H - 51); }
+      if (c && c.dc > 0.1) { const ch = Math.min(1, c.dc / 2.2); box(W / 2 - 110, H - 60, 220, 34, 10); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 96, H - 40, 192, 8); ctx.fillStyle = c.dc > 0.6 ? "#4cc9f0" : "#9da1a9"; ctx.fillRect(W / 2 - 96, H - 40, 192 * ch, 8); ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(c.dc > 0.6 ? "TURBO READY" : "DRIFT", W / 2, H - 51); }
     }
-    if (F.toast) { F.toast.life -= dt; const o = F.toast; ctx.globalAlpha = Math.min(1, o.life * 2); ctx.textAlign = "center"; ctx.font = "400 54px Bungee, Impact, sans-serif"; ctx.lineWidth = 10; ctx.strokeStyle = "rgba(9,11,26,.85)"; ctx.strokeText(o.s, W / 2, H * 0.24); ctx.fillStyle = o.col; ctx.fillText(o.s, W / 2, H * 0.24); if (o.sub) { ctx.font = "700 20px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(o.sub, W / 2, H * 0.24 + 46); } ctx.globalAlpha = 1; if (o.life <= 0) F.toast = null; }
+    if (F.toast) { F.toast.life -= dt; const o = F.toast; ctx.globalAlpha = Math.min(1, o.life * 2); ctx.textAlign = "center"; ctx.font = "700 54px 'Chakra Petch', sans-serif"; ctx.lineWidth = 10; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.strokeText(o.s, W / 2, H * 0.24); ctx.fillStyle = o.col; ctx.fillText(o.s, W / 2, H * 0.24); if (o.sub) { ctx.font = "700 20px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(o.sub, W / 2, H * 0.24 + 46); } ctx.globalAlpha = 1; if (o.life <= 0) F.toast = null; }
     // minimap with standings
     const [mnx, mxx, mnz, mxz] = RC.box, mw = 150, mh = mw * (mxz - mnz) / (mxx - mnx), ox = 14, oy = H - mh - 30;
     box(ox - 6, oy - 8, mw + 12, mh + 16, 10, 0.65);
