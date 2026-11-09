@@ -634,9 +634,7 @@ const race = {
   },
   render3d(V, dt, t) {
     const F = V.fps, T = THREE, g = V.g || {};
-    const gc = $("#gameCanvas"); const w = parseFloat(gc.style.width) || 960, h = parseFloat(gc.style.height) || 600;
-    if (F.w !== w || F.h !== h) { F.w = w; F.h = h; F.renderer.setSize(w, h, false); Object.assign(F.cv.style, { width: w + "px", height: h + "px" }); F.cam3.aspect = w / h; F.cam3.updateProjectionMatrix(); }
-    F.cv.style.left = gc.offsetLeft + "px"; F.cv.style.top = gc.offsetTop + "px"; pinToStage(F, w, h);
+    GFX.fitStage(F, F.cam3);
     const me = V.meIdx;
     V.ro.forEach((r, i) => {
       const car = F.cars[i]; let x, z, a, v, bo, sl;

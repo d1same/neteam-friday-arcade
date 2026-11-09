@@ -741,7 +741,7 @@ function makeOps(md) {
       if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
       if (F.post) try { F.post.dispose(); } catch (e) {}
       if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
-      [F.cv, F.setBtn, F.setPanel, F.shop, F.touch].forEach(el => el && el.remove());
+      [F.cv, F.setBtn, F.setPanel, F.shop, F.touch].forEach(el => el && el.remove()); GFX.bleed("");
       V.fps = null;
     },
     owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (pl && pl[22]) return [KNIFE]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
@@ -894,11 +894,14 @@ function makeOps(md) {
       // aim settings (shared with the other 3D game)
       const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.textContent = "⚙ Settings";
       const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
-      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><label><input type="checkbox" data-cb> Color-blind team colors</label><label class="sl">Graphics <select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label><button type="button" class="btn" data-close>Done</button>';
+      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><label><input type="checkbox" data-cb> Color-blind team colors</label><label class="sl">Resolution <b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label><label class="sl">Graphics <select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label><button type="button" class="btn" data-close>Done</button>';
       const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
       cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
+      const rsI = sp.querySelector("[data-rs]"), rsV = sp.querySelector("[data-rv]"), rsShow = () => { rsV.textContent = rsI.value + "%"; };
+      rsI.value = Math.round(((store("nfa-gfx") || {}).rs || (GFX.lowEnd() ? 0.75 : 1)) * 100); rsShow();
+      rsI.addEventListener("input", () => { rsShow(); store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { rs: +rsI.value / 100 })); });
       const qs = sp.querySelector("[data-q]"); qs.value = (store("nfa-gfx") || {}).q || "auto";
-      qs.addEventListener("change", () => { store("nfa-gfx", { q: qs.value }); toast("Graphics: " + qs.options[qs.selectedIndex].text + ". Applies from the next game."); });
+      qs.addEventListener("change", () => { store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { q: qs.value })); toast("Graphics: " + qs.options[qs.selectedIndex].text + ". Applies from the next game."); });
       sb.addEventListener("click", (e) => { e.stopPropagation(); if (document.pointerLockElement) try { document.exitPointerLock(); } catch (er) {} sp.hidden = !sp.hidden; syncLookPanel(F); });
       sp.addEventListener("mousedown", (e) => e.stopPropagation());
       sp.addEventListener("input", (e) => { const k = e.target.dataset.k; if (!k) return; const L = lookPrefs(); L[k] = k === "s" ? clamp(+e.target.value || 1, 0.3, 3) : e.target.checked; saveLookPrefs(L); syncLookPanel(F); });
@@ -1816,9 +1819,7 @@ function makeOps(md) {
     },
     render3d(V, dt, t) {
       const F = V.fps, T = THREE, g = V.g || {};
-      const gc = $("#gameCanvas"); const w = parseFloat(gc.style.width) || 960, h = parseFloat(gc.style.height) || 600;
-      if (F.w !== w || F.h !== h) { F.w = w; F.h = h; F.renderer.setSize(w, h, false); Object.assign(F.cv.style, { width: w + "px", height: h + "px" }); F.cam.aspect = w / h; F.cam.updateProjectionMatrix(); }
-      F.cv.style.left = gc.offsetLeft + "px"; F.cv.style.top = gc.offsetTop + "px"; pinToStage(F, w, h);
+      GFX.fitStage(F, F.cam);
       const fov = F.scoped ? 22 : 74; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
       // players
       const mypl0 = V.meIdx >= 0 && g.pl ? g.pl[V.meIdx] : null;
@@ -2008,6 +2009,7 @@ function makeOps(md) {
       if (F.hurtT > 0 && !F.post) { const gr = ctx.createRadialGradient(W / 2, H / 2, 160, W / 2, H / 2, 560); gr.addColorStop(0, "rgba(255,40,60,0)"); gr.addColorStop(1, "rgba(255,40,60," + F.hurtT * 1.3 + ")"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
       const alive = pl && pl[1];
       // scope
+      GFX.bleed(F.scoped && alive ? "#000" : pl && !alive ? "rgba(10,11,13,.35)" : "");
       if (F.scoped && alive) {
         ctx.fillStyle = "#000"; ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(W / 2, H / 2, H * 0.44, 0, Math.PI * 2, true); ctx.fill();
         ctx.strokeStyle = "rgba(0,0,0,.85)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(W / 2 - H * 0.44, H / 2); ctx.lineTo(W / 2 + H * 0.44, H / 2); ctx.moveTo(W / 2, H / 2 - H * 0.44); ctx.lineTo(W / 2, H / 2 + H * 0.44); ctx.stroke();
@@ -2042,7 +2044,7 @@ function makeOps(md) {
         ctx.font = "700 12px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ffd23f"; ctx.fillText(tr[3] >= 0 ? "🏆 " + (tr[3] === me ? "YOU" : ((V.ro[tr[3]] || {}).n || "").toUpperCase()) : "🏆 ROUTER IS FREE", W / 2, 66);
         // where's the router: a gold marker on screen, pinned to the edge when it's off screen
         if (F.trW && F.trBy !== me && F.cam) {
-          const v = new THREE.Vector3(...F.trW).project(F.cam); let sx = (v.x + 1) / 2 * W, sy = (1 - v.y) / 2 * H; const behind = v.z > 1;
+          const v = new THREE.Vector3(...F.trW).project(F.cam); let sx = W / 2 + v.x * (F.w / 2) / (F.gw / W), sy = H / 2 - v.y * (F.h / 2) / (F.gh / H); const behind = v.z > 1;
           if (behind) { sx = sx < W / 2 ? W - 40 : 40; sy = H / 2; }
           const ex = clamp(sx, 40, W - 40), ey = clamp(sy, 90, H - 90), d = Math.hypot(F.trW[0] - F.me.x, F.trW[2] - F.me.z);
           ctx.save(); ctx.translate(ex, ey); ctx.fillStyle = "#ffd23f"; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, 0); ctx.lineTo(0, 11); ctx.lineTo(-9, 0); ctx.closePath(); ctx.stroke(); ctx.fill();

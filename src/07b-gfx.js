@@ -62,6 +62,16 @@ const GFX = {
     return GFX._op;
   },
   // quality: phones get a lighter pipeline
+  // render resolution: the device's native pixel density times the player's scale (Settings), capped for safety
+  pxRatio() { const g = store("nfa-gfx") || {}, rs = clamp(+g.rs || (this.lowEnd() ? 0.75 : 1), 0.5, 1.5); return Math.min(3, (devicePixelRatio || 1) * rs); },
+  // size the 3D canvas to fill the whole stage (the 16:10 HUD canvas floats centred on top of it)
+  fitStage(F, cam) {
+    const box = $("#stagebox"), gc = $("#gameCanvas"), w = box.clientWidth || 960, h = box.clientHeight || 600, pr = this.pxRatio();
+    if (F.w !== w || F.h !== h || F.pr !== pr) { F.w = w; F.h = h; F.pr = pr; F.renderer.setPixelRatio(pr); F.renderer.setSize(w, h, false); Object.assign(F.cv.style, { width: w + "px", height: h + "px", left: "0px", top: "0px", borderRadius: "0" }); cam.aspect = w / h; cam.updateProjectionMatrix(); }
+    const gw = parseFloat(gc.style.width) || 960, gh = parseFloat(gc.style.height) || 600; F.gw = gw; F.gh = gh; pinToStage(F, gw, gh);
+  },
+  // tint everything outside the HUD canvas too (scope black-out, death dim): a huge spread shadow on the HUD canvas
+  bleed(col) { const gc = $("#gameCanvas"), v = col ? "0 0 0 200vmax " + col : ""; if (gc && gc.style.boxShadow !== v) gc.style.boxShadow = v; },
   lowEnd() { const q = (store("nfa-gfx") || {}).q; if (q === "low") return true; if (q === "high") return false; return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4; },
   tex(w, h, fn) { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.userData.canvas = c; return t; },
   // turn a grayscale height canvas into a tangent-space normal map
