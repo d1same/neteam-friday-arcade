@@ -174,11 +174,25 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .keys { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 12px 0 4px; }
 .key { font-family: var(--f-mono); font-size: 12px; padding: 5px 9px; border-radius: 8px; background: var(--ink-2); border: 1px solid var(--line); border-bottom-width: 3px; color: var(--text); }
 .count-ring { font-family: var(--f-mono); color: var(--muted); font-size: 13px; margin-top: 10px; }
-.spectate { position: absolute; z-index: 2; top: 12px; left: 50%; transform: translateX(-50%); background: rgba(8,9,11,.85); border: 1px solid var(--line); padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--muted); pointer-events: none; white-space: nowrap; }
+.spectate { position: absolute; z-index: 2; top: 56px; left: 50%; transform: translateX(-50%); background: rgba(8,9,11,.85); border: 1px solid var(--line); padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--muted); pointer-events: none; white-space: nowrap; }
 .results-card { max-width: 640px !important; }
 .results-card { max-height: calc(100% - 24px); overflow-y: auto; }
 .results-card:has(.res-board) { max-width: 760px !important; }
 .results-card:has(.res-board) canvas.podium { height: 150px; }
+.ready-card { max-width: 520px !important; width: calc(100% - 24px); max-height: calc(100% - 24px); overflow-y: auto; text-align: center; }
+.ready-tag { font-family: var(--f-mono); font-size: 11px; letter-spacing: .18em; color: var(--bulb); font-weight: 700; }
+.ready-sub { color: var(--muted); margin: 2px 0 8px; }
+.ready-count { font-family: var(--f-display); font-size: 26px; font-weight: 700; letter-spacing: .04em; }
+.ready-list { display: flex; flex-direction: column; gap: 5px; margin: 10px 0 14px; text-align: left; }
+.ready-row { display: grid; grid-template-columns: 28px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 6px; background: var(--panel-2); border-left: 3px solid #4a4d55; }
+.ready-row canvas { width: 28px; height: 28px; }
+.ready-row .nm { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ready-row .st { font-family: var(--f-mono); font-size: 11.5px; font-weight: 800; letter-spacing: .08em; color: var(--muted); }
+.ready-row.ok { border-left-color: var(--mint); }
+.ready-row.ok .st { color: var(--mint); }
+.ready-row.me { box-shadow: inset 0 0 0 1px var(--bulb); }
+.ready-btn { min-width: 170px; }
+.ready-btn.on { background: var(--mint) !important; color: #0c0d0f !important; }
 .res-sub { font-family: var(--f-mono); font-size: 12.5px; color: var(--muted); margin-top: -4px; }
 .res-board { margin: 10px 0; overflow-x: auto; }
 table.sb { width: 100%; border-collapse: separate; border-spacing: 0 3px; font-size: 13.5px; text-align: right; }

@@ -29,11 +29,42 @@ function setPresence(patch) { if (NET.room) NET.room.presence(patch).catch(() =>
 function myPresence() { return { v: 1, nick: APP.me.nick || "New tech", c: APP.me.c, uid: NET.uid }; }
 
 // ---------- host ----------
+const READY_MS = 40000;
+// everyone in the NOC is pulled into a ready room; the match starts when all have tapped Ready
+// (or the host starts it / the timer runs out). Anyone not ready watches and plays the next one.
+function roomState(S) {
+  const myPeer = NET.myPeerLabel();
+  return lobbyPeers().map(p => {
+    const r = p.presence.rdy, mine = p.peer === myPeer;
+    const v = mine ? 1 : r && r.s === S.id ? (r.v === 1 ? 1 : r.v === -1 ? -1 : 0) : -2; // 1 ready, 0 not ready, -1 left, -2 still joining
+    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0 };
+  }).filter(r => r.v !== -1).slice(0, 24);
+}
 function startSession(gameId) {
   if (findHost()) { toast("A game is already running. Hop in when it ends."); return; }
-  const mod = GAMES[gameId];
+  const S = { id: randId(8), since: Date.now(), game: gameId, ph: "ready", phT: READY_MS, seed: (Math.random() * 1e9) | 0, ro: [], rr: [], sq: 0, saved: null, res: null, rdyT: 0 };
+  APP.S = S; APP.optOut = null;
+  S.rr = roomState(S);
+  let last = now(), lastSend = 0;
+  clearInterval(APP.hostTimer);
+  APP.hostTimer = setInterval(() => {
+    const t = now(), dtMs = clamp(t - last, 0, 120); last = t;
+    hostTick(dtMs);
+    if (t - lastSend > 60 && APP.S) {
+      lastSend = t;
+      // two people pressed Start at the same moment: the older game wins, the other host stands down
+      const other = findHost(); if (other && other.h.id !== APP.S.id && other.peer !== NET.myPeerLabel()) { endSession(); toast("Someone else started a game first. Joining theirs."); return; }
+      setPresence({ h: packH() });
+    }
+  }, 1000 / 60);
+  setPresence({ h: packH(), rdy: { s: S.id, v: 1 } });
+  SFX.play("start");
+}
+function launchSession() {
+  const S = APP.S, mod = GAMES[S.game];
   const myPeer = NET.myPeerLabel();
-  const humans = lobbyPeers().slice(0, 16);
+  const okKeys = new Set(roomState(S).filter(r => r.v === 1).map(r => r.k));
+  const humans = lobbyPeers().filter(p => okKeys.has(p.peer)).slice(0, 16);
   const ro = humans.map(p => ({ k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], u: p.by || (typeof p.presence.uid === "string" ? p.presence.uid.slice(0, 80) : null), b: 0 }));
   if (!ro.length) ro.push({ k: myPeer, n: APP.me.nick || "You", c: APP.me.c, u: NET.uid, b: 0 });
   if (APP.bots) {
@@ -45,19 +76,10 @@ function startSession(gameId) {
   }
   const used = new Set();
   ro.forEach(r => { let col = r.c[1]; if (used.has(col)) { col = 0; while (used.has(col) && col < PALETTE.length) col++; if (col >= PALETTE.length) col = r.c[1]; } used.add(col); r.col = col; });
-  const S = { id: randId(8), since: Date.now(), game: gameId, ph: "intro", phT: 6500, seed: (Math.random() * 1e9) | 0, ro, sq: 0, saved: null, res: null };
+  S.ro = ro; S.ph = "intro"; S.phT = 6500; S.rr = null;
   S.ro.forEach(r => r.hex = PALETTE[r.col]);
   mod.hostStart(S);
-  APP.S = S; APP.optOut = null;
-  let last = now(), lastSend = 0;
-  clearInterval(APP.hostTimer);
-  APP.hostTimer = setInterval(() => {
-    const t = now(), dtMs = clamp(t - last, 0, 120); last = t;
-    hostTick(dtMs);
-    if (t - lastSend > 60 && APP.S) { lastSend = t; setPresence({ h: packH() }); }
-  }, 1000 / 60);
   setPresence({ h: packH() });
-  SFX.play("start");
 }
 function hostTick(dtMs) {
   const S = APP.S; if (!S) return;
@@ -70,6 +92,15 @@ function hostTick(dtMs) {
     const p = pm[r.k], i = p && p.presence && p.presence.in;
     return i && i.s === S.id ? i : null;
   });
+  if (S.ph === "ready") {
+    S.phT -= dtMs; S.rdyT += dtMs;
+    if (S.rdyT > 250) {
+      S.rdyT = 0; S.rr = roomState(S);
+      const allReady = S.rr.length > 0 && S.rr.every(r => r.v === 1);
+      if (S.go || S.phT <= 0 || (allReady && S.phT < READY_MS - 1500)) launchSession();
+    }
+    return;
+  }
   if (S.ph === "intro" || S.ph === "count") {
     S.phT -= dtMs;
     if (S.phT <= 0) { if (S.ph === "intro") { S.ph = "count"; S.phT = 3000; } else { S.ph = "play"; } }
@@ -87,7 +118,7 @@ function packH() {
     id: S.id, since: S.since, game: S.game, ph: S.ph, seed: S.seed, sq: ++S.sq,
     tl: S.ph === "play" ? mod.timeLeft(S) : S.phT,
     ro: S.ro.map(r => ({ k: r.k, n: r.n, c: r.c, col: r.col, u: r.u, b: r.b, boss: r.boss || 0 })),
-    g: mod.pack(S), res: S.res, saved: S.saved, bd: S.ph === "results" ? S.board : null,
+    g: S.g ? mod.pack(S) : null, rr: S.ph === "ready" ? S.rr : null, res: S.res, saved: S.saved, bd: S.ph === "results" ? S.board : null,
   };
 }
 function finishSession() {
@@ -139,11 +170,13 @@ function enterGame(host) {
     inputOf(i) { const r = ro[i]; const p = APP.peerMap[r.k]; const inp = p && p.presence && p.presence.in; return inp && inp.s === V.sid ? inp : null; },
   };
   FX.clear();
-  mod.clientEnter(V);
+  V.ready = h.ph === "ready";
+  if (V.ready) { V.myRdy = APP.S && APP.S.id === h.id ? 1 : 0; setPresence({ rdy: { s: h.id, v: V.myRdy }, in: null }); }
+  else mod.clientEnter(V);
   APP.view = "game"; APP.myIn = null;
   $("#lobbyView").hidden = true; $("#gameView").hidden = false;
   $("#hudName").textContent = mod.title;
-  $("#spectateTag").hidden = meIdx >= 0;
+  $("#spectateTag").hidden = meIdx >= 0 || V.ready || !!mod.md;
   $("#dashBtn").hidden = !(mod.id === "sumo" && meIdx >= 0 && matchMedia("(pointer: coarse)").matches);
   $("#leaveBtn").textContent = APP.S && APP.S.id === h.id ? "End game" : "Leave";
   buildChips(V);
@@ -154,7 +187,7 @@ function exitGame() {
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
   APP.view = "lobby"; APP.V = null; APP.myIn = null;
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
-  setPresence({ in: null });
+  setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
   $("#gameView").hidden = true; $("#lobbyView").hidden = false;
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
@@ -215,7 +248,10 @@ function gameFrame(dt, t) {
   let V = APP.V;
   if (host.h.id !== V.sid) { enterGame(host); V = APP.V; }
   if (host.h !== V.lastH) { V.lastH = host.h; V.h = host.h; V.g = host.h.g; V.recvAt = now(); }
+  // the ready room is over: re-enter with the real roster (players or spectators)
+  if (V.ready && host.h.ph !== "ready") { enterGame(host); V = APP.V; V.lastH = host.h; V.h = host.h; V.g = host.h.g; }
   V.age = now() - V.recvAt;
+  if (V.ready) { readyFrame(V, dt, t); return; }
   const mod = V.mod, ph = V.h.ph;
   if (ph !== V.prevPh) {
     if (ph === "play") { SFX.play("go"); }
@@ -266,6 +302,59 @@ function gameFrame(dt, t) {
   }
   ctx.restore();
   if (ph === "results" && V.podium) drawPodium(V, t);
+}
+function readyFrame(V, dt, t) {
+  const tl = Math.max(0, (V.h.tl || 0) - V.age);
+  const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy;
+  if (key !== V.rrKey || V.prevPh !== "ready") { V.rrKey = key; V.prevPh = "ready"; renderReady(V); }
+  const c = $("#rdyCount"); if (c) c.textContent = "Starts in " + Math.ceil(tl / 1000) + "s, or as soon as everyone is ready";
+  $("#hudTimer").textContent = fmtTime(tl); $("#hudTimer").classList.toggle("low", tl < 10000);
+  const cv = $("#gameCanvas");
+  const cw = parseFloat(cv.style.width) || W, ch = parseFloat(cv.style.height) || H;
+  const ctx = fitCanvas(cv, cw, ch);
+  ctx.save(); ctx.scale(cw / W, ch / H);
+  if (V.mod.cardArt) { try { V.mod.cardArt(ctx, V.cardRo || (V.cardRo = [{ c: APP.me.c }, { c: randomChar() }, { c: randomChar() }]), t); } catch (e) { ctx.fillStyle = "#0c0d0f"; ctx.fillRect(0, 0, W, H); } }
+  else { ctx.fillStyle = "#0c0d0f"; ctx.fillRect(0, 0, W, H); }
+  ctx.fillStyle = "rgba(8,9,11,.55)"; ctx.fillRect(0, 0, W, H);
+  ctx.restore();
+}
+function setReady(V, v) { V.myRdy = v; setPresence({ rdy: { s: V.sid, v } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
+function renderReady(V) {
+  const ov = $("#overlay"); ov.textContent = "";
+  const isHost = APP.S && APP.S.id === V.sid;
+  const rr = (V.h.rr || []).slice().sort((a, b) => b.h - a.h || b.v - a.v || a.n.localeCompare(b.n));
+  const nReady = rr.filter(r => r.v === 1).length;
+  const card = document.createElement("div"); card.className = "card ready-card";
+  const tag = document.createElement("div"); tag.className = "ready-tag"; tag.textContent = "MATCH LOBBY";
+  const h2 = document.createElement("h2"); h2.textContent = V.mod.title;
+  const p = document.createElement("p"); p.className = "ready-sub"; p.textContent = V.mod.tag;
+  const cnt = document.createElement("div"); cnt.className = "ready-count"; cnt.textContent = nReady + " / " + rr.length + " ready";
+  const list = document.createElement("div"); list.className = "ready-list";
+  rr.forEach(r => {
+    const row = document.createElement("div"); row.className = "ready-row" + (r.v === 1 ? " ok" : "") + (r.k === NET.myPeerLabel() ? " me" : "");
+    row.append(avatarCanvas(r.c, 28, PALETTE[r.c[1]] || PALETTE[0]));
+    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.n + (r.h ? " · host" : ""); row.append(nm);
+    const st = document.createElement("span"); st.className = "st"; st.textContent = r.v === 1 ? "READY" : r.v === -2 ? "JOINING…" : "NOT READY"; row.append(st);
+    list.append(row);
+  });
+  const act = document.createElement("div"); act.className = "res-actions";
+  if (isHost) {
+    const go = document.createElement("button"); go.className = "btn primary"; go.textContent = nReady === rr.length ? "Start now" : "Start with " + nReady + " ready";
+    go.addEventListener("click", () => { if (APP.S && APP.S.ph === "ready") APP.S.go = 1; });
+    const cancel = document.createElement("button"); cancel.className = "btn"; cancel.textContent = "Cancel";
+    cancel.addEventListener("click", () => endSession());
+    act.append(go, cancel);
+  } else {
+    const b = document.createElement("button"); b.className = "btn primary ready-btn" + (V.myRdy ? " on" : ""); b.textContent = V.myRdy ? "✓ Ready" : "I'm ready";
+    b.addEventListener("click", () => setReady(V, V.myRdy ? 0 : 1));
+    const back = document.createElement("button"); back.className = "btn"; back.textContent = "Sit this one out";
+    back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
+    act.append(b, back);
+  }
+  const note = document.createElement("div"); note.className = "res-note"; note.id = "rdyCount";
+  const hint = document.createElement("div"); hint.className = "res-note"; hint.textContent = "Not ready when it starts? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty slots." : "");
+  card.append(tag, h2, p, cnt, list, act, note, hint);
+  ov.append(card);
 }
 function renderOverlay(V, full) {
   const ov = $("#overlay"), ph = V.h.ph, mod = V.mod;
@@ -454,10 +543,10 @@ function updateLobby() {
   const host = findHost();
   const btn = $("#startBtn");
   const mod = GAMES[APP.sel];
-  if (host) { btn.textContent = "Game in progress"; btn.disabled = true; }
+  if (host) { btn.textContent = host.h.ph === "ready" ? "Join the match lobby" : host.h.ph === "results" ? "Match finishing…" : "Watch the game"; btn.disabled = host.h.ph === "results"; }
   else { btn.textContent = "Start " + mod.title; btn.disabled = false; }
   const bots = APP.bots ? Math.max(0, (mod.fill ? mod.fill(Math.min(16, n)) : 4) - Math.min(16, n)) : 0;
-  $("#startHint").textContent = n + (n === 1 ? " person" : " people") + (bots ? " + " + bots + " bot" + (bots > 1 ? "s" : "") : "") + " will play." + (n < 2 ? " Scores count with 2+ people." : "");
+  $("#startHint").textContent = n + (n === 1 ? " person" : " people") + (bots ? " + " + bots + " bot" + (bots > 1 ? "s" : "") : "") + " in the lineup. Everyone taps Ready in the match lobby first." + (n < 2 ? " Scores count with 2+ people." : "");
   $$(".game-card").forEach(el => el.setAttribute("aria-pressed", String(el.dataset.g === APP.sel)));
   // net pill
   const dot = $("#netDot"), txt = $("#netText");
@@ -688,7 +777,7 @@ function edPreview(t) {
 
 // ---------- events ----------
 function bindEvents() {
-  $("#startBtn").addEventListener("click", () => { SFX.ensure(); startSession(APP.sel); });
+  $("#startBtn").addEventListener("click", () => { SFX.ensure(); const host = findHost(); if (host) { APP.optOut = null; if (host.h.ph !== "results") enterGame(host); return; } startSession(APP.sel); });
   $("#botsToggle").checked = APP.bots;
   $("#botsToggle").addEventListener("change", (e) => { APP.bots = e.target.checked; store("nfa-bots", APP.bots); updateLobby(); });
   $("#editBtn").addEventListener("click", openEditor);
@@ -719,6 +808,7 @@ function bindEvents() {
     KEYS.add(e.code);
     if (e.repeat) return;
     if (e.code === "KeyF" && !e.ctrlKey && !e.metaKey) toggleFullscreen();
+    if (V.ready) { if ((e.code === "KeyR" || e.code === "Enter") && !(APP.S && APP.S.id === V.sid)) setReady(V, V.myRdy ? 0 : 1); return; }
     if (V.mod.id === "sumo" && e.code === "Space") pendingDash = true;
     if (V.mod.id === "alert" && (e.code === "Space" || e.code === "Enter")) alert.tap(V);
     if (V.mod.id === "alert" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) alert.tap(V, +e.code.slice(-1) - 1);

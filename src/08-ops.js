@@ -500,7 +500,9 @@ function makeOps(md) {
       const on = (el, ev, fn, o) => { el.addEventListener(ev, fn, o); (F.unbind || (F.unbind = [])).push(() => el.removeEventListener(ev, fn, o)); };
       const coarse = matchMedia("(pointer: coarse)").matches;
       on(cv, "contextmenu", (e) => e.preventDefault());
+      const specNext = () => { F.specOff = (F.specOff || 0) + 1; F.specManual = true; F.specAuto = 0; };
       on(cv, "mousedown", (e) => {
+        if (V.meIdx < 0) { specNext(); return; }
         if (coarse) return;
         if (document.pointerLockElement !== cv) {
           // first click only grabs the mouse; it never fires. Drag-to-look is the fallback when the browser refuses the lock.
@@ -526,6 +528,7 @@ function makeOps(md) {
       on(window, "keydown", (e) => {
         if (APP.view !== "game" || (e.target && e.target.tagName === "INPUT")) return;
         if (e.code === "Tab") { F.tab = true; e.preventDefault(); }
+        if (V.meIdx < 0) { if (e.code === "Space" || e.code === "ArrowRight") { F.specOff = (F.specOff || 0) + 1; F.specManual = true; F.specAuto = 0; e.preventDefault(); } if (e.code === "ArrowLeft") { F.specOff = (F.specOff || 0) - 1; F.specManual = true; F.specAuto = 0; } return; }
         if (e.repeat) return;
         const shopOpen = F.shop && !F.shop.hidden;
         if (shopOpen && /^Digit[1-9]$/.test(e.code)) { const k = +e.code.slice(-1) - 1, it = [...OW_BUY, ARMOR_IT][k]; if (it != null) this.buy(V, it); return; }
@@ -541,6 +544,7 @@ function makeOps(md) {
       on(window, "keyup", (e) => { if (e.code === "Space") { F.firing = false; F.latch = false; } if (e.code === "KeyE") F.act = false; if (e.code === "Tab") F.tab = false; });
       // touch
       on(cv, "touchstart", (e) => {
+        if (V.meIdx < 0) { specNext(); return; }
         const r = cv.getBoundingClientRect();
         for (const t of e.changedTouches) {
           if (t.clientX - r.left < r.width * 0.42 && !F.stick) F.stick = { id: t.identifier, bx: t.clientX, by: t.clientY, x: t.clientX, y: t.clientY };
@@ -1037,7 +1041,7 @@ function makeOps(md) {
         const av = F.avatars[i]; const pl = g.pl && g.pl[i];
         let x, z, a;
         if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; }
-        else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = inp.a || 0; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
+        else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = (inp.a || 0) + Math.PI; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
         if (!av.init || Math.hypot(av.x - x, av.z - z) > 5) { av.x = x; av.z = z; av.init = true; }
         const k = 1 - Math.pow(0.0005, dt), ox = av.x, oz = av.z; av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); av.a = a;
         // enemy footsteps: only running players make noise
@@ -1101,7 +1105,16 @@ function makeOps(md) {
       let cx = F.me.x, cz = F.me.z, ca = F.me.a, cp = F.me.p + (F.rec || 0), eye = EYE;
       if (me < 0 || (dead && team)) {
         const cands = V.ro.map((r, i) => i).filter(i => g.pl && g.pl[i] && g.pl[i][1] && (me < 0 || g.pl[i][2] === mypl[2]) && F.remote[i]);
-        if (cands.length) { const k = cands[Math.floor(t / 6) % cands.length]; const r = F.remote[k]; cx = r.x + Math.sin(r.a) * 2.6; cz = r.z + Math.cos(r.a) * 2.6; ca = r.a; cp = -0.25; eye = 2.4; F.specName = V.ro[k].n; }
+        // spectators follow one player; click / Space / arrows switch, otherwise it moves on every 8 s
+        F.specOff = F.specOff || 0; F.specAuto = (F.specAuto || 0) + dt;
+        if (F.specAuto > (F.specManual ? 25 : 8)) { F.specAuto = 0; F.specOff++; F.specManual = false; }
+        if (cands.length) {
+          const k = cands[((F.specOff % cands.length) + cands.length) % cands.length], r = F.remote[k];
+          const tx = r.x - Math.sin(r.a) * 2.8, tz = r.z - Math.cos(r.a) * 2.8, sk = F.specK === k ? 1 - Math.pow(0.002, dt) : 1;
+          F.specK = k; F.specX = sk === 1 ? tx : lerp(F.specX, tx, sk); F.specZ = sk === 1 ? tz : lerp(F.specZ, tz, sk);
+          let da = r.a - (F.specA == null ? r.a : F.specA); da = Math.atan2(Math.sin(da), Math.cos(da)); F.specA = sk === 1 ? r.a : F.specA + da * sk;
+          cx = F.specX; cz = F.specZ; ca = F.specA + Math.PI; cp = -0.28; eye = 2.5; F.specName = V.ro[k].n;
+        }
         else F.specName = "";
       } else if (dead) { eye = 0.5; }
       const bob = F.moving ? Math.sin(F.bob) * 0.03 : 0;
@@ -1257,6 +1270,13 @@ function makeOps(md) {
         ctx.textAlign = "left"; ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = W0.col; ctx.fillText(W0.n.toUpperCase(), W - 258, H - 23);
         const own = this.owned(V); let wx = W - 16; ctx.font = "700 11px 'JetBrains Mono', monospace"; for (let k = own.length - 1; k >= 0; k--) { const o = own[k], lab = OW[o].slot + " " + OW[o].short, tw = ctx.measureText(lab).width + 14; box(wx - tw, H - 92, tw, 20, 6, o === F.cur ? 0.9 : 0.55); ctx.textAlign = "center"; ctx.fillStyle = o === F.cur ? OW[o].col : "#8a90b8"; ctx.fillText(lab, wx - tw / 2, H - 82); wx -= tw + 5; }
         if (F.reloadT > 0) { ctx.fillStyle = "rgba(255,255,255,.15)"; ctx.fillRect(W - 258, H - 60, 232, 4); ctx.fillStyle = "#ff8a3d"; ctx.fillRect(W - 258, H - 60, 232 * (1 - F.reloadT / W0.rl), 4); }
+      }
+      if (me < 0) {
+        const tx = F.specName ? "WATCHING " + F.specName.toUpperCase() : "WATCHING";
+        ctx.textAlign = "center"; ctx.font = "700 15px 'JetBrains Mono', monospace"; const tw = Math.max(ctx.measureText(tx).width, 300) + 36;
+        box(W / 2 - tw / 2, H - 92, tw, 54, 10, 0.78);
+        ctx.fillStyle = "#f5f1e6"; ctx.fillText(tx, W / 2, H - 72);
+        ctx.font = "600 12px Inter, sans-serif"; ctx.fillStyle = "#9da1a9"; ctx.fillText((matchMedia("(pointer: coarse)").matches ? "Tap" : "Click or Space") + " for the next player · you're in the next game", W / 2, H - 52);
       }
       // dead overlay
       if (pl && !alive) {
