@@ -102,13 +102,16 @@ function finishSession() {
   });
   S.ph = "results"; S.phT = 14000;
   const humans = S.res.filter(o => !S.ro[o.i].b && S.ro[o.i].u);
-  if (humans.length >= 2 && NET.db) {
+  // every match with a signed-in human is saved. Solo matches vs bots keep records/personal bests but don't award league points.
+  const solo = humans.length < 2;
+  if (humans.length >= 1 && NET.db) {
     const doc = {
-      g: S.game, at: Date.now(), day: dayKey(), nb: S.ro.filter(r => r.b).length,
-      ps: humans.map(o => { const r = S.ro[o.i]; return { u: r.u, n: r.n, c: r.c, pl: o.hp, pt: o.pt, sc: o.rec == null ? null : o.rec }; }),
+      g: S.game, at: Date.now(), day: dayKey(), nb: S.ro.filter(r => r.b).length, solo: solo ? 1 : 0,
+      ps: humans.map(o => { const r = S.ro[o.i]; return { u: r.u, n: r.n, c: r.c, pl: o.hp, pt: solo ? 0 : o.pt, sc: o.rec == null ? null : o.rec }; }),
     };
-    S.saved = "saving";
-    Promise.resolve().then(() => NET.db.collection("matches").add(doc)).then(() => { if (APP.S === S) S.saved = "yes"; }).catch(() => {
+    if (solo) S.res.forEach(o => { o.pt = 0; });
+    S.saved = "saving"; S.solo = solo;
+    Promise.resolve().then(() => NET.db.collection("matches").add(doc)).then(() => { if (APP.S === S) S.saved = solo ? "solo" : "yes"; }).catch(() => {
       if (APP.S === S) S.saved = "fail";
       toast("Couldn't save this match to the scoreboard.");
     });
@@ -301,7 +304,7 @@ function renderOverlay(V, full) {
       const p = document.createElement("span"); p.className = "p"; p.textContent = String(k + 1);
       const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.n + (r.b ? " (bot)" : "");
       const s = document.createElement("span"); s.className = "s"; s.textContent = o.l;
-      const g = document.createElement("span"); g.className = "g"; g.textContent = r.b ? "" : "+" + o.pt;
+      const g = document.createElement("span"); g.className = "g"; g.textContent = r.b || !o.pt ? "" : "+" + o.pt;
       row.append(p, avatarCanvas(r.c, 30, r.hex), nm, s, g);
       list.append(row);
     });
@@ -331,7 +334,7 @@ function renderOverlay(V, full) {
   }
 }
 function savedNote(s) {
-  return s === "yes" ? "Saved to the scoreboard." : s === "saving" ? "Saving to the scoreboard…" : s === "fail" ? "This match couldn't be saved." : s === "practice" ? "Practice match. Scores count when 2 or more people play." : "";
+  return s === "yes" ? "Saved to the scoreboard." : s === "solo" ? "Saved. Records count; league points need 2+ players." : s === "saving" ? "Saving to the scoreboard…" : s === "fail" ? "This match couldn't be saved." : s === "practice" ? "Practice match. Scores count when 2 or more people play." : "";
 }
 const CONFETTI = [];
 function drawPodium(V, t) {
@@ -484,7 +487,7 @@ function onMatches(snap) {
 }
 function aggregate(ms) {
   const by = {};
-  ms.slice().sort((a, b) => a.at - b.at).forEach(m => m.ps.forEach(p => {
+  ms.filter(m => !m.solo).sort((a, b) => a.at - b.at).forEach(m => m.ps.forEach(p => {
     if (!p || !p.u) return;
     const o = by[p.u] || (by[p.u] = { u: p.u, n: "", c: null, pts: 0, wins: 0, games: 0 });
     o.n = cleanNick(p.n) || o.n; o.c = validChar(p.c) || o.c; o.pts += +p.pt || 0; o.wins += p.pl === 1 ? 1 : 0; o.games++;
