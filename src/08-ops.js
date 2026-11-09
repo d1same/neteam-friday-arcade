@@ -1416,30 +1416,26 @@ function makeOps(md) {
       // swap the simple capsule bodies for animated operators once the model has loaded
       const soldier = (gl) => {
         if (F.gone || !F.avatars) return;
-        const SU = THREE_EXTRAS.SkeletonUtils;
-        if (!gl.userData.h) { gl.scene.updateWorldMatrix(true, true); let lo = 1e9, hi = -1e9; const v = new THREE.Vector3(); gl.scene.traverse(o => { if (o.isBone) { o.getWorldPosition(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } }); gl.userData.h = (hi - lo) || 1; gl.userData.y0 = lo; }
-        const sc = 1.5 / gl.userData.h, clip = (n) => gl.animations.find(c => c.name.endsWith("|" + n) || c.name === n);
+        const SU = THREE_EXTRAS.SkeletonUtils, U = gl.userData, clip = (n) => gl.animations.find(c => c.name === n);
+        if (!U.h) {
+          gl.scene.updateWorldMatrix(true, true); let lo = 1e9, hi = -1e9; const v = new THREE.Vector3(), w = new THREE.Vector3();
+          gl.scene.traverse(o => { if (o.isBone) { o.getWorldPosition(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } }); U.h = (hi - lo) || 1; U.y0 = lo;
+          // there is no idle clip: stand on the walk frame where the feet pass each other
+          U.idleT = 0; const wc = clip("walk"), lf = gl.scene.getObjectByName("LeftFoot"), rf = gl.scene.getObjectByName("RightFoot");
+          if (wc && lf && rf) { const mx = new THREE.AnimationMixer(gl.scene), a = mx.clipAction(wc); a.play(); let best = 1e9; for (let k = 0; k < 24; k++) { mx.setTime(wc.duration * k / 24); gl.scene.updateWorldMatrix(true, true); lf.getWorldPosition(v); rf.getWorldPosition(w); const d = Math.abs(v.z - w.z) + Math.abs(v.y - w.y); if (d < best) { best = d; U.idleT = wc.duration * k / 24; } } a.stop(); mx.uncacheRoot(gl.scene); }
+        }
+        const sc = 1.8 / U.h;
         F.avatars.forEach((av) => {
           try {
-            const m = SU.clone(gl.scene); m.scale.setScalar(sc); m.rotation.y = Math.PI; m.position.y = -gl.userData.y0 * sc;
+            const m = SU.clone(gl.scene); m.scale.multiplyScalar(sc); m.rotation.y = Math.PI; m.position.y = -U.y0 * sc;
             const main = [];
-            m.traverse(o => {
-              if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows;
-              const one = !Array.isArray(o.material), mats = one ? [o.material] : o.material;
-              const nm = mats.map(mt => { if (mt.name === "Character_Main") { const c = mt.clone(); c.roughness = 0.85; c.metalness = 0; main.push(c); return c; } if (mt.name === "Pants") { const c = mt.clone(); c.color.set(0x2b2e2a); c.roughness = 0.9; return c; } return mt; });
-              o.material = one ? nm[0] : nm;
-            });
-            av.bd.children.forEach(c => { if (c !== av.fl) c.visible = false; });
+            m.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows; const c = o.material.clone(); c.envMapIntensity = 0.6; main.push(c); o.material = c; });
+            av.bd.children.forEach(c => { if (c !== av.gun && c !== av.fl) c.visible = false; });
             av.bd.add(m);
-            let hb = null; m.traverse(o => { if (!hb && o.isBone && o.name === "Head") hb = o; }); if (hb) hb.scale.multiplyScalar(0.64);   // adult proportions instead of the stock big head
-            // the weapons hang off the right index-finger bone, in file order (names collide after loading, so go by position)
-            const wp = {}, WN = ["Revolver", "Sniper", "Revolver_Small", "Pistol", "SMG", "GrenadeLauncher", "ShortCannon", "Shotgun", "Sniper_2", "RocketLauncher", "AK", "Shovel", "Knife_2", "Knife_1"];
-            m.traverse(o => { if (!o.isBone) return; const ks = o.children.filter(c => !c.isBone); if (ks.length === WN.length) ks.forEach((c, i) => { wp[WN[i]] = c; c.visible = false; c.scale.multiplyScalar(0.74); }); });
             const mixer = new THREE.AnimationMixer(m), act = {};
-            [["Idle", "Idle"], ["Walking", "Run_Gun"], ["Running", "Run_Gun"], ["Death", "Death"], ["Air", "Jump_Idle"], ["Duck", "Duck"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
-            if (act.Death) { act.Death.setLoop(THREE.LoopOnce); act.Death.clampWhenFinished = true; }
-            av.spr.scale.set(0.62, 0.77, 1); av.fl.position.set(0.18, 1.32, -0.95);
-            av.rb = { m, mixer, act, cur: "", main, wp }; av.rbW = -1;
+            [["Walking", "walk"], ["Running", "run"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
+            av.spr.scale.set(0.5, 0.62, 1); av.gun.scale.setScalar(1.05);
+            av.rb = { m, mixer, act, cur: "", main, hum: 1, idleT: U.idleT, hand: m.getObjectByName("RightHand"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
           } catch (e) { console.warn("soldier model", e); }
         });
       };
@@ -1864,11 +1860,11 @@ function makeOps(md) {
         const alive = !!(pl && pl[1]);
         // the gun they actually carry
         const cw = pl ? pl[6] : 0; if (av.gunW !== cw && OW[cw]) { av.gunW = cw; while (av.gun.children.length) av.gun.remove(av.gun.children[0]); if (!OW[cw].melee) { const gm2 = GUNS.build(OW[cw], T, { arms: false }); gm2.traverse(o => { if (o.isMesh) o.castShadow = !!F.shadows; }); av.gun.add(gm2); } }
-        if (av.rb && av.rb.wp && av.rbW !== cw) { av.rbW = cw; const nm = { pistol: "Pistol", deagle: "Revolver", smg: "SMG", rifle: "AK", carbine: "AK", lmg: "AK", sniper: "Sniper", scout: "Sniper_2", shotgun: "Shotgun", knife: "Knife_1", rocket: "RocketLauncher", laser: "ShortCannon" }[(OW[cw] || OW[0]).id]; for (const n in av.rb.wp) av.rb.wp[n].visible = n === nm; }
+        if (0) { av.rbW = cw; const nm = { pistol: "Pistol", deagle: "Revolver", smg: "SMG", rifle: "AK", carbine: "AK", lmg: "AK", sniper: "Sniper", scout: "Sniper_2", shotgun: "Shotgun", knife: "Knife_1", rocket: "RocketLauncher", laser: "ShortCannon" }[(OW[cw] || OW[0]).id]; for (const n in av.rb.wp) av.rb.wp[n].visible = n === nm; }
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
         else if (av.wasAlive) av.deadT = 0.001;
-        if (!alive && av.deadT > 0 && av.rb) { av.deadT += dt; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 1.2) * 1.5); av.bd.visible = av.deadT < 2.4; }
+        if (!alive && av.deadT > 0 && av.rb && av.rb.act.Death) { av.deadT += dt; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 1.2) * 1.5); av.bd.visible = av.deadT < 2.4; }
         else if (!alive && av.deadT > 0) { av.deadT += dt; const k = Math.min(1, av.deadT * 3.5); av.bd.rotation.x = -k * 1.45; av.bd.position.y = k * 0.18; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.6) * 1.5); av.bd.visible = av.deadT < 1.4; }
         else { av.bd.rotation.x = 0; av.bd.position.y = 0; av.bd.visible = true; }
         // walk cycle from actual movement speed
@@ -1877,16 +1873,24 @@ function makeOps(md) {
         if (av.rb) {
           // pick the animation from how fast they're actually moving
           const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle";
-          if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); R.cur = want; }
+          if (R.hum && R.cur !== want && (want === "Idle" || want === "Death")) { const pv = R.act[R.cur]; if (pv) pv.fadeOut(0.22); R.cur = want; }   // no idle clip: ease back to the standing rest pose
+          else if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); else if (R.hum) nx.fadeIn(0.2); R.cur = want; }
           if (want === "Running") R.act.Running.timeScale = clamp(spd / 6.2, 0.7, 1.3);
-          if (want === "Walking") R.act.Walking.timeScale = R.wp ? clamp(spd / 5, 0.35, 0.8) : clamp(spd / 2.2, 0.6, 1.4);
+          if (want === "Walking") R.act.Walking.timeScale = R.hum ? clamp(spd / 1.7, 0.6, 1.9) : clamp(spd / 2.2, 0.6, 1.4);
           R.mixer.update(dt);
-          R.main.forEach(mt => { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); if (R.wp) { mt.color.lerp(GFX._olive || (GFX._olive = new THREE.Color(0x30362a)), 0.5); mt.emissive.multiplyScalar(0.3); } });
+          // weapon rides the right hand but always points where the player faces
+          if (R.hum && R.hand && alive) {
+            // arms hold the weapon whatever the legs are doing: swing each upper arm and forearm onto a pose for the weapon class
+            const wk = (OW[cw] || OW[0]), kind = wk.melee ? 0 : wk.slot === 2 ? 1 : 2, A = OPS_ARM[kind];
+            for (let sd = 0; sd < 2; sd++) { const B = R.arms[sd]; if (!B[0] || !B[1] || !B[2]) continue; opsAim(B[0], B[1], A[sd][0], av.bd); opsAim(B[1], B[2], A[sd][1], av.bd); }
+            const _hv = GFX._hv || (GFX._hv = new THREE.Vector3()); R.hand.getWorldPosition(_hv); av.bd.worldToLocal(_hv); av.gun.position.set(_hv.x - 0.02, _hv.y + (kind === 1 ? 0.05 : 0.03), _hv.z - 0.04);
+          }
+          R.main.forEach(mt => { if (R.hum) { mt.color.setRGB(1, 1, 1).lerp(av.suit.color, team ? 0.5 : 0.28); mt.emissive.copy(av.suit.emissive).multiplyScalar(0.25); } else { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); } });
         } else av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
         av.wasAlive = alive;
-        av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb ? 2.4 : 1.4)));
-        av.ring.visible = alive; av.gun.visible = alive && !(av.rb && av.rb.wp);
-        av.spr.position.y = alive ? (av.rb && av.rb.wp ? 2.32 : 1.95) - 0.55 * (av.cr || 0) + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
+        av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb && av.rb.act.Death ? 2.4 : 1.4)));
+        av.ring.visible = alive; av.gun.visible = alive;
+        av.spr.position.y = alive ? (av.rb && av.rb.hum ? 2.2 : 1.95) - 0.55 * (av.cr || 0) + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
         if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
         av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3); av.suit.emissive.setRGB(av.hurtT * 6, 0, 0);
         if (team && pl) {
@@ -2191,6 +2195,21 @@ GAMES.breach = makeOps("team");
 GAMES.deathmatch = makeOps("ffa");
 // the lobby now features only the 3D games; older games stay registered so past scores still show
 GAME_ORDER.length = 0;
+// third-person arm poses per weapon class (0 knife, 1 pistol, 2 long gun): [right [upper, fore], left [upper, fore]] as directions in body space (x right, y up, -z forward)
+const OPS_ARM = [
+  [[[0.18, -1, -0.05], [0.0, -0.8, -0.6]], [[-0.18, -1, -0.05], [0.0, -0.9, -0.4]]],
+  [[[0.0, -0.45, -0.9], [-0.28, 0.25, -0.93]], [[0.0, -0.45, -0.9], [0.3, 0.25, -0.93]]],
+  [[[0.3, -0.9, -0.15], [-0.4, 0.22, -0.9]], [[-0.05, -0.6, -0.8], [0.5, 0.28, -0.8]]],
+];
+// rotate `bone` so that its child ends up in direction `dir` (given in the space of `ref`)
+const opsAim = (() => { let a, b, q, q2, pq; return (bone, child, dir, ref) => {
+  if (!a) { a = new THREE.Vector3(); b = new THREE.Vector3(); q = new THREE.Quaternion(); q2 = new THREE.Quaternion(); pq = new THREE.Quaternion(); }
+  bone.updateWorldMatrix(true, false); child.updateWorldMatrix(false, false);
+  a.setFromMatrixPosition(child.matrixWorld).sub(b.setFromMatrixPosition(bone.matrixWorld)).normalize();
+  b.set(dir[0], dir[1], dir[2]).transformDirection(ref.matrixWorld);
+  q.setFromUnitVectors(a, b); bone.getWorldQuaternion(q2); q2.premultiply(q);
+  bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
+}; })();
 GAMES.golden = makeOps("trophy");
 GAMES.laser = makeOps("laser");
 GAME_ORDER.push("breach", "deathmatch", "golden", "laser");

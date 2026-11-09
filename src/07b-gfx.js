@@ -61,10 +61,10 @@ const GFX = {
     });
     return GFX._op;
   },
-  // animated CC0 soldier (Quaternius, see models/CREDITS.txt): human body with gun-handling animations and weapons in hand
+  // realistic rigged CC0 soldier (see models/CREDITS.txt) with walk and run clips
   soldier() {
     if (GFX._sol) return GFX._sol;
-    return GFX._sol = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/soldier.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } }));
+    return GFX._sol = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/trooper.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } }));
   },
   // quality: phones get a lighter pipeline
   // render resolution: the device's native pixel density times the player's scale (Settings), capped for safety
