@@ -1096,9 +1096,19 @@ function makeOps(md) {
         }
       }
       F.shotN++; F.lastShot = [F.shotN, +lastEnd[0].toFixed(2), +lastEnd[1].toFixed(2), +lastEnd[2].toFixed(2), F.cur];
+      this.shell(V);
       if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.tone(headAny ? 2400 : 1700, 0.06, "square", 0.05); if (headAny) SFX.tone(3200, 0.08, "triangle", 0.05, 0, 0.05); }
       Object.keys(dmgAcc).forEach(k => this.pop(F, Math.round(dmgAcc[k]), !!headIdx[k]));
       if (W0.scope) F.scoped = false;
+    },
+    // spent casing flips out of the ejection port
+    shell(V) {
+      const F = V.fps, T = THREE, gm = F.guns && F.guns[F.cur], U = gm && gm.userData; if (!U || !U.port || !F.vfx || GFX.lowEnd()) return;
+      const sg = OW[F.cur].pel, m = new T.Mesh(F.shellG || (F.shellG = new T.CylinderGeometry(0.006, 0.006, 0.022, 6)), new T.MeshStandardMaterial({ color: sg ? 0xb02a22 : 0xc9a03a, metalness: sg ? 0.1 : 1, roughness: 0.35 }));
+      if (sg) m.scale.set(1.8, 2, 1.8);
+      gm.updateWorldMatrix(true, false); const wp = new T.Vector3(...U.port).applyMatrix4(gm.matrixWorld); m.position.copy(wp); F.scene.add(m);
+      const a = F.me.a, rx = Math.cos(a), rz = -Math.sin(a), sp = 1.6 + Math.random() * 1.2;
+      F.vfx.push({ m, life: 1.5, max: 1.5, v: [rx * sp + (F.vel ? F.vel.x : 0), 1.6 + Math.random() * 1.2 + (F.vy || 0) * 0.5, rz * sp + (F.vel ? F.vel.z : 0)], g: 11, r: (F.jh || 0) > 0.5 ? -50 : 0.012, sp: [Math.random() * 20, Math.random() * 20, Math.random() * 20] });
     },
     pop(F, n, head, tag) { F.pops = F.pops || []; F.pops.push({ n, head, tag, life: 0.9, x: (Math.random() - 0.5) * 60, y: -30 - Math.random() * 20 }); if (F.pops.length > 8) F.pops.shift(); },
     panOf(F, x, z, d) { const a = F.me.a; return d > 0.01 ? Math.max(-1, Math.min(1, ((x - F.me.x) * Math.cos(a) - (z - F.me.z) * Math.sin(a)) / d)) * 0.85 : 0; },
@@ -1404,7 +1414,36 @@ function makeOps(md) {
         return { grp, bd, legs, arms, suit, stripeM: stripe.material, mark, rim, tmKey: "", spr, ring, gun, fl, flT: 0, ph: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
       });
       // swap the simple capsule bodies for animated operators once the model has loaded
-      GFX.operator().then((gl) => {
+      const soldier = (gl) => {
+        if (F.gone || !F.avatars) return;
+        const SU = THREE_EXTRAS.SkeletonUtils;
+        if (!gl.userData.h) { gl.scene.updateWorldMatrix(true, true); let lo = 1e9, hi = -1e9; const v = new THREE.Vector3(); gl.scene.traverse(o => { if (o.isBone) { o.getWorldPosition(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } }); gl.userData.h = (hi - lo) || 1; gl.userData.y0 = lo; }
+        const sc = 1.5 / gl.userData.h, clip = (n) => gl.animations.find(c => c.name.endsWith("|" + n) || c.name === n);
+        F.avatars.forEach((av) => {
+          try {
+            const m = SU.clone(gl.scene); m.scale.setScalar(sc); m.rotation.y = Math.PI; m.position.y = -gl.userData.y0 * sc;
+            const main = [];
+            m.traverse(o => {
+              if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows;
+              const one = !Array.isArray(o.material), mats = one ? [o.material] : o.material;
+              const nm = mats.map(mt => { if (mt.name === "Character_Main") { const c = mt.clone(); c.roughness = 0.85; c.metalness = 0; main.push(c); return c; } if (mt.name === "Pants") { const c = mt.clone(); c.color.set(0x2b2e2a); c.roughness = 0.9; return c; } return mt; });
+              o.material = one ? nm[0] : nm;
+            });
+            av.bd.children.forEach(c => { if (c !== av.fl) c.visible = false; });
+            av.bd.add(m);
+            let hb = null; m.traverse(o => { if (!hb && o.isBone && o.name === "Head") hb = o; }); if (hb) hb.scale.multiplyScalar(0.64);   // adult proportions instead of the stock big head
+            // the weapons hang off the right index-finger bone, in file order (names collide after loading, so go by position)
+            const wp = {}, WN = ["Revolver", "Sniper", "Revolver_Small", "Pistol", "SMG", "GrenadeLauncher", "ShortCannon", "Shotgun", "Sniper_2", "RocketLauncher", "AK", "Shovel", "Knife_2", "Knife_1"];
+            m.traverse(o => { if (!o.isBone) return; const ks = o.children.filter(c => !c.isBone); if (ks.length === WN.length) ks.forEach((c, i) => { wp[WN[i]] = c; c.visible = false; c.scale.multiplyScalar(0.74); }); });
+            const mixer = new THREE.AnimationMixer(m), act = {};
+            [["Idle", "Idle"], ["Walking", "Run_Gun"], ["Running", "Run_Gun"], ["Death", "Death"], ["Air", "Jump_Idle"], ["Duck", "Duck"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
+            if (act.Death) { act.Death.setLoop(THREE.LoopOnce); act.Death.clampWhenFinished = true; }
+            av.spr.scale.set(0.62, 0.77, 1); av.fl.position.set(0.18, 1.32, -0.95);
+            av.rb = { m, mixer, act, cur: "", main, wp }; av.rbW = -1;
+          } catch (e) { console.warn("soldier model", e); }
+        });
+      };
+      GFX.soldier().then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
         if (!gl || F.gone || !F.avatars) return;
         const SU = THREE_EXTRAS.SkeletonUtils;
         F.avatars.forEach((av) => {
@@ -1430,8 +1469,9 @@ function makeOps(md) {
             av.rb = { m, mixer, act, cur: "", main };
           } catch (e) { console.warn("operator model", e); }
         });
-      });
+      }));
       // ---- view-model guns
+      const myHex = (V.ro[V.meIdx] || {}).hex || "#ff8a3d";
       F.guns = OW.map((w0, k) => {
         const g = new T.Group();
         const dark = mStd({ color: 0x23283f, metalness: 0.75, roughness: 0.32 }), grip = mStd({ color: 0x15171f, roughness: 0.8 });
@@ -1447,31 +1487,14 @@ function makeOps(md) {
           const guard = new T.Mesh(new T.BoxGeometry(0.09, 0.022, 0.02), acc); guard.position.z = -0.045;
           const fist = new T.Mesh(new T.BoxGeometry(0.085, 0.09, 0.11), hand); fist.position.set(0, -0.01, 0.03);
           const k1 = new T.Group(); k1.add(blade, gripM, guard, fist); k1.rotation.set(0.25, 0.35, -0.5); g.add(k1); g.userData.knife = k1;
+          fist.visible = false; const ka = GUNS.arm(T, myHex); ka.scale.setScalar(1.15); k1.add(ka); GUNS.setArm(ka, [0, -0.005, 0.03], [0.12, -0.25, 0.5], Math.PI / 2);
           g.scale.setScalar(0.85); g.position.set(0.2, -0.2, -0.38); g.visible = false; cam.add(g);
           return g;
         }
-        const [L, hgt, bl] = w0.vm;
-        const body = new T.Mesh(new T.BoxGeometry(0.09, hgt, L), dark);
-        const top = new T.Mesh(new T.BoxGeometry(0.07, 0.03, L * 0.9), grip); top.position.y = hgt / 2 + 0.012;
-        const stripe = new T.Mesh(new T.BoxGeometry(0.094, 0.018, L * 0.7), acc); stripe.position.y = hgt / 2 - 0.025;
-        const fat = w0.id === "shotgun" || w0.id === "lmg" ? 1.6 : 1;
-        const barrel = new T.Mesh(new T.CylinderGeometry(0.02 * fat, 0.024 * fat, bl, 12), dark); barrel.rotation.x = Math.PI / 2; barrel.position.z = -L / 2 - bl / 2;
-        const muzzle = new T.Mesh(new T.CylinderGeometry(0.03 * fat, 0.03 * fat, 0.05, 12), grip); muzzle.rotation.x = Math.PI / 2; muzzle.position.z = barrel.position.z - bl / 2;
-        const handM = new T.Mesh(new T.BoxGeometry(0.07, 0.16, 0.08), grip); handM.position.set(0, -0.11, L * 0.22); handM.rotation.x = 0.3;
-        const glove = new T.Mesh(new T.BoxGeometry(0.095, 0.08, 0.11), hand); glove.position.set(0.01, -0.13, L * 0.24);
-        g.add(body, top, stripe, barrel, muzzle, handM, glove);
-        if (w0.slot === 1) {
-          const mag = new T.Mesh(new T.BoxGeometry(0.06, w0.id === "lmg" ? 0.12 : 0.17, w0.id === "lmg" ? 0.16 : 0.08), acc); mag.position.set(0, -0.12, -L * 0.08); mag.rotation.x = -0.15; g.add(mag);
-          const stock = new T.Mesh(new T.BoxGeometry(0.07, 0.1, 0.22), grip); stock.position.set(0, -0.02, L / 2 + 0.1); g.add(stock);
-          const fore = new T.Mesh(new T.BoxGeometry(0.08, 0.06, L * 0.35), grip); fore.position.set(0, -hgt / 2 - 0.02, -L * 0.3); g.add(fore);
-          const lglove = new T.Mesh(new T.BoxGeometry(0.1, 0.07, 0.1), hand); lglove.position.set(-0.03, -hgt / 2 - 0.06, -L * 0.3); g.add(lglove);
-        }
-        if (w0.id === "shotgun") { const pump = new T.Mesh(new T.CylinderGeometry(0.035, 0.035, 0.16, 10), acc); pump.rotation.x = Math.PI / 2; pump.position.set(0, -0.06, -L / 2 - 0.05); g.add(pump); }
-        if (w0.id === "lmg") { const box = new T.Mesh(new T.BoxGeometry(0.12, 0.12, 0.14), acc); box.position.set(-0.08, -0.08, -0.05); g.add(box); }
-        if (w0.scope) { const sc = new T.Mesh(new T.CylinderGeometry(0.035, 0.04, 0.32, 14), dark); sc.rotation.x = Math.PI / 2; sc.position.set(0, hgt / 2 + 0.05, -0.05); const lens = new T.Mesh(new T.CircleGeometry(0.033, 14), new T.MeshBasicMaterial({ color: 0x66ccff })); lens.position.set(0, hgt / 2 + 0.05, -0.215); lens.rotation.y = Math.PI; g.add(sc, lens); }
-        const fl = new T.Sprite(new T.SpriteMaterial({ map: GFX.flashTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false, color: new T.Color(2.4, 2.1, 1.6) })); fl.scale.set(0.3, 0.3, 1); fl.position.z = muzzle.position.z - 0.08; fl.visible = false; g.add(fl); g.userData.fl = fl;
-        g.scale.setScalar(0.5); g.position.set(0.2, -0.19, -0.5); g.visible = false; cam.add(g);
-        return g;
+        const gm = GUNS.build(w0, T, { hex: myHex });
+        const fl = new T.Sprite(new T.SpriteMaterial({ map: GFX.flashTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false, color: new T.Color(2.4, 2.1, 1.6) })); fl.scale.set(0.34, 0.34, 1); fl.position.set(gm.userData.muzzle[0], gm.userData.muzzle[1], gm.userData.muzzle[2] - 0.06); fl.visible = false; gm.add(fl); gm.userData.fl = fl;
+        gm.position.set(...gm.userData.vm); gm.visible = false; cam.add(gm);
+        return gm;
       });
       const flash = new T.PointLight(0xffd59a, 0, 9, 2); flash.position.set(0.22, -0.12, -0.9); cam.add(flash); F.flash = flash;
       F.tracers = []; F.parts = [];
@@ -1494,6 +1517,7 @@ function makeOps(md) {
         });
         (F.avatars || []).forEach(av => av.bd.traverse(o => { if (o.isMesh) o.castShadow = true; }));
         F.shadows = true;
+        F.guns.forEach(gm => gm.traverse(o => { if (o.isMesh) o.castShadow = false; }));
       }
       F.ready = true;
     },
@@ -1749,9 +1773,7 @@ function makeOps(md) {
         if (it === "H") { const cm = mStd({ color: 0x3ddc97, emissive: 0x3ddc97, emissiveIntensity: 1.3 }); item.add(new T.Mesh(new T.BoxGeometry(0.5, 0.16, 0.16), cm), new T.Mesh(new T.BoxGeometry(0.16, 0.5, 0.16), cm)); }
         else if (it === "A") { const a1 = new T.Mesh(new T.BoxGeometry(0.42, 0.5, 0.12), mStd({ color: 0x1f3550, metalness: 0.5, roughness: 0.3 })), a2 = new T.Mesh(new T.BoxGeometry(0.3, 0.08, 0.13), mStd({ color: 0x4cc9f0, emissive: 0x4cc9f0, emissiveIntensity: 1.5 })); item.add(a1, a2); }
         else {
-          const W1 = OW[it], L = W1.vm[0] * 1.3, dark = mStd({ color: 0x23283f, metalness: 0.75, roughness: 0.32 }), acc = mStd({ color: col, emissive: col, emissiveIntensity: 1.1 });
-          if (W1.rocket) { const tb = new T.Mesh(new T.CylinderGeometry(0.11, 0.11, L, 14), dark); tb.rotation.x = Math.PI / 2; const bd = new T.Mesh(new T.CylinderGeometry(0.115, 0.115, L * 0.3, 14), acc); bd.rotation.x = Math.PI / 2; item.add(tb, bd); }
-          else { const b = new T.Mesh(new T.BoxGeometry(0.1, 0.15, L), dark), st = new T.Mesh(new T.BoxGeometry(0.105, 0.04, L * 0.7), acc), gr = new T.Mesh(new T.BoxGeometry(0.07, 0.16, 0.08), dark); st.position.y = 0.05; gr.position.set(0, -0.12, L * 0.2); item.add(b, st, gr); }
+          const gm2 = GUNS.build(OW[it], T, { arms: false }); gm2.position.z = 0.15; gm2.scale.setScalar(1.25); item.add(gm2);
           item.rotation.z = 0.25;
         }
         const glow = new T.Sprite(glowM(col, 0.55)); glow.scale.set(1.7, 1.7, 1); glow.position.y = 0.95;
@@ -1840,6 +1862,9 @@ function makeOps(md) {
         F.remote[i] = { x: av.x, z: av.z, a, cr: av.cr, jh: av.jh };
         av.grp.position.set(av.x, av.jh || 0, av.z); av.grp.rotation.y = a + Math.PI; av.bd.scale.y = 1 - 0.3 * (av.cr || 0); av.grp.visible = !(pl && pl[16]);
         const alive = !!(pl && pl[1]);
+        // the gun they actually carry
+        const cw = pl ? pl[6] : 0; if (av.gunW !== cw && OW[cw]) { av.gunW = cw; while (av.gun.children.length) av.gun.remove(av.gun.children[0]); if (!OW[cw].melee) { const gm2 = GUNS.build(OW[cw], T, { arms: false }); gm2.traverse(o => { if (o.isMesh) o.castShadow = !!F.shadows; }); av.gun.add(gm2); } }
+        if (av.rb && av.rb.wp && av.rbW !== cw) { av.rbW = cw; const nm = { pistol: "Pistol", deagle: "Revolver", smg: "SMG", rifle: "AK", carbine: "AK", lmg: "AK", sniper: "Sniper", scout: "Sniper_2", shotgun: "Shotgun", knife: "Knife_1", rocket: "RocketLauncher", laser: "ShortCannon" }[(OW[cw] || OW[0]).id]; for (const n in av.rb.wp) av.rb.wp[n].visible = n === nm; }
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
         else if (av.wasAlive) av.deadT = 0.001;
@@ -1851,17 +1876,17 @@ function makeOps(md) {
         av.ph += dt * (4 + spd * 1.6); av.legs[0].rotation.x = Math.sin(av.ph) * 0.65 * sw; av.legs[1].rotation.x = -Math.sin(av.ph) * 0.65 * sw;
         if (av.rb) {
           // pick the animation from how fast they're actually moving
-          const want = !alive ? "Death" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle", R = av.rb;
+          const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle";
           if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); R.cur = want; }
           if (want === "Running") R.act.Running.timeScale = clamp(spd / 6.2, 0.7, 1.3);
-          if (want === "Walking") R.act.Walking.timeScale = clamp(spd / 2.2, 0.6, 1.4);
+          if (want === "Walking") R.act.Walking.timeScale = R.wp ? clamp(spd / 5, 0.35, 0.8) : clamp(spd / 2.2, 0.6, 1.4);
           R.mixer.update(dt);
-          R.main.forEach(mt => { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); });
+          R.main.forEach(mt => { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); if (R.wp) { mt.color.lerp(GFX._olive || (GFX._olive = new THREE.Color(0x30362a)), 0.5); mt.emissive.multiplyScalar(0.3); } });
         } else av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
         av.wasAlive = alive;
         av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb ? 2.4 : 1.4)));
-        av.ring.visible = av.gun.visible = alive;
-        av.spr.position.y = alive ? 1.95 - 0.55 * (av.cr || 0) + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
+        av.ring.visible = alive; av.gun.visible = alive && !(av.rb && av.rb.wp);
+        av.spr.position.y = alive ? (av.rb && av.rb.wp ? 2.32 : 1.95) - 0.55 * (av.cr || 0) + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
         if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
         av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3); av.suit.emissive.setRGB(av.hurtT * 6, 0, 0);
         if (team && pl) {
@@ -1922,17 +1947,19 @@ function makeOps(md) {
       if (gm) {
         const rl = F.reloadT > 0 ? Math.sin(Math.min(1, F.reloadT / OW[F.cur].rl) * Math.PI) : 0, sw = F.swapT ? F.swapT / 0.35 : 0;
         F.sway = F.sway || { x: 0, y: 0 }; F.sway.x = lerp(F.sway.x, clamp(-(F.lookVX || 0) * 0.0004, -0.04, 0.04), 0.15); F.sway.y = lerp(F.sway.y, clamp((F.lookVY || 0) * 0.0004, -0.04, 0.04), 0.15);
-        const base = gm.userData.knife ? [0.2, -0.2, -0.38] : [0.2, -0.19, -0.5];
+        const U = gm.userData, base = U.knife ? [0.2, -0.2, -0.38] : U.vm;
         F.throwT = Math.max(0, (F.throwT || 0) - dt); const thw = F.throwT > 0 ? Math.sin((1 - F.throwT / 0.45) * Math.PI) : 0;
-        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.008 + F.sway.x + thw * 0.08, base[1] - rl * 0.14 - sw * 0.2 + Math.abs(Math.cos(F.bob * 0.5)) * 0.006 + F.sway.y - thw * 0.22, base[2] + F.kick * 0.045);
-        gm.rotation.x = F.kick * 0.08 - rl * 0.6; gm.rotation.y = F.sway.x * 2;
+        const W1 = OW[F.cur], ps = U.knife ? { tilt: 0, dip: 0 } : GUNS.pose(gm, { reload: F.reloadT > 0 ? 1 - F.reloadT / W1.rl : -1, kick: F.kick, cyc: W1.rate > 0.5 && F.fireCd > 0 ? 1 - F.fireCd / W1.rate : 1 });
+        const kz = U.knife ? 0.045 : 0.03 + W1.kick * 0.9, sw2 = sw * sw;
+        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 + F.sway.x + thw * 0.08, base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22, base[2] + F.kick * kz);
+        gm.rotation.set(F.kick * (U.knife ? 0.08 : 0.035 + W1.kick * 1.6) + sw2 * 0.9 + ps.tilt * 0.25, F.sway.x * 2 + ps.tilt * 0.5, -ps.tilt * 0.9 - sw2 * 0.4);
         if (gm.userData.knife) {
           // swing: slash sweeps sideways, stab thrusts forward
           F.swingT = Math.max(0, (F.swingT || 0) - dt); const sp = Math.sin((1 - F.swingT / 0.32) * Math.PI) * (F.swingT > 0 ? 1 : 0);
           gm.position.x += F.swing > 0 ? -sp * 0.16 : 0; gm.position.z -= F.swing < 0 ? sp * 0.2 : 0;
           gm.rotation.z = F.swing > 0 ? sp * 0.9 : 0; gm.rotation.x = F.swing < 0 ? -sp * 0.4 : 0;
         } else {
-          gm.userData.fl.visible = F.kick > 0.7; if (gm.userData.fl.visible) gm.userData.fl.material.rotation = Math.random() * 6;
+          gm.userData.fl.visible = F.kick > 0.72 && !OW[F.cur].rocket; if (gm.userData.fl.visible) { gm.userData.fl.material.rotation = Math.random() * 6; const fs = 0.26 + Math.random() * 0.16; gm.userData.fl.scale.set(fs, fs, 1); }
         }
       }
       if (F.swapT === 0 && F.cur === KNIFE && F.kick > 0) F.kick = Math.max(0, F.kick - dt * 4);

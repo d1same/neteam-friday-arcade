@@ -61,6 +61,11 @@ const GFX = {
     });
     return GFX._op;
   },
+  // animated CC0 soldier (Quaternius, see models/CREDITS.txt): human body with gun-handling animations and weapons in hand
+  soldier() {
+    if (GFX._sol) return GFX._sol;
+    return GFX._sol = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/soldier.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } }));
+  },
   // quality: phones get a lighter pipeline
   // render resolution: the device's native pixel density times the player's scale (Settings), capped for safety
   pxRatio() { const g = store("nfa-gfx") || {}, rs = clamp(+g.rs || (this.lowEnd() ? 0.75 : 1), 0.5, 1.5); return Math.min(3, (devicePixelRatio || 1) * rs); },

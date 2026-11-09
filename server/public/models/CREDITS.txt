@@ -16,3 +16,5 @@ https://polyhaven.com  https://ambientcg.com  https://gitlab.com/zach-geek/afram
   plate-n     tread-plate normal map 0008 from @pmndrs/assets (CC0)
   brick-*     generated for this project (CC0): brick bond composited from the Poly Haven "rock_05" and "sandstone_cracks"
               scans above (photo detail tinted per brick, mortar, height baked to a normal map). Not a scan of a real brick wall.
+soldier.glb: "Soldier" animated character by Quaternius (https://quaternius.com), CC0 1.0, taken from the npm package
+@netforge/asset-library-files 0.2.0 (library/lowpoly/soldier.glb, CC0 per its NOTICE) and re-saved without mesh compression.
