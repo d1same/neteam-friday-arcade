@@ -1,3 +1,18 @@
 operator.glb: "RobotExpressive" by Tomás Laulhé (Quaternius), CC0 1.0, via the three.js examples (modified by Don McCurdy).
 https://github.com/mrdoob/three.js/tree/r159/examples/models/gltf/RobotExpressive
 hdri-*.exr: Poly Haven HDRIs (CC0 1.0) as packaged in @pmndrs/assets (CC0 1.0). https://polyhaven.com https://github.com/pmndrs/assets
+
+tex-*.jpg: PBR texture sets (colour -c, normal -n in OpenGL convention, roughness -r), all from CC0 1.0 sources, resized to
+1024/512 px and re-encoded as JPG. Taken from the npm package aframe-enviropacks 0.10.0 by Zach Capalbo (code MIT; its bundled
+textures are Texture Haven / Poly Haven and CC0 Textures / ambientCG scans, CC0 1.0) and from @pmndrs/assets 1.7.0 (CC0 1.0).
+https://polyhaven.com  https://ambientcg.com  https://gitlab.com/zach-geek/aframe-enviropacks  https://github.com/pmndrs/assets
+  carpet-*    ambientCG "Fabric026" (CC0), colour regraded to charcoal blue
+  plaster-*   "Plastic" set as shipped in aframe-enviropacks (the package lists all its textures as CC0; exact scan id not named)
+  sandstone-* Poly Haven "sandstone_cracks" (CC0)
+  concrete-*  Poly Haven "rock_05" (CC0), colour regraded to grey concrete, normal softened
+  metal-*     ambientCG "Metal035" (CC0), colour regraded to neutral painted steel
+  planks-*    Poly Haven "brown_planks_04" (CC0)
+  wood-*      ambientCG "WoodFloor041" (CC0)
+  plate-n     tread-plate normal map 0008 from @pmndrs/assets (CC0)
+  brick-*     generated for this project (CC0): brick bond composited from the Poly Haven "rock_05" and "sandstone_cracks"
+              scans above (photo detail tinted per brick, mortar, height baked to a normal map). Not a scan of a real brick wall.

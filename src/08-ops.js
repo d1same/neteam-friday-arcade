@@ -1112,9 +1112,10 @@ function makeOps(md) {
       let renderer;
       try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
       renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
-      renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+      renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = { office: 0.95, farm: 1.0, desert: 0.92, roof: 1.2 }[OPS_M.theme] || 1;
       F.renderer = renderer;
-      F.post = GFX.post(renderer, { strength: 0.75, threshold: 1.1, vignette: 0.4, low, ao: true, aoRadius: 0.6, aoStrength: 1.1, sat: 1.18 });
+      // realistic grade: restrained bloom, near-neutral saturation, slightly stronger contact occlusion
+      F.post = GFX.post(renderer, { strength: 0.5, threshold: 1.15, vignette: 0.34, low, ao: true, aoRadius: 0.65, aoStrength: 1.25, sat: 1.05 });
       const scene = new T.Scene(); F.scene = scene;
       const TH = OPS_M.theme, outdoor = TH === "desert" || TH === "roof";
       const skyGrad = (stops) => { const t2 = GFX.tex(8, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); stops.forEach(([o, c]) => g.addColorStop(o, c)); x.fillStyle = g; x.fillRect(0, 0, w, h); }); t2.wrapS = t2.wrapT = T.ClampToEdgeWrapping; return t2; };
@@ -1126,37 +1127,44 @@ function makeOps(md) {
       // swap the generated environment for a real HDR one once it has loaded (reflections + soft fill light)
       if (!low) GFX.hdri(renderer, { office: "lobby", farm: "warehouse", desert: "sunset", roof: "night" }[TH] || "lobby").then((env) => {
         if (!env || F.gone) return; scene.environment = env;
-        const k = { office: 0.75, farm: 0.7, desert: 0.9, roof: 0.8 }[TH] || 0.8;
+        const k = { office: 1.0, farm: 1.0, desert: 1.1, roof: 1.4 }[TH] || 1;
         scene.traverse(o => { const ms = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : []; ms.forEach(m => { if (m.isMeshStandardMaterial) { m.envMapIntensity = k; m.needsUpdate = true; } }); });
       });
       if (TH === "desert") {
-        scene.add(new T.HemisphereLight(0xfff1d6, 0x8a6a40, 2.4));
-        const sun = new T.DirectionalLight(0xffe0b0, 2.7); sun.position.set(30, 50, 12); scene.add(sun); F.key = sun;
+        scene.add(new T.HemisphereLight(0xdfe9ff, 0x8a6a40, 1.5));
+        const sun = new T.DirectionalLight(0xffe2b8, 3.6); sun.position.set(30, 50, 12); scene.add(sun); F.key = sun;
         const sunG = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(3, 2.6, 1.8), transparent: true, blending: T.AdditiveBlending, depthWrite: false, fog: false })); sunG.scale.set(40, 40, 1); sunG.position.set(OG * CS / 2 + 90, 120, OG * CS / 2 + 36); scene.add(sunG);
       } else if (TH === "roof") {
-        scene.add(new T.HemisphereLight(0x8fa0d8, 0x2a2030, 1.2));
-        const moon = new T.DirectionalLight(0x9fb4ff, 0.9); moon.position.set(-20, 40, -10); scene.add(moon); F.key = moon;
-      } else { scene.add(new T.HemisphereLight(TH === "farm" ? 0xcfe4ff : 0xdfe4ff, 0x3a3040, 1.6)); const top = new T.DirectionalLight(0xfff0dc, 0.9); top.position.set(6, 40, 9); scene.add(top); F.key = top; }
+        scene.add(new T.HemisphereLight(0x9fb0e8, 0x33283a, 1.35));
+        const moon = new T.DirectionalLight(0xb4c4ff, 1.9); moon.position.set(-20, 40, -10); scene.add(moon); F.key = moon;
+      } else { scene.add(new T.HemisphereLight(TH === "farm" ? 0xcfe4ff : 0xdfe4ff, 0x3a3040, 0.9)); const top = new T.DirectionalLight(0xfff0dc, 0.9); top.position.set(6, 40, 9); scene.add(top); F.key = top; }
       const tex = (w, h, fn) => GFX.tex(w, h, fn);
       const size = OG * CS;
       // ---- lights: warm office panels in corridors, coloured at sites and spawns
       const cen = (cells) => { let bx = cells[0], bd = 1e9; const mx = cells.reduce((s, q) => s + q[0], 0) / cells.length, mz = cells.reduce((s, q) => s + q[1], 0) / cells.length; cells.forEach(q => { const d = Math.hypot(q[0] - mx, q[1] - mz); if (d < bd) { bd = d; bx = q; } }); return cellC(bx); };
-      const LIGHTS = !OPS_CELLS.r.length ? [] : [[OPS_SITE[0], 0x4cc9f0, 3.2], [OPS_SITE[1], 0x3ddc97, 3.2], [cen(OPS_CELLS.r), 0xff4d5e, 2.3], [cen(OPS_CELLS.u), 0x3fa9ff, 2.2]];
+      const LIGHTS = !OPS_CELLS.r.length ? [] : [[OPS_SITE[0], 0x4cc9f0, 2.4], [OPS_SITE[1], 0x3ddc97, 2.4], [cen(OPS_CELLS.r), 0xff4d5e, 1.4], [cen(OPS_CELLS.u), 0x3fa9ff, 1.4]];
       const lampCol = { farm: 0xbfe0ff, desert: 0xffd9a0, roof: 0xff9a5c }[TH] || 0xffe6c4, grid = [];
       for (let z = 2; z < OG - 1; z += 4) for (let x = 2; x < OG - 1; x += 4) { const c = [[x, z], [x + 1, z], [x, z + 1], [x - 1, z], [x, z - 1]].find(q => !oWall(q[0], q[1])); if (c) grid.push(c); }
       grid.sort((p0, q0) => ((p0[0] * 7 + p0[1] * 13) % 11) - ((q0[0] * 7 + q0[1] * 13) % 11)).forEach(c => LIGHTS.push([cellC(c), lampCol, outdoor ? 1.1 : 1.6]));
       LIGHTS.slice(0, low ? 8 : outdoor ? 10 : 16).forEach(([p, c, k]) => { const l = new T.PointLight(c, 40 * k, 18, 1.3); l.position.set(p[0], OWH - 0.35, p[1]); scene.add(l); });
       // ---- floor: one baked texture for the whole map (zones, carpet, contact shadows near walls) + glow pools
       const px = low ? 32 : 64, FW = OG * px;
-      const floorTex = tex(FW, FW, (x) => {
+      // real = true draws only the paint layer (zone tints, joints, hazard stripes, contact shadows) on a transparent canvas,
+      // to be laid over a tiling PBR floor; real = false is the fully procedural floor (fallback when textures are missing)
+      const drawFloor = (x, real) => {
+        const JN = { farm: [4, 0.5], desert: [2, 0.42], roof: [1, 0.4] }[TH] || [2, 0.1];
         for (let z = 0; z < OG; z++) for (let c = 0; c < OG; c++) {
           const ch = OPS_MAP[z][c], X = c * px, Y = z * px;
           if (ch === "#") { x.fillStyle = "#000"; x.fillRect(X, Y, px, px); continue; }
           const zone = { a: ["#24344f", "#4cc9f0"], b: ["#22403a", "#3ddc97"], r: ["#3c1d27", "#ff4d5e"], u: ["#1b2a47", "#3fa9ff"] }[ch];
           if (zone) { // raised-floor tiles
-            x.fillStyle = zone[0]; x.fillRect(X, Y, px, px);
-            x.strokeStyle = "rgba(0,0,0,.45)"; x.lineWidth = px / 32; for (let k = 0; k <= 2; k++) { x.beginPath(); x.moveTo(X + k * px / 2, Y); x.lineTo(X + k * px / 2, Y + px); x.moveTo(X, Y + k * px / 2); x.lineTo(X + px, Y + k * px / 2); x.stroke(); }
+            x.globalAlpha = real ? 0.34 : 1; x.fillStyle = zone[0]; x.fillRect(X, Y, px, px); x.globalAlpha = 1;
+            x.strokeStyle = real ? "rgba(0,0,0,.2)" : "rgba(0,0,0,.45)"; x.lineWidth = real ? 1 : px / 32; for (let k = 0; k <= 2; k++) { x.beginPath(); x.moveTo(X + k * px / 2, Y); x.lineTo(X + k * px / 2, Y + px); x.moveTo(X, Y + k * px / 2); x.lineTo(X + px, Y + k * px / 2); x.stroke(); }
             x.fillStyle = "rgba(255,255,255,.05)"; x.fillRect(X + 2, Y + 2, px / 2 - 4, px / 2 - 4); x.fillRect(X + px / 2 + 2, Y + px / 2 + 2, px / 2 - 4, px / 2 - 4);
+          } else if (real) { // joints between carpet tiles / floor plates / pavers / concrete slabs
+            x.strokeStyle = "rgba(0,0,0," + JN[1] + ")"; x.lineWidth = 1; x.beginPath();
+            for (let k = 0; k < JN[0]; k++) { const o = Math.round(k * px / JN[0]) + 0.5; x.moveTo(X + o, Y); x.lineTo(X + o, Y + px); x.moveTo(X, Y + o); x.lineTo(X + px, Y + o); }
+            x.stroke();
           } else { // office carpet / raised floor / sandstone pavers / roof concrete
             const FL = { farm: ["#2c3138", "#30353d"], desert: ["#c9a676", "#c2a070"], roof: ["#4b4d53", "#47494f"] }[TH] || ["#3a4060", "#343a58"];
             x.fillStyle = (c + z) % 2 ? FL[0] : FL[1]; x.fillRect(X, Y, px, px);
@@ -1168,11 +1176,13 @@ function makeOps(md) {
         ["a", "b"].forEach(k => OPS_CELLS[k].forEach(([c, z]) => { [[1, 0], [-1, 0], [0, 1], [0, -1]].forEach(([dx, dz]) => { const n = OPS_MAP[z + dz] && OPS_MAP[z + dz][c + dx]; if (n !== "." ) return; const X = c * px + (dx > 0 ? px - px / 10 : 0), Y = z * px + (dz > 0 ? px - px / 10 : 0), w = dx ? px / 10 : px, h = dz ? px / 10 : px; x.fillStyle = "#ffd23f"; x.fillRect(X, Y, w, h); x.fillStyle = "#111"; for (let s = 0; s < 4; s++) { if (dx) x.fillRect(X, Y + s * px / 4, w, px / 8); else x.fillRect(X + s * px / 4, Y, px / 8, h); } }); }));
         // contact shadows: blurred wall mask multiplied over the floor
         const m = document.createElement("canvas"); m.width = m.height = FW; const mx = m.getContext("2d");
-        mx.fillStyle = "#fff"; mx.fillRect(0, 0, FW, FW); mx.fillStyle = "#000";
+        if (!real) { mx.fillStyle = "#fff"; mx.fillRect(0, 0, FW, FW); } mx.fillStyle = "#000";
         OPS_MAP.forEach((r, z) => [...r].forEach((ch, c) => { if (ch === "#") mx.fillRect(c * px - px * 0.04, z * px - px * 0.04, px * 1.08, px * 1.08); }));
         const b = document.createElement("canvas"); b.width = b.height = FW; const bx = b.getContext("2d"); bx.filter = "blur(" + Math.round(px * 0.22) + "px)"; bx.drawImage(m, 0, 0);
-        x.globalCompositeOperation = "multiply"; x.globalAlpha = 0.85; x.drawImage(b, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = "source-over";
-      });
+        if (real) { x.globalAlpha = 0.72; x.drawImage(b, 0, 0); x.globalAlpha = 1; }
+        else { x.globalCompositeOperation = "multiply"; x.globalAlpha = 0.85; x.drawImage(b, 0, 0); x.globalAlpha = 1; x.globalCompositeOperation = "source-over"; }
+      };
+      const floorTex = tex(FW, FW, (x) => drawFloor(x, false));
       floorTex.wrapS = floorTex.wrapT = T.ClampToEdgeWrapping;
       const glowTex = tex(FW / 2, FW / 2, (x, w) => { x.fillStyle = "#000"; x.fillRect(0, 0, w, w); x.globalCompositeOperation = "lighter"; const s = w / size; LIGHTS.forEach(([p, c, k]) => { const col = new T.Color(c), r = (k > 2 ? 3.2 : 2.2) * CS * s; const g = x.createRadialGradient(p[0] * s, p[1] * s, 0, p[0] * s, p[1] * s, r); g.addColorStop(0, `rgba(${col.r * 255 | 0},${col.g * 255 | 0},${col.b * 255 | 0},${k > 2 ? 0.5 : 0.22})`); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, w); }); });
       glowTex.wrapS = glowTex.wrapT = T.ClampToEdgeWrapping;
@@ -1180,6 +1190,9 @@ function makeOps(md) {
       bump.repeat.set(OG, OG);
       const floor = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: floorTex, emissiveMap: glowTex, emissive: 0xffffff, emissiveIntensity: outdoor ? 0.22 : 0.45, normalMap: GFX.normal(bump, 3), normalScale: new T.Vector2(0.6, 0.6), roughness: 0.82, metalness: 0.05 }));
       floor.rotation.x = -Math.PI / 2; floor.position.set(size / 2, 0, size / 2); scene.add(floor);
+      // real floor material: loop-pile carpet (office), scuffed steel plates (server farm), warm stone pavers (desert), weathered concrete (rooftops)
+      const FLR = { farm: ["metal", 2, { color: 0x8a9099, metal: 0.6, rough: 1.25, ns: 0.9 }], desert: ["concrete", 3, { color: 0xf3d9ae, ns: 1.3 }], roof: ["concrete", 3.5, { color: 0xa4a8b0, ns: 1.3 }] }[TH] || ["carpet", 0.6, { ns: 0.8 }];
+      GFX.skin(floor.material, FLR[0], size / FLR[1], size / FLR[1], FLR[2]).then((ok) => { if (!ok || F.gone) return; GFX.paint(floor.material, tex(FW, FW, (x) => drawFloor(x, true))); floor.material.emissiveIntensity *= 0.55; });
       // big site letters on the floor (glowing)
       if (OPS_CELLS.a.length) ["A", "B"].forEach((L, k) => {
         const t2 = tex(256, 256, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = k ? "#3ddc97" : "#4cc9f0"; x.font = "700 200px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(L, w / 2, h / 2 + 12); x.lineWidth = 8; x.strokeStyle = k ? "#3ddc97" : "#4cc9f0"; x.beginPath(); x.arc(w / 2, h / 2, 118, 0, 7); x.stroke(); });
@@ -1190,7 +1203,7 @@ function makeOps(md) {
       const ceilTex = tex(256, 256, (x, w, h) => { x.fillStyle = "#e4e6ee"; x.fillRect(0, 0, w, h); for (let i = 0; i < 300; i++) { x.fillStyle = "rgba(0,0,0,.035)"; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); } x.strokeStyle = "#5d6178"; x.lineWidth = 5; for (let i = 0; i <= 2; i++) { x.beginPath(); x.moveTo(i * 128, 0); x.lineTo(i * 128, h); x.moveTo(0, i * 128); x.lineTo(w, i * 128); x.stroke(); } });
       const ceilEm = tex(256, 256, (x, w, h) => { x.fillStyle = "#000"; x.fillRect(0, 0, w, h); x.fillStyle = "rgba(255,244,224,.3)"; x.fillRect(136, 136, 112, 112); x.fillStyle = "#fff4e0"; x.fillRect(146, 146, 92, 92); });
       ceilTex.repeat.set(OG, OG); ceilEm.repeat.set(OG / 2, OG / 2);
-      const ceil = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: ceilTex, emissiveMap: ceilEm, emissive: 0xffffff, emissiveIntensity: 1.7, roughness: 0.95 }));
+      const ceil = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: ceilTex, emissiveMap: ceilEm, emissive: 0xffffff, emissiveIntensity: 1.35, roughness: 0.95 }));
       ceil.rotation.x = Math.PI / 2; ceil.position.set(size / 2, OWH, size / 2); if (!outdoor) scene.add(ceil);
       // ---- walls: painted drywall, exposed NYC brick, glass partitions, server racks at the sites, skyline windows on the outside
       const AO = (x, w, h) => { let g = x.createLinearGradient(0, h, 0, h * 0.72); g.addColorStop(0, "rgba(0,0,0,.55)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, h * 0.72, w, h * 0.28); g = x.createLinearGradient(0, 0, 0, h * 0.18); g.addColorStop(0, "rgba(0,0,0,.45)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h * 0.18); };
@@ -1229,17 +1242,20 @@ function makeOps(md) {
       mats.forEach((mat, k) => { if (!mat || !walls[k].length) return; const im = new T.InstancedMesh(box, mat, walls[k].length); const m4 = new T.Matrix4(); walls[k].forEach(([x, z], i) => { m4.makeTranslation(x * CS + CS / 2, WH / 2, z * CS + CS / 2); im.setMatrixAt(i, m4); }); scene.add(im); });
       // ---- stylized pass: trims along every wall (cornice/cap + skirting), soft height shading on wall faces
       const STY = { office: [0xff7a2f, 0x23262e], farm: [0x4cc9f0, 0x1a1d24], desert: [0xf6e6c6, 0x8a5a36], roof: [0xff8a5c, 0x26282e] }[TH] || [0xff7a2f, 0x23262e];
-      const capM = new T.MeshStandardMaterial({ color: STY[0], roughness: 0.4, metalness: 0.1, emissive: TH === "desert" ? 0x000000 : STY[0], emissiveIntensity: TH === "desert" ? 0 : 0.25 }), baseM = new T.MeshStandardMaterial({ color: STY[1], roughness: 0.55, metalness: 0.2 });
+      const capM = new T.MeshStandardMaterial({ color: STY[0], roughness: 0.4, metalness: 0.1, emissive: TH === "desert" ? 0x000000 : STY[0], emissiveIntensity: TH === "desert" ? 0 : 0.12 }), baseM = new T.MeshStandardMaterial({ color: STY[1], roughness: 0.55, metalness: 0.2 });
       const openWalls = walls.flat();
       [[new T.BoxGeometry(CS + 0.18, outdoor ? 0.2 : 0.12, CS + 0.18), capM, outdoor ? WH + 0.1 : OWH - 0.3], [new T.BoxGeometry(CS + 0.07, 0.24, CS + 0.07), baseM, 0.12]].forEach(([g0, m0, y]) => {
         const im = new T.InstancedMesh(g0, m0, openWalls.length), m4 = new T.Matrix4();
         openWalls.forEach(([x, z], i) => { m4.makeTranslation(x * CS + CS / 2, y, z * CS + CS / 2); im.setMatrixAt(i, m4); }); scene.add(im);
       });
-      const shadeWall = (m) => { if (!m) return; m.onBeforeCompile = (sh) => {
-        sh.vertexShader = "varying float vWY;\n" + sh.vertexShader.replace("#include <fog_vertex>", "#include <fog_vertex>\n#ifdef USE_INSTANCING\n vWY = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).y;\n#else\n vWY = (modelMatrix * vec4(transformed, 1.0)).y;\n#endif");
-        sh.fragmentShader = "varying float vWY;\n" + sh.fragmentShader.replace("#include <color_fragment>", "#include <color_fragment>\n diffuseColor.rgb *= mix(0.5, 1.06, smoothstep(0.0, 2.4, vWY));");
-      }; };
-      [0, 2, 5, 6].forEach(k => shadeWall(mats[k]));
+      [0, 2, 5, 6].forEach(k => { if (mats[k]) GFX.paint(mats[k], null, [0.5, 1.06]); });
+      // real wall materials: painted plaster, brick, adobe sandstone, cast concrete. The paint layer keeps the accent stripe,
+      // formwork joints and the baked top/bottom occlusion; tiling is a whole number per cell so courses line up across cells.
+      const wallP = (fn) => tex(256, 256, (x, w, h) => { x.clearRect(0, 0, w, h); if (fn) fn(x, w, h); x.globalAlpha = 0.6; AO(x, w, h); x.globalAlpha = 1; });
+      GFX.skin(mats[0], "plaster", 2, WH / 2, { color: 0xf1efe9, shade: [0.76, 1.02], paint: wallP((x, w, h) => { x.fillStyle = "#2c5c9c"; x.fillRect(0, h * 0.56, w, 9); x.fillStyle = "rgba(0,0,0,.22)"; x.fillRect(0, h * 0.56 + 9, w, 1.5); }) });
+      GFX.skin(mats[2], "brick", 4, WH / 1.2, { ns: 1.2, shade: [0.72, 1.02], paint: wallP() });
+      GFX.skin(mats[5], "sandstone", 2, WH / 2, { ns: 1.3, shade: [0.8, 1.02], paint: wallP((x, w, h) => { const g = x.createLinearGradient(0, h, 0, h * 0.62); g.addColorStop(0, "rgba(96,62,28,.4)"); g.addColorStop(1, "rgba(96,62,28,0)"); x.fillStyle = g; x.fillRect(0, h * 0.62, w, h * 0.38); }) });
+      GFX.skin(mats[6], "concrete", 2, WH / 2, { color: 0xc9ccd2, ns: 1.4, shade: [0.76, 1.02], paint: wallP((x, w, h) => { x.fillStyle = "rgba(0,0,0,.32)"; x.fillRect(0, h / 2 - 1, w, 2); x.fillRect(w / 2 - 1, 0, 2, h); x.fillRect(0, 0, 1.5, h); x.fillRect(w - 1.5, 0, 1.5, h); x.fillStyle = "rgba(0,0,0,.4)"; [[0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]].forEach(([a, b]) => { x.beginPath(); x.arc(w * a, h * b, 3, 0, 7); x.fill(); }); }) });
       // outdoor skyline dressing: palms / water towers + antennas standing behind the outer walls, and soft clouds
       if (outdoor) {
         const trunkM = new T.MeshStandardMaterial({ color: TH === "desert" ? 0x8a6040 : 0x4a4d55, roughness: 0.8 }), frondM = new T.MeshStandardMaterial({ color: 0x3fae5a, roughness: 0.7, side: T.DoubleSide });
@@ -1300,8 +1316,11 @@ function makeOps(md) {
       const leaf = mStd({ color: 0x2f8a52, roughness: 0.8 }), pot = mStd({ color: 0xd8d2c4, roughness: 0.6 });
       const crateT = tex(128, 128, (x, w, h) => { x.fillStyle = "#8a6038"; x.fillRect(0, 0, w, h); for (let k = 0; k < 8; k++) { x.fillStyle = k % 2 ? "#7a5230" : "#916640"; x.fillRect(0, k * 16, w, 15); } x.strokeStyle = "#4a3018"; x.lineWidth = 10; x.strokeRect(5, 5, w - 10, h - 10); x.beginPath(); x.moveTo(8, 8); x.lineTo(w - 8, h - 8); x.stroke(); });
       const crateM = mStd({ map: crateT, roughness: 0.85 });
+      GFX.skin(crateM, "planks", 1, 1, { ns: 1.2, paint: tex(128, 128, (x, w, h) => { x.clearRect(0, 0, w, h); x.strokeStyle = "rgba(58,38,20,.8)"; x.lineWidth = 11; x.strokeRect(5, 5, w - 10, h - 10); x.beginPath(); x.moveTo(8, 8); x.lineTo(w - 8, h - 8); x.stroke(); }) });
+      GFX.skin(wood, "wood", 1, 1, { r: false });
       const acT = tex(128, 128, (x, w, h) => { x.fillStyle = "#8d929c"; x.fillRect(0, 0, w, h); x.fillStyle = "#5a5f69"; for (let y = 14; y < h - 10; y += 10) x.fillRect(12, y, w - 24, 4); x.strokeStyle = "#ff6a1a"; x.lineWidth = 4; x.strokeRect(3, 3, w - 6, h - 6); });
       const acM = mStd({ map: acT, roughness: 0.5, metalness: 0.6 });
+      GFX.skin(acM, "metal", 1, 1, { color: 0xb9bec6, rough: 1.2, paint: tex(128, 128, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = "rgba(20,22,26,.78)"; for (let y = 14; y < h - 10; y += 10) x.fillRect(12, y, w - 24, 4); x.strokeStyle = "#c9601f"; x.lineWidth = 3; x.strokeRect(3, 3, w - 6, h - 6); }) });
       const sites = new Set(OPS_CELLS.a.concat(OPS_CELLS.b).map(([x, z]) => x + "," + z));
       let desks = 0, plants = 0;
       for (const [x, z] of OPS_CELLS.open) {
@@ -1499,7 +1518,14 @@ function makeOps(md) {
         x.fillStyle = "#fff"; x.font = "900 22px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
         x.fillText("⚡ LI-ION UPS", w * 0.25, 22); x.fillText("⚡ LI-ION UPS", w * 0.75, 22); x.font = "700 14px 'JetBrains Mono', monospace"; x.fillText("DANGER · DO NOT SHOOT", w * 0.25, 104); x.fillText("DANGER · DO NOT SHOOT", w * 0.75, 104);
       });
-      const crateM = mStd({ map: crateT, roughness: 0.85 }), cartM = mStd({ color: 0x2c313a, metalness: 0.6, roughness: 0.45 }), beigeM = mStd({ color: 0xd9d0b8, roughness: 0.55 });
+      const crateM = mStd({ map: crateT, roughness: 0.85 });
+      GFX.skin(crateM, "planks", 1, 1, { color: 0xe8c9a0, ns: 1.2, paint: GFX.tex(256, 256, (x, w, h) => {
+        x.clearRect(0, 0, w, h); x.strokeStyle = "rgba(70,46,22,.82)"; x.lineWidth = 14; x.strokeRect(7, 7, w - 14, h - 14);
+        x.fillStyle = "rgba(226,208,164,.92)"; x.fillRect(14, h / 2 - 20, w - 28, 40);
+        x.fillStyle = "#c9561a"; x.font = "900 34px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("NETEAM", w / 2, h / 2 + 2);
+        x.fillStyle = "rgba(40,26,12,.85)"; x.font = "700 13px 'JetBrains Mono', monospace"; x.fillText("HARDWARE · HANDLE WITH CARE", w / 2, h * 0.76);
+      }) });
+      const cartM = mStd({ color: 0x2c313a, metalness: 0.6, roughness: 0.45 }), beigeM = mStd({ color: 0xd9d0b8, roughness: 0.55 });
       const scrM = mStd({ map: bsodT, emissiveMap: bsodT, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.2 });
       const battM = mStd({ map: battT, roughness: 0.4, metalness: 0.25 }), capM = mStd({ color: 0x24262c, metalness: 0.7, roughness: 0.35 }), ledM = new T.MeshBasicMaterial({ color: new T.Color(0.4, 3, 1.2) });
       F.propMats = { crate: 0xc99558, cart: 0x2c313a, beige: 0xd9d0b8, red: 0xd42a33 };
@@ -1681,8 +1707,14 @@ function makeOps(md) {
         const cells = []; OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (oCellH(x, z) === hh) cells.push([x, z]); }));
         if (!cells.length) return;
         const m4 = new T.Matrix4();
-        const body = new T.InstancedMesh(new T.BoxGeometry(CS, hh, CS), [mStd({ map: side, roughness: 0.7, metalness: 0.25 }), mStd({ map: side, roughness: 0.7, metalness: 0.25 }), mStd({ map: topT, roughness: 0.55, metalness: 0.4 }), mStd({ color: 0x15171c }), mStd({ map: side, roughness: 0.7, metalness: 0.25 }), mStd({ map: side, roughness: 0.7, metalness: 0.25 })], cells.length);
-        const cap = new T.InstancedMesh(new T.BoxGeometry(CS + 0.06, 0.09, CS + 0.06), mStd({ color: col, emissive: col, emissiveIntensity: 0.55, roughness: 0.4 }), cells.length);
+        // painted steel panels on the sides, tread plate on top
+        const sideM = mStd({ map: side, roughness: 0.7, metalness: 0.25 }), topM = mStd({ map: topT, roughness: 0.55, metalness: 0.4 });
+        GFX.skin(sideM, "metal", 2, 1, { color: 0x8d94a1, metal: 0.55, rough: 1.35, paint: GFX.tex(128, 128, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = "rgba(0,0,0,.4)"; x.fillRect(0, 0, w, 3); x.fillRect(0, h - 4, w, 4); x.fillRect(0, 0, 2, h); x.fillRect(w - 2, 0, 2, h); x.fillRect(w / 2 - 1, 0, 2, h); x.fillStyle = "rgba(0,0,0,.5)"; [[8, 8], [w - 8, 8], [8, h - 9], [w - 8, h - 9], [w / 2 - 7, 8], [w / 2 + 7, 8], [w / 2 - 7, h - 9], [w / 2 + 7, h - 9]].forEach(([a, b]) => { x.beginPath(); x.arc(a, b, 2.2, 0, 7); x.fill(); }); }) });
+        const body = new T.InstancedMesh(new T.BoxGeometry(CS, hh, CS), [sideM, sideM, topM, mStd({ color: 0x15171c }), sideM, sideM], cells.length);
+        const capM = mStd({ color: col, emissive: col, emissiveIntensity: 0.55, roughness: 0.4 });
+        // colour-coded deck tops become painted tread plate (blue = low deck, orange = high deck)
+        GFX.skin(capM, "metal", 2, 2, { color: new T.Color(col).lerp(new T.Color(0x8a8f98), 0.35).getHex(), metal: 0.35, rough: 1.5, n: "plate", nk: 4, ns: 1.2 }).then((ok) => { if (ok) capM.emissiveIntensity = 0.14; });
+        const cap = new T.InstancedMesh(new T.BoxGeometry(CS + 0.06, 0.09, CS + 0.06), capM, cells.length);
         const foot = new T.InstancedMesh(new T.BoxGeometry(CS + 0.04, 0.16, CS + 0.04), mStd({ color: 0x16181e, roughness: 0.8 }), cells.length);
         cells.forEach(([x, z], i) => { const cx = x * CS + CS / 2, cz = z * CS + CS / 2; m4.makeTranslation(cx, hh / 2, cz); body.setMatrixAt(i, m4); m4.makeTranslation(cx, hh - 0.03, cz); cap.setMatrixAt(i, m4); m4.makeTranslation(cx, 0.08, cz); foot.setMatrixAt(i, m4); });
         scene.add(body, cap, foot);
@@ -1702,6 +1734,7 @@ function makeOps(md) {
       // router home pedestal
       const tc = OPS_CELLS.T; if (tc.length && troph) { const hx = tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, hz = tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2;
         const ped = new T.Mesh(new T.CylinderGeometry(1.25, 1.45, 0.3, 6), mStd({ color: 0x23262e, metalness: 0.6, roughness: 0.35 })); ped.position.set(hx, 0.15, hz); scene.add(ped);
+        GFX.skin(ped.material, "metal", 3, 1, { color: 0x4a4f5a, metal: 0.8, rough: 1.2 });
         const tr = new T.Mesh(new T.CylinderGeometry(1.3, 1.3, 0.04, 6), mStd({ color: 0xffc83d, emissive: 0xffb000, emissiveIntensity: 1.2 })); tr.position.set(hx, 0.31, hz); scene.add(tr); }
       // pickups
       F.picks = (troph ? OPS_M.picks || [] : []).map(([cx, cz, it]) => {
@@ -1724,7 +1757,8 @@ function makeOps(md) {
       });
       // the Golden Router
       if (troph) {
-        const gold = mStd({ color: 0xffc83d, metalness: 1, roughness: 0.22, emissive: 0x6a4600, emissiveIntensity: 0.8 }), t0 = new T.Group();
+        const gold = mStd({ color: 0xffc247, metalness: 1, roughness: 0.2, emissive: 0x6a4600, emissiveIntensity: 0.35 }), t0 = new T.Group(); gold.envMapIntensity = 1.6;
+        GFX.pbr("metal", 1, 1, { r: false }).then((s) => { if (s && s.normalMap) { gold.normalMap = s.normalMap; gold.normalScale.set(0.6, 0.6); gold.needsUpdate = true; } });
         const body = new T.Mesh(new T.BoxGeometry(0.7, 0.16, 0.46), gold); t0.add(body);
         [-0.24, 0, 0.24].forEach(ax => { const an = new T.Mesh(new T.CylinderGeometry(0.022, 0.03, 0.5, 8), gold); an.position.set(ax, 0.3, -0.18); an.rotation.x = -0.15; t0.add(an); });
         const leds = new T.Mesh(new T.BoxGeometry(0.5, 0.03, 0.02), new T.MeshBasicMaterial({ color: new T.Color(0.6, 3, 1.4) })); leds.position.set(0, 0.02, 0.235); t0.add(leds);

@@ -14,6 +14,45 @@ const GFX = {
       const rt = pm.fromEquirectangular(tex); pm.dispose(); return rt.texture;
     });
   },
+  // ---- real PBR texture sets (CC0 scans in models/tex-<name>-c|-n|-r.jpg, see models/CREDITS.txt): colour + normal + roughness.
+  // Resolves null when the colour map cannot be loaded, so every caller keeps its procedural canvas texture as the fallback.
+  // The Performance setting loads the colour map only.
+  pbr(name, rx = 1, ry = rx, o = {}) {
+    const T = THREE, low = GFX.lowEnd(), C = GFX._px || (GFX._px = {});
+    const one = (k, srgb) => C[k] || (C[k] = new Promise((res) => { try { new T.TextureLoader().load("models/tex-" + k + ".jpg", (t) => { if (srgb) t.colorSpace = T.SRGBColorSpace; res(t); }, null, () => res(null)); } catch (e) { res(null); } }));
+    const none = Promise.resolve(null);
+    return Promise.all([one(name + "-c", true), low || o.n === false ? none : one((o.n || name) + "-n"), low || o.r === false ? none : one(name + "-r")]).then(([c, n, r]) => {
+      if (!c) return null;
+      const mk = (t, k = 1) => { if (!t) return null; const q = t.clone(); q.wrapS = q.wrapT = T.RepeatWrapping; q.repeat.set(rx * k, ry * k); q.anisotropy = low ? 2 : 8; q.needsUpdate = true; return q; };
+      return { map: mk(c), normalMap: mk(n, o.nk || 1), roughnessMap: mk(r) };
+    });
+  },
+  // put a texture set on an existing MeshStandardMaterial. o: color (tint), ns (normal strength), rough (multiplier on the
+  // roughness map), metal, paint (RGBA canvas texture laid over the albedo in face UVs), shade ([low, high] wall height shading)
+  skin(mat, name, rx, ry, o = {}) {
+    if (!mat) return Promise.resolve(false);
+    return GFX.pbr(name, rx, ry, o).then((s) => {
+      if (!s) return false;
+      mat.map = s.map; mat.color.set(o.color == null ? 0xffffff : o.color);
+      mat.normalMap = s.normalMap; if (s.normalMap) mat.normalScale.set(o.ns || 1, o.ns || 1);
+      mat.roughnessMap = s.roughnessMap; if (s.roughnessMap) mat.roughness = o.rough == null ? 1 : o.rough;
+      if (o.metal != null) mat.metalness = o.metal;
+      if (o.paint || o.shade) GFX.paint(mat, o.paint, o.shade);
+      mat.needsUpdate = true; return true;
+    });
+  },
+  // paint layer: an RGBA canvas (stripes, joints, labels, baked contact shadows) alpha-blended over the tiling albedo using the
+  // un-tiled face UVs, plus optional darkening towards the floor for walls
+  paint(mat, tex, shade) {
+    if (tex) tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
+    mat.onBeforeCompile = (sh) => {
+      if (tex) sh.uniforms.paintMap = { value: tex };
+      sh.vertexShader = "varying float vWY; varying vec2 vPaintUv;\n" + sh.vertexShader.replace("#include <fog_vertex>", "#include <fog_vertex>\n vPaintUv = uv;\n#ifdef USE_INSTANCING\n vWY = (modelMatrix * instanceMatrix * vec4(transformed, 1.0)).y;\n#else\n vWY = (modelMatrix * vec4(transformed, 1.0)).y;\n#endif");
+      sh.fragmentShader = "varying float vWY; varying vec2 vPaintUv; uniform sampler2D paintMap;\n" + sh.fragmentShader.replace("#include <color_fragment>", "#include <color_fragment>\n" + (tex ? " vec4 pt = texture2D(paintMap, vPaintUv); diffuseColor.rgb = mix(diffuseColor.rgb, pt.rgb, pt.a);\n" : "") + (shade ? " diffuseColor.rgb *= mix(" + shade[0].toFixed(3) + ", " + shade[1].toFixed(3) + ", smoothstep(0.0, 2.4, vWY));\n" : ""));
+    };
+    mat.customProgramCacheKey = () => "paint" + (tex ? 1 : 0) + (shade ? shade.join("_") : "");
+    mat.needsUpdate = true;
+  },
   operator() {
     if (GFX._op) return GFX._op;
     GFX._op = new Promise((res) => {
