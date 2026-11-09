@@ -1,7 +1,7 @@
 // ======================= shared 3D graphics helpers: post-processing (bloom + grade), procedural PBR textures =======================
 const GFX = {
   // quality: phones get a lighter pipeline
-  lowEnd() { return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4; },
+  lowEnd() { const q = (store("nfa-gfx") || {}).q; if (q === "low") return true; if (q === "high") return false; return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4; },
   tex(w, h, fn) { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.userData.canvas = c; return t; },
   // turn a grayscale height canvas into a tangent-space normal map
   normal(srcTex, strength = 2) {

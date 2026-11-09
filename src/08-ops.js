@@ -556,9 +556,11 @@ function makeOps(md) {
         box.append(sh); F.shop = sh;
       }
       // aim settings (shared with the other 3D game)
-      const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.textContent = "⚙ Aim";
+      const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.textContent = "⚙ Settings";
       const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
-      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><button type="button" class="btn" data-close>Done</button>';
+      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><label class="sl">Graphics <select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label><button type="button" class="btn" data-close>Done</button>';
+      const qs = sp.querySelector("[data-q]"); qs.value = (store("nfa-gfx") || {}).q || "auto";
+      qs.addEventListener("change", () => { store("nfa-gfx", { q: qs.value }); toast("Graphics: " + qs.options[qs.selectedIndex].text + ". Applies from the next game."); });
       sb.addEventListener("click", (e) => { e.stopPropagation(); if (document.pointerLockElement) try { document.exitPointerLock(); } catch (er) {} sp.hidden = !sp.hidden; syncLookPanel(F); });
       sp.addEventListener("mousedown", (e) => e.stopPropagation());
       sp.addEventListener("input", (e) => { const k = e.target.dataset.k; if (!k) return; const L = lookPrefs(); L[k] = k === "s" ? clamp(+e.target.value || 1, 0.3, 3) : e.target.checked; saveLookPrefs(L); syncLookPanel(F); });
@@ -885,17 +887,28 @@ function makeOps(md) {
       bomb.add(bb, strap, scr, halo, led); bomb.visible = false; scene.add(bomb); F.bomb = bomb; F.bombLed = led; F.bombScr = scr; F.bombHalo = halo;
       // ---- players: character card + soft shadow + team glow ring + gun + muzzle flash
       const shadowM = new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false });
+      const AVG = { torso: new T.CapsuleGeometry(0.27, 0.42, 4, 12), vest: new T.BoxGeometry(0.5, 0.42, 0.38), stripe: new T.BoxGeometry(0.4, 0.05, 0.02), leg: new T.BoxGeometry(0.17, 0.72, 0.2), boot: new T.BoxGeometry(0.19, 0.12, 0.3), arm: new T.CapsuleGeometry(0.075, 0.38, 3, 8) };
       F.avatars = V.ro.map((r, i) => {
-        const grp = new T.Group();
+        const grp = new T.Group(), bd = new T.Group(); grp.add(bd);
+        // 3D operator body in the player's colour; the character face (or photo) rides on top as the head
+        const suit = mStd({ color: new T.Color(r.hex).multiplyScalar(0.75), roughness: 0.55, metalness: 0.1, emissive: new T.Color(0), emissiveIntensity: 1 });
+        const kit = mStd({ color: 0x1b1e24, roughness: 0.7, metalness: 0.2 }), boot = mStd({ color: 0x101114, roughness: 0.8 });
+        const torso = new T.Mesh(AVG.torso, suit); torso.position.y = 1.12;
+        const vest = new T.Mesh(AVG.vest, kit); vest.position.set(0, 1.16, -0.02);
+        const stripe = new T.Mesh(AVG.stripe, mStd({ color: new T.Color(r.hex), emissive: new T.Color(r.hex), emissiveIntensity: 1.4 })); stripe.position.set(0, 1.3, -0.2);
+        const legs = [-1, 1].map(sd => { const hip = new T.Group(); hip.position.set(sd * 0.13, 0.78, 0); const l = new T.Mesh(AVG.leg, kit); l.position.y = -0.36; const b = new T.Mesh(AVG.boot, boot); b.position.set(0, -0.74, -0.06); hip.add(l, b); bd.add(hip); return hip; });
+        const arms = [-1, 1].map(sd => { const sh0 = new T.Group(); sh0.position.set(sd * 0.32, 1.38, 0); const a = new T.Mesh(AVG.arm, suit); a.position.set(0, -0.08, -0.22); a.rotation.x = 1.25 + (sd < 0 ? 0.15 : 0); a.rotation.z = sd * -0.35; sh0.add(a); bd.add(sh0); return sh0; });
+        bd.add(torso, vest, stripe);
         const mat = new T.SpriteMaterial({ map: frenzy.charTex(r.c, r.hex, r.n), transparent: true });
-        const spr = new T.Sprite(mat); spr.scale.set(2.0, 2.5, 1); spr.position.y = 1.2;
+        const spr = new T.Sprite(mat); spr.scale.set(1.05, 1.31, 1); spr.position.y = 1.95;
         const ring = new T.Mesh(new T.RingGeometry(0.45, 0.62, 32), new T.MeshBasicMaterial({ color: new T.Color(r.hex), transparent: true, opacity: 0.85, side: T.DoubleSide, blending: T.AdditiveBlending, depthWrite: false }));
         ring.rotation.x = -Math.PI / 2; ring.position.y = 0.03;
         const sh = new T.Mesh(new T.PlaneGeometry(1.4, 1.4), shadowM); sh.rotation.x = -Math.PI / 2; sh.position.y = 0.02;
         const gun = new T.Group(); const gb = new T.Mesh(new T.BoxGeometry(0.1, 0.12, 0.62), metal); const gs = new T.Mesh(new T.BoxGeometry(0.105, 0.03, 0.5), mStd({ color: 0xffd23f, emissive: 0xffd23f, emissiveIntensity: 0.6 })); gs.position.y = 0.06; gun.add(gb, gs); gun.position.set(0.36, 0.95, -0.2);
         const fl = new T.Sprite(new T.SpriteMaterial({ map: GFX.flashTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false, color: new T.Color(2, 1.8, 1.4) })); fl.scale.set(0.7, 0.7, 1); fl.position.set(0.36, 0.97, -0.62); fl.visible = false;
-        grp.add(sh, spr, ring, gun, fl); scene.add(grp);
-        return { grp, spr, ring, gun, fl, flT: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
+        gun.position.set(0.12, 1.2, -0.42); fl.position.set(0.12, 1.22, -0.84);
+        bd.add(gun, fl); grp.add(sh, spr, ring); scene.add(grp);
+        return { grp, bd, legs, arms, suit, spr, ring, gun, fl, flT: 0, ph: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
       });
       // ---- view-model guns
       F.guns = OW.map((w0, k) => {
@@ -992,13 +1005,18 @@ function makeOps(md) {
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
         else if (av.wasAlive) av.deadT = 0.001;
-        if (!alive && av.deadT > 0) { av.deadT += dt; av.spr.material.rotation = Math.min(1.4, av.deadT * 5); av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.6) * 1.5); }
+        if (!alive && av.deadT > 0) { av.deadT += dt; const k = Math.min(1, av.deadT * 3.5); av.bd.rotation.x = -k * 1.45; av.bd.position.y = k * 0.18; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.6) * 1.5); av.bd.visible = av.deadT < 1.4; }
+        else { av.bd.rotation.x = 0; av.bd.position.y = 0; av.bd.visible = true; }
+        // walk cycle from actual movement speed
+        const spd = i === V.meIdx ? 0 : (av.spd || 0), sw = Math.min(1, spd / 4.5);
+        av.ph += dt * (4 + spd * 1.6); av.legs[0].rotation.x = Math.sin(av.ph) * 0.65 * sw; av.legs[1].rotation.x = -Math.sin(av.ph) * 0.65 * sw;
+        av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
         av.wasAlive = alive;
         av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < 1.4));
         av.ring.visible = av.gun.visible = alive;
-        av.spr.position.y = alive ? 1.2 + Math.sin(t * 7 + i) * 0.03 : Math.max(0.5, 1.2 - av.deadT * 1.5);
+        av.spr.position.y = alive ? 1.95 + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
         if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
-        av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3);
+        av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3); av.suit.emissive.setRGB(av.hurtT * 6, 0, 0);
         if (team && pl) av.ring.material.color.set(TEAM[pl[2]].hex);
         av.flT = Math.max(0, av.flT - dt); av.fl.visible = av.flT > 0; if (av.fl.visible) av.fl.material.rotation = Math.random() * 6;
         const shot = r.b ? (g.bs && g.bs[i]) : (V.inputOf(i) || {}).sh;
