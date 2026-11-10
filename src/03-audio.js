@@ -34,7 +34,7 @@ const SFX = {
   S: {}, _ld: 0,
   load() {
     const a = this.ctx; if (!a || this._ld) return; this._ld = 1;
-    ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 step6 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall").split(" ").forEach((n) => {
+    ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall").split(" ").forEach((n) => {
       fetch("sfx/" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n] = buf; }, () => {})).catch(() => {});
     });
   },
@@ -65,7 +65,8 @@ const SFX = {
   },
   step(vol = 0.3, pan = 0, surf = 0) {
     const a = this.ensure(); if (!a || vol < 0.01) return;
-    if (this.samp("step" + (1 + (Math.random() * 6 | 0)), vol * 0.75, pan, (surf ? 1.12 : 1) * (0.94 + Math.random() * 0.12))) return;
+    let sn = 1 + (Math.random() * 5 | 0); if (sn === this._ls) sn = sn % 5 + 1; this._ls = sn;   // never the same recording twice in a row
+    if (this.samp("step" + sn, vol * 0.6, pan, (surf ? 1.06 : 0.92) * (0.95 + Math.random() * 0.1), 0.45)) return;
     const t = a.currentTime, o = this.out(a, vol * 0.5, pan);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = surf ? 1400 : 700 + Math.random() * 200; f.Q.value = 1.2;
     const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);

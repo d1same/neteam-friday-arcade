@@ -996,7 +996,7 @@ function makeOps(md) {
         F.bob += spdNow * dt * 2.4 * (F.inAir ? 0 : 1);
         F.moving = moving && !walk && F.cr < 0.5 && !F.inAir; F.walking = (walk || F.cr >= 0.5) && moving;
         // footsteps: running is loud, Shift-walking is silent
-        if (F.moving) { F.stepT += Math.hypot(mx, mz); if (F.stepT > 2.1) { F.stepT = 0; SFX.step(0.55, 0, F.stepAlt = !F.stepAlt); } }
+        if (F.moving) { F.stepT += Math.hypot(mx, mz); if (F.stepT > 2.1) { F.stepT = 0; SFX.step(0.42, 0, F.stepAlt = !F.stepAlt); } }
       } else { F.moving = false; F.vel = { x: 0, z: 0 }; F.jh = alive ? (F.jh || 0) : 0; F.vy = 0; F.cr = 0; F.hk = null; }
       F.eyeH = EYE - 0.55 * (F.cr || 0) + (F.jh || 0) - (F.landT || 0) * 0.35;
       // weapon
@@ -1435,7 +1435,7 @@ function makeOps(md) {
             const mixer = new THREE.AnimationMixer(m), act = {};
             [["Walking", "walk"], ["Running", "run"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
             av.spr.scale.set(0.5, 0.62, 1); av.gun.scale.setScalar(1.05);
-            av.rb = { m, mixer, act, cur: "", main, hum: 1, idleT: U.idleT, hand: m.getObjectByName("RightHand"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
+            av.rb = { m, mixer, act, cur: "", main, hum: 1, idleT: U.idleT, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
           } catch (e) { console.warn("soldier model", e); }
         });
       };
@@ -1850,7 +1850,7 @@ function makeOps(md) {
         const k = 1 - Math.pow(0.0005, dt), ox = av.x, oz = av.z; av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); av.a = a;
         // enemy footsteps: only running players make noise
         if (i !== V.meIdx && pl && pl[1] && dt > 0) {
-          const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2);
+          const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2); av.mvx = lerp(av.mvx || 0, (av.x - ox) / dt, 0.2); av.mvz = lerp(av.mvz || 0, (av.z - oz) / dt, 0.2);
           if (av.spd > 3.6) { av.stepT = (av.stepT || 0) + v * dt; if (av.stepT > 2.1) { av.stepT = 0; const d = Math.hypot(av.x - F.me.x, av.z - F.me.z); if (d < 26) SFX.step(0.75 * (1 - d / 26), this.panOf(F, av.x, av.z, d), i & 1); } }
         }
         const rin = r.b ? null : V.inputOf(i);
@@ -1875,9 +1875,14 @@ function makeOps(md) {
           const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle";
           if (R.hum && R.cur !== want && (want === "Idle" || want === "Death")) { const pv = R.act[R.cur]; if (pv) pv.fadeOut(0.22); R.cur = want; }   // no idle clip: ease back to the standing rest pose
           else if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); else if (R.hum) nx.fadeIn(0.2); R.cur = want; }
-          if (want === "Running") R.act.Running.timeScale = clamp(spd / 6.2, 0.7, 1.3);
-          if (want === "Walking") R.act.Walking.timeScale = R.hum ? clamp(spd / 1.7, 0.6, 1.9) : clamp(spd / 2.2, 0.6, 1.4);
+          // legs follow the real travel direction: hips turn into a strafe, and moving backwards plays the stride in reverse
+          let back = 1, ly = 0;
+          if (R.hum && alive && spd > 0.6) { const gr = av.grp.rotation.y, cg = Math.cos(gr), sg = Math.sin(gr), lx = (av.mvx || 0) * cg - (av.mvz || 0) * sg, lz = (av.mvx || 0) * sg + (av.mvz || 0) * cg; let th = Math.atan2(lx, -lz); if (Math.abs(th) > 1.9) { back = -1; th -= Math.sign(th) * Math.PI; } ly = -clamp(th, -1.2, 1.2); }
+          if (R.hum) { av.legY = lerp(av.legY || 0, ly, 1 - Math.pow(0.001, dt)); av.back = back; R.m.rotation.y = Math.PI + av.legY; }
+          if (want === "Running") R.act.Running.timeScale = back * clamp(spd / (R.hum ? 5.4 : 6.2), 0.7, 1.3);
+          if (want === "Walking") R.act.Walking.timeScale = R.hum ? back * clamp(spd / 1.7, 0.6, 1.9) : clamp(spd / 2.2, 0.6, 1.4);
           R.mixer.update(dt);
+          if (R.hum && R.spine && Math.abs(av.legY) > 0.01) opsTwist(R.spine, -av.legY);
           // weapon rides the right hand but always points where the player faces
           if (R.hum && R.hand && alive) {
             // arms hold the weapon whatever the legs are doing: swing each upper arm and forearm onto a pose for the weapon class
@@ -2208,6 +2213,12 @@ const opsAim = (() => { let a, b, q, q2, pq; return (bone, child, dir, ref) => {
   a.setFromMatrixPosition(child.matrixWorld).sub(b.setFromMatrixPosition(bone.matrixWorld)).normalize();
   b.set(dir[0], dir[1], dir[2]).transformDirection(ref.matrixWorld);
   q.setFromUnitVectors(a, b); bone.getWorldQuaternion(q2); q2.premultiply(q);
+  bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
+}; })();
+// turn a bone about the world up axis (keeps the torso on the aim line while the hips face the travel direction)
+const opsTwist = (() => { let q, q2, pq, up; return (bone, ang) => {
+  if (!q) { q = new THREE.Quaternion(); q2 = new THREE.Quaternion(); pq = new THREE.Quaternion(); up = new THREE.Vector3(0, 1, 0); }
+  bone.updateWorldMatrix(true, false); q.setFromAxisAngle(up, ang); bone.getWorldQuaternion(q2); q2.premultiply(q);
   bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
 }; })();
 GAMES.golden = makeOps("trophy");
