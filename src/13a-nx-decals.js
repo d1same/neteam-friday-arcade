@@ -209,6 +209,27 @@ const NXD = {
     const col = ["#3ddc97", "#ffd23f", "#ff7ac6", "#4cc9f0", "#ff6b57"][(d.col | 0) % 5], L = d.l || ["", ""]; x.fillStyle = "#08090c"; x.fillRect(0, 0, w, h); x.strokeStyle = col; x.lineWidth = h * 0.04; x.strokeRect(h * 0.03, h * 0.03, w - h * 0.06, h - h * 0.06);
     x.textAlign = "center"; x.textBaseline = "middle"; let px = NXD.fit(x, L[0], w * 0.84, h * 0.34, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillStyle = col; x.fillText(L[0], w / 2, h * 0.38); px = NXD.fit(x, L[1], w * 0.8, h * 0.17, 600); x.font = NXD.FONT(600, Math.round(px)); x.fillStyle = "#f2efe6"; x.fillText(L[1], w / 2, h * 0.7);
   },
+  // ---- race: chevrons up a jump ramp, motorway signs on the gantries, red and white boards on the bends
+  k_ramp(x, w, h, d, r) {
+    x.fillStyle = "rgba(0,0,0,0)"; x.clearRect(0, 0, w, h); const n = 4, ch = h / (n + 0.6);
+    for (let i = 0; i < n; i++) { const y = h - (i + 0.8) * ch; x.fillStyle = i % 2 ? "rgba(236,186,34,.95)" : "rgba(236,186,34,.95)"; x.beginPath(); x.moveTo(w * 0.12, y + ch * 0.55); x.lineTo(w / 2, y); x.lineTo(w * 0.88, y + ch * 0.55); x.lineTo(w * 0.88, y + ch * 0.85); x.lineTo(w / 2, y + ch * 0.3); x.lineTo(w * 0.12, y + ch * 0.85); x.closePath(); x.fill(); }
+    // striped lip at the top edge
+    const T = h * 0.05; x.fillStyle = "rgba(236,186,34,.95)"; x.fillRect(0, 0, w, T); x.fillStyle = "rgba(18,19,22,.95)"; for (let i = 0; i < w / T + 2; i += 2) { x.beginPath(); x.moveTo(i * T, 0); x.lineTo((i + 1) * T, 0); x.lineTo(i * T, T); x.lineTo((i - 1) * T, T); x.closePath(); x.fill(); }
+    NXD.wear(x, w, h, r, 260);
+  },
+  k_gsign(x, w, h, d, r) {
+    x.fillStyle = "#0b5a2c"; x.fillRect(0, 0, w, h); x.strokeStyle = "#e9efe9"; x.lineWidth = h * 0.035; x.beginPath(); x.roundRect(h * 0.05, h * 0.05, w - h * 0.1, h - h * 0.1, h * 0.06); x.stroke();
+    x.fillStyle = "#f2f5f1"; x.textBaseline = "middle"; x.textAlign = "left"; const t = d.t || ""; let px = NXD.fit(x, t, w * 0.66, h * 0.34, 700); x.font = NXD.FONT(700, Math.round(px), 2); x.fillText(t, h * 0.22, h * 0.4);
+    x.font = NXD.FONT(600, Math.round(h * 0.16), 2); x.globalAlpha = 0.85; x.fillText(d.v ? "NETEAM CITY" : "MANAGED IT · NYC", h * 0.22, h * 0.72); x.globalAlpha = 1;
+    // arrow on the right
+    x.save(); x.translate(w - h * 0.5, h * 0.5); if (d.a === "↗") x.rotate(0.6); x.fillStyle = "#f2f5f1"; x.beginPath(); x.moveTo(0, -h * 0.32); x.lineTo(h * 0.22, -h * 0.06); x.lineTo(h * 0.08, -h * 0.06); x.lineTo(h * 0.08, h * 0.3); x.lineTo(-h * 0.08, h * 0.3); x.lineTo(-h * 0.08, -h * 0.06); x.lineTo(-h * 0.22, -h * 0.06); x.closePath(); x.fill(); x.restore();
+    NXD.wear(x, w, h, r, 120);
+  },
+  k_chev(x, w, h, d, r) {
+    x.fillStyle = "#c81e26"; x.fillRect(0, 0, w, h); x.fillStyle = "#f4f1ea"; const n = Math.max(2, Math.round(w / h * 1.4)), cw = w / n;
+    for (let i = 0; i < n; i++) { const cx = i * cw + cw / 2, s = d.v ? 1 : -1; x.beginPath(); x.moveTo(cx - s * cw * 0.28, h * 0.12); x.lineTo(cx + s * cw * 0.12, h * 0.5); x.lineTo(cx - s * cw * 0.28, h * 0.88); x.lineTo(cx - s * cw * 0.02, h * 0.88); x.lineTo(cx + s * cw * 0.38, h * 0.5); x.lineTo(cx - s * cw * 0.02, h * 0.12); x.closePath(); x.fill(); }
+    NXD.wear(x, w, h, r, 40);
+  },
   // ---- the company name in light
   k_logo(x, w, h, d, r) {
     x.textBaseline = "middle"; x.textAlign = "left"; const px = h * 0.74; x.font = NXD.FONT(700, Math.round(px));

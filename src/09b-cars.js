@@ -162,6 +162,69 @@ const RCCAR = {
       x.fillStyle = "#f3efe4"; x.textAlign = "left"; x.font = "700 30px 'Chakra Petch', Inter, sans-serif"; x.fillText("NETEAM", 122, 52); x.font = "600 17px Inter, sans-serif"; x.fillText("FRIDAY ARCADE", 123, 84); });
     tex.anisotropy = 4; return tex;
   },
+  // ---- real cars: four scanned-quality CC0 cars (Grab3D, slimmed by tools/cars.js), resprayed in each driver's colour.
+  // The red channel of their metal/rough picture marks the paint; the police car keeps its own livery.
+  REAL_IDS: ["gt90", "gt80", "gt60", "cop"],
+  modelOf(i) { return RCCAR.REAL_IDS[i % 4]; },
+  real: null,
+  load() {
+    if (RCCAR._ld) return RCCAR._ld;
+    const off = (store("nfa-gfx") || {}).cars === 0;
+    const load = (f) => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/" + f, (g) => res(g), null, () => res(null)); } catch (e) { res(null); } });
+    return RCCAR._ld = off ? Promise.resolve(null) : GFX.track(GFX.operator().then(() => Promise.all(RCCAR.REAL_IDS.map(k => load("car-" + k + ".glb?v=1")))).then((L) => {
+      if (L.some(g => !g)) return null; const o = {}; RCCAR.REAL_IDS.forEach((k, n) => { o[k] = RCCAR.prep(THREE, L[n], k); }); return RCCAR.real = o; }).catch((e) => { console.warn("[race] car models", e); return null; }));
+  },
+  // pull a loaded car apart once: the body (with the glass), and the two wheel shapes (left and right) centred on their hubs
+  prep(T, gl, k) {
+    const root = gl.scene; root.updateMatrixWorld(true);
+    // the files store positions and normals as small integers (KHR_mesh_quantization): unpack to floats before moving them
+    const flt = (g) => { for (const n of ["position", "normal", "uv"]) { const a = g.attributes[n]; if (!a || (a.array instanceof Float32Array && !a.normalized && !a.isInterleavedBufferAttribute)) continue; const o = new Float32Array(a.count * a.itemSize); for (let i = 0; i < a.count; i++) for (let c = 0; c < a.itemSize; c++) o[i * a.itemSize + c] = a.getComponent ? a.getComponent(i, c) : [a.getX(i), a.getY(i), a.getZ(i)][c]; g.setAttribute(n, new T.BufferAttribute(o, a.itemSize)); } return g; };
+    const box = new T.Box3().setFromObject(root), len = box.max.z - box.min.z, sc = 4.4 / len;
+    const wheels = [], keep = [];
+    root.traverse(o => { if (!o.isMesh) return; if (/wheel_/.test(o.name) || (o.parent && /wheel_/.test(o.parent.name))) wheels.push(o); else keep.push(o); });
+    const part = (o) => { const ms = Array.isArray(o.material) ? o.material : [o.material]; return { o, ms }; };
+    // the wheels: every primitive of the front-left and front-right wheel, moved so the hub is at the origin
+    const wp = [], hubs = [];
+    for (const side of [1, -1]) {
+      const src = wheels.filter(o => new RegExp("wheel_f" + (side > 0 ? "l" : "r")).test(o.name + " " + (o.parent ? o.parent.name : "")));
+      const g0 = new T.Box3(); src.forEach(o => g0.expandByObject(o)); const c = g0.getCenter(new T.Vector3());
+      src.forEach(o => { const g = flt(o.geometry.clone()); g.applyMatrix4(o.matrixWorld); g.translate(-c.x, -c.y, -c.z); g.scale(sc, sc, sc); const m = o.material.clone(); if (m.map) m.map.anisotropy = 4; wp.push({ side, geo: g, mat: m }); });
+    }
+    wheels.forEach(o => { const b = new T.Box3().setFromObject(o), c = b.getCenter(new T.Vector3()); hubs.push({ x: c.x * sc, y: c.y * sc, z: c.z * sc, side: c.x > 0 ? 1 : -1, front: c.z > 0, r: (b.max.y - b.min.y) / 2 * sc }); });
+    // the body: one group of the remaining meshes in car space
+    const body = new T.Group(); let paint = null, glass = null;
+    keep.forEach(o => { const g = flt(o.geometry.clone()); g.applyMatrix4(o.matrixWorld); g.scale(sc, sc, sc); g.computeBoundingSphere(); const m = new T.Mesh(g, o.material); m.name = o.name; body.add(m);
+      if (/body_pbr/.test(o.material.name)) paint = o.material; if (/glass/.test(o.material.name)) glass = o.material; });
+    if (glass) { glass.color.setRGB(0.05, 0.07, 0.09); glass.opacity = 0.78; glass.roughness = 0.04; glass.metalness = 0.6; glass.depthWrite = false; }
+    if (paint) { [paint.map, paint.normalMap, paint.metalnessMap].forEach(t => { if (t) t.anisotropy = 8; }); }
+    const bb = new T.Box3().setFromObject(body);
+    const wr = hubs.reduce((s, h) => s + h.r, 0) / Math.max(1, hubs.length);
+    return { k, body, paint, wp, hubs, wr, lum: (root.userData && root.userData.paintLum) || 0, L0: bb.min.z, L1: bb.max.z, hw: (bb.max.x - bb.min.x) / 2, top: bb.max.y,
+      AXF: Math.max(...hubs.map(h => h.z)), AXR: Math.min(...hubs.map(h => h.z)), TRK: Math.max(...hubs.map(h => Math.abs(h.x))) };
+  },
+  _paintObc(s) {
+    const u = this.userData.rcp; s.uniforms.uPaint = u.col; s.uniforms.uPaintLum = u.lum;
+    s.fragmentShader = s.fragmentShader.replace("#include <common>", "#include <common>\nuniform vec3 uPaint; uniform float uPaintLum;")
+      .replace("#include <metalnessmap_fragment>", `#include <metalnessmap_fragment>
+      #ifdef USE_METALNESSMAP
+      if (uPaintLum > 0.0) { float pm = texture2D(metalnessMap, vMetalnessMapUv).r;
+        vec3 pc = uPaint * clamp(dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)) / uPaintLum, 0.25, 2.2);
+        diffuseColor.rgb = mix(diffuseColor.rgb, pc, pm); roughnessFactor = mix(roughnessFactor, 0.16, pm); metalnessFactor = mix(metalnessFactor, 0.55, pm); }
+      #endif`);
+  },
+  _paintKey() { return "rcpaint1"; },
+  // one real car: the body (own paint material) and four wheel anchors; the wheels themselves are drawn instanced by the race
+  makeReal(T, hex, num, k) {
+    const R = RCCAR.real[k], body = new T.Group(), own = [];
+    R.body.children.forEach(m0 => { let mt = m0.material;
+      if (mt === R.paint) { mt = R.paint.clone(); mt.userData.rcp = { col: { value: new T.Color(hex) }, lum: { value: R.lum } }; mt.onBeforeCompile = RCCAR._paintObc; mt.customProgramCacheKey = RCCAR._paintKey; mt.userData.exObc = RCCAR._paintObc; mt.userData.exKey = "rcpaint1"; mt.envMapIntensity = 1.3; own.push(mt); }
+      const m = new T.Mesh(m0.geometry, mt); m.name = m0.name; if (/glass/.test(mt.name)) m.renderOrder = 2; body.add(m); });
+    // brake lights: a lit strip across the tail that flares when the driver brakes
+    const brake = new T.Mesh(RCCAR._brG || (RCCAR._brG = new T.PlaneGeometry(1, 1)), new T.MeshBasicMaterial({ color: new T.Color(2.4, 0.12, 0.16), transparent: true, opacity: 0.0, blending: T.AdditiveBlending, depthWrite: false }));
+    brake.scale.set(R.hw * 1.5, 0.09, 1); brake.position.set(0, R.top * 0.62, R.L0 - 0.02); brake.rotation.y = Math.PI; body.add(brake); own.push(brake.material);
+    const wheels = R.hubs.map(h => { const st = new T.Group(), w = new T.Object3D(); st.position.set(h.x, h.y, h.z); st.add(w); return { st, w, front: h.front, side: h.side }; });
+    return { body, wheels, brake, real: R, own, sh: { tailY: R.top * 0.62, seatY: R.top - 0.35, headY: R.top * 0.55, L0: R.L0, L1: R.L1, hw: R.hw, wr: R.wr } };
+  },
   // one car: returns the body group (add it to the car's root), the four wheels and a few anchor points
   make(T, hex, num, si) {
     const C = RCCAR, sh = C.shape(T, si), M = C.mats(T), W = C.wheel(T), body = new T.Group();

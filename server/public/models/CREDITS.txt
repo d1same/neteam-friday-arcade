@@ -21,6 +21,7 @@ person-businessman.glb: "Businessman" rigged character from Grab3D (https://grab
 person-man.glb: "Man" rigged character from Grab3D (https://grab3d.com/models/characters/man/), CC0 1.0. Decimated to about 39k triangles, textures resized.
 person-woman.glb: "Woman" rigged character from Grab3D (https://grab3d.com/models/characters/woman/), CC0 1.0. Decimated to about 43k triangles, textures resized.
 person-*-mask.png: clothing/skin/hair part masks made for this game from the Grab3D textures above (same license).
+car-gt60.glb, car-gt80.glb, car-gt90.glb, car-cop.glb: "1960s Sports Car", "1980s Sports Car", "1990s Sports Car" and "1990s Police Car" from Grab3D (https://grab3d.com/models/vehicles/), CC0 1.0. Textures resized to 1024 and a paint mask added (tools/cars.js) so each driver gets their own colour.
 trooper-lod.glb: the same soldier simplified to 10k triangles (meshoptimizer), used in crowded matches and on modest graphics cards.
 gun-pistol.glb: "Service Pistol" from Poly Haven (https://polyhaven.com/a/service_pistol), CC0 1.0. Trimmed to one variant, 1k textures.
 gun-sniper.glb: "Bolt Action Rifle 7.62" from Poly Haven (https://polyhaven.com/a/bolt_action_rifle_7_62), CC0 1.0. Trimmed, 1k textures.
