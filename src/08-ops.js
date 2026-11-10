@@ -75,7 +75,7 @@ const OPS_MAPS = {
   ] },
   // jump arena for Golden Router: 1 = 1.2 m deck, 2 = 2.6 m deck, ^ = jump pad, T = trophy home. Open sky.
   // enclosed indoor arena: a tall vault with rooms, a walled core and a roof (decks, pads and rockets still work in 3D)
-  arena: { n: "Data Vault", theme: "farm", open: true, wallH: 8, only: "golden", sites: ["", ""], spawns: ["", ""],
+  arena: { n: "Data Vault", theme: "farm", nx: "vault", open: true, wallH: 8, only: "golden", sites: ["", ""], spawns: ["", ""],
     // pickups [cell x, cell z, item]: weapon index, "H" health, "A" armor
     picks: [[6, 3, 10], [15, 18, 10], [1, 10, 5], [20, 11, 5], [10, 3, 8], [11, 18, 1], [3, 7, 9], [18, 14, 9], [6, 10, "H"], [15, 11, "H"], [8, 1, "H"], [13, 20, "H"], [1, 1, "A"], [20, 20, "A"]],
     rows: [
@@ -741,6 +741,7 @@ function makeOps(md) {
       (F.unbind || []).forEach(f => f());
       if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
       if (F.post) try { F.post.dispose(); } catch (e) {}
+      if (F.nx) try { F.nx.dispose(); } catch (e) {}
       if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
       [F.cv, F.setBtn, F.setPanel, F.shop, F.touch].forEach(el => el && el.remove()); GFX.bleed("");
       V.fps = null;
@@ -903,7 +904,7 @@ function makeOps(md) {
         '<label class="sw"><span>Invert up/down <small>key I</small></span><input type="checkbox" data-k="iy"><i></i></label>' +
         '<label class="sw"><span>Invert left/right</span><input type="checkbox" data-k="ix"><i></i></label></section>' +
         '<section><h5>Video</h5>' +
-        '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label>' +
+        '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto (fits this PC)</option><option value="ultra">Ultra</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Performance</option></select></label>' +
         '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label></section>' +
         '<section><h5>Sound</h5>' +
         '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label></section>' +
@@ -1142,8 +1143,12 @@ function makeOps(md) {
       const cv = document.createElement("canvas"); cv.className = "fps3d";
       Object.assign(cv.style, { position: "absolute", borderRadius: "10px", pointerEvents: "none" });
       $("#stagebox").insertBefore(cv, $("#gameCanvas")); F.cv = cv;
+      // maps whose look has been rebuilt on the NX renderer (baked light, scanned materials, HDR camera); the rest still use the older one below
+      const nxMap = !!(NXW.themes[OPS_M.nx || OPS_M.theme] && (store("nfa-gfx") || {}).nx !== 0);
       let renderer;
-      try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
+      try { renderer = new T.WebGLRenderer(nxMap ? { canvas: cv, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" } : { canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
+      F.renderer = renderer;
+      if (nxMap) { this.buildNX(V, renderer); return; }
       renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
       renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = { office: 0.95, farm: 1.0, desert: 0.92, roof: 1.2 }[OPS_M.theme] || 1;
       F.renderer = renderer;
@@ -1391,6 +1396,28 @@ function makeOps(md) {
           break;
         }
       }
+      this.buildDyn(V);
+    },
+    // ---- the NX path: build the world from the generator, then add what moves
+    buildNX(V, renderer) {
+      const F = V.fps, T = THREE;
+      renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
+      const scene = new T.Scene(); F.scene = scene;
+      const cam = new T.PerspectiveCamera(74, 16 / 10, 0.05, 1700); F.cam = cam; scene.add(cam);
+      NX.drsReset();
+      NXS.create(renderer, scene, cam, V.g.mp, OPS_M).then((S) => {
+        if (F.gone || APP.V !== V) { S.dispose(); return; }
+        F.nx = S; const g = S.W.grade || {};
+        if (g.fog) scene.fog = new T.FogExp2(new T.Color(g.fog[0], g.fog[1], g.fog[2]), g.fogD || 0.01);
+        F.post = NXP.create(renderer, S, g);
+        F.rackMat = { emissiveIntensity: 0 }; F.shadows = !!S.shadow;
+        this.buildDyn(V);
+      }).catch((e) => { console.error("[nx] build failed", e); F.failed = true; });
+    },
+    // ---- everything that moves: breakable props, the payload, players, view-model guns, effects
+    buildDyn(V) {
+      const F = V.fps, T = THREE, low = GFX.lowEnd(), renderer = F.renderer, scene = F.scene, cam = F.cam;
+      const mStd = (o) => new T.MeshStandardMaterial(o), metal = mStd({ color: 0x3a3f58, roughness: 0.35, metalness: 0.8 });
       // ---- breakable props
       this.buildProps(V, scene, mStd);
       if (OPS_M.only) this.buildArena(V, scene, mStd);
@@ -1517,7 +1544,7 @@ function makeOps(md) {
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
       F.partM = new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false });
       // real-time shadows from the key light: characters, walls and props ground the scene
-      if (!low && F.key) {
+      if (!low && F.key && !F.nx) {
         renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
         const L = F.key, c = OG * CS / 2, dir = L.position.clone().normalize();
         L.position.set(c + dir.x * 80, dir.y * 80, c + dir.z * 80); L.target.position.set(c, 0, c); scene.add(L.target);
@@ -1534,6 +1561,11 @@ function makeOps(md) {
         (F.avatars || []).forEach(av => av.bd.traverse(o => { if (o.isMesh) o.castShadow = true; }));
         F.shadows = true;
         F.guns.forEach(gm => gm.traverse(o => { if (o.isMesh) o.castShadow = false; }));
+      }
+      if (F.nx) { // props and players are lit by the baked probes and cast sun shadows; the gun in your hands does not
+        scene.traverse(o => { if (o.isMesh && !o.userData.nxStatic && o.material && o.material.isMeshStandardMaterial && !(o.geometry && o.geometry.type === "PlaneGeometry")) o.castShadow = true; });
+        F.guns.forEach(gm => gm.traverse(o => { if (o.isMesh) o.castShadow = false; }));
+        F.nx.adopt(scene);
       }
       F.ready = true;
     },
@@ -1742,11 +1774,11 @@ function makeOps(md) {
     // ---- jump arena (client art): decks, jump pads, pickups, the Golden Router, rockets, hook cables
     buildArena(V, scene, mStd) {
       const F = V.fps, T = THREE;
-      scene.add(new T.HemisphereLight(0xc4ccff, 0x4a3a40, 1.5));
-      [[0.25, 0.25, 0xff8a5c], [0.75, 0.25, 0x4cc9f0], [0.25, 0.75, 0x4cc9f0], [0.75, 0.75, 0xff8a5c], [0.5, 0.5, 0xffc83d]].forEach(([fx, fz, c]) => { const l = new T.PointLight(c, 90, 26, 1.2); l.position.set(OG * CS * fx, 6, OG * CS * fz); scene.add(l); });
+      if (!F.nx) scene.add(new T.HemisphereLight(0xc4ccff, 0x4a3a40, 1.5));
+      (F.nx ? [] : [[0.25, 0.25, 0xff8a5c], [0.75, 0.25, 0x4cc9f0], [0.25, 0.75, 0x4cc9f0], [0.75, 0.75, 0xff8a5c], [0.5, 0.5, 0xffc83d]]).forEach(([fx, fz, c]) => { const l = new T.PointLight(c, 90, 26, 1.2); l.position.set(OG * CS * fx, 6, OG * CS * fz); scene.add(l); });
       const side = GFX.tex(128, 128, (x, w, h) => { x.fillStyle = "#4a505e"; x.fillRect(0, 0, w, h); x.fillStyle = "#5a6070"; x.fillRect(5, 5, w - 10, h - 10); x.strokeStyle = "rgba(0,0,0,.35)"; x.lineWidth = 3; for (let k = 1; k < 4; k++) { x.beginPath(); x.moveTo(0, k * h / 4); x.lineTo(w, k * h / 4); x.stroke(); } x.fillStyle = "rgba(255,255,255,.05)"; for (let i = 0; i < 400; i++) x.fillRect(Math.random() * w, Math.random() * h, 2, 2); });
       const topT = GFX.tex(128, 128, (x, w, h) => { x.fillStyle = "#3b404c"; x.fillRect(0, 0, w, h); x.strokeStyle = "#2a2e38"; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 16, 0); x.lineTo(k * 16, h); x.stroke(); } });
-      [[1.2, 0x4cc9f0], [2.6, 0xff8a3d]].forEach(([hh, col]) => {
+      (F.nx ? [] : [[1.2, 0x4cc9f0], [2.6, 0xff8a3d]]).forEach(([hh, col]) => {
         const cells = []; OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (oCellH(x, z) === hh) cells.push([x, z]); }));
         if (!cells.length) return;
         const m4 = new T.Matrix4();
@@ -1851,7 +1883,12 @@ function makeOps(md) {
     draw(ctx, V, dt, t) {
       const F = V.fps; ctx.clearRect(0, 0, W, H); if (!F) return;
       if (F.failed) { ctx.fillStyle = "#0a0b0d"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 20px Inter, sans-serif"; ctx.textAlign = "center"; ctx.fillText("3D isn't available in this browser.", W / 2, H / 2); return; }
-      if (!F.ready) { ctx.fillStyle = "#05070f"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#ff8a3d"; ctx.font = "700 22px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillText("LOADING…", W / 2, H / 2); return; }
+      if (!F.ready) {
+        ctx.fillStyle = "#05070f"; ctx.fillRect(0, 0, W, H); ctx.fillStyle = "#ff8a3d"; ctx.font = "700 22px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillText("LOADING " + String(OPS_M.n || "").toUpperCase() + "…", W / 2, H / 2 - 8);
+        // the new renderer counts what it has fetched, so the bar is real progress
+        if (NX.prog.n) { const k = clamp(NX.prog.done / NX.prog.n, 0, 1), bw = 280; ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - bw / 2, H / 2 + 14, bw, 4); ctx.fillStyle = "#ff8a3d"; ctx.fillRect(W / 2 - bw / 2, H / 2 + 14, bw * k, 4); ctx.fillStyle = "rgba(245,241,230,.55)"; ctx.font = "500 12px Inter, sans-serif"; ctx.fillText(k < 1 ? "Textures and lighting" : "Preparing the scene", W / 2, H / 2 + 40); }
+        return;
+      }
       this.render3d(V, dt, t);
       this.hud(ctx, V, dt, t);
     },
@@ -2015,6 +2052,7 @@ function makeOps(md) {
       F.tracers = F.tracers.filter(o => o.life > 0);
       for (const o of F.parts) { o.life -= dt; o.v[1] -= 9 * dt; o.m.position.x += o.v[0] * dt; o.m.position.y = Math.max(0.02, o.m.position.y + o.v[1] * dt); o.m.position.z += o.v[2] * dt; o.m.material.opacity = Math.max(0, o.life / 0.3); if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
       F.parts = F.parts.filter(o => o.life > 0);
+      if (F.nx) F.nx.update(dt, t);
       if (F.post) { F.post.comp.uniforms.hurt.value = Math.min(1, (F.hurtT || 0) * 2.2); F.post.render(F.scene, F.cam, t); }
       else F.renderer.render(F.scene, F.cam);
     },

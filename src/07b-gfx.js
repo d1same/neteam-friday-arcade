@@ -77,7 +77,7 @@ const GFX = {
   },
   // tint everything outside the HUD canvas too (scope black-out, death dim): a huge spread shadow on the HUD canvas
   bleed(col) { const gc = $("#gameCanvas"), v = col ? "0 0 0 200vmax " + col : ""; if (gc && gc.style.boxShadow !== v) gc.style.boxShadow = v; },
-  lowEnd() { const q = (store("nfa-gfx") || {}).q; if (q === "low") return true; if (q === "high") return false; return matchMedia("(pointer: coarse)").matches || (navigator.hardwareConcurrency || 8) <= 4; },
+  lowEnd() { return NX.tier().i === 0; },   // the "Performance" level, chosen by the player or picked automatically from the graphics card
   tex(w, h, fn) { const c = document.createElement("canvas"); c.width = w; c.height = h; fn(c.getContext("2d"), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.userData.canvas = c; return t; },
   // turn a grayscale height canvas into a tangent-space normal map
   normal(srcTex, strength = 2) {
