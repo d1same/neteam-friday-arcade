@@ -653,8 +653,15 @@ const race = {
   buildDyn(V, scene) {
     const F = V.fps, T = THREE, m4 = new T.Matrix4();
     // cars: see 09b-cars.js. Your character drives from the open cockpit.
-    const beamTex = GFX.tex(64, 128, (x, w, h) => { const g = x.createLinearGradient(0, h, 0, 0); g.addColorStop(0, "rgba(255,240,210,.55)"); g.addColorStop(1, "rgba(255,240,210,0)"); x.fillStyle = g; x.beginPath(); x.moveTo(w * 0.3, h); x.lineTo(w * 0.7, h); x.lineTo(w, 0); x.lineTo(0, 0); x.fill(); });
+    // headlight pool on the road: two soft lobes that merge and fade with distance (no hard edge anywhere), dimmer by day
+    const beamTex = GFX.tex(64, 128, (x, w, h) => { const im = x.createImageData(w, h), d = im.data;
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const v = 1 - (j + 0.5) / h, u = (i + 0.5) / w - 0.5, hw = 0.1 + 0.26 * v, off = 0.11 * (1 - v * 0.6);
+        const lat = Math.exp(-Math.pow((Math.abs(u) - off) / hw, 2) * 2.4), lon = Math.min(1, v / 0.07) * Math.pow(1 - v, 1.7), edge = Math.max(0, Math.min(1, (0.5 - Math.abs(u)) / 0.08));
+        const k = (j * w + i) * 4; d[k] = 255; d[k + 1] = 240; d[k + 2] = 210; d[k + 3] = Math.round(255 * 0.42 * lat * lon * edge); }
+      x.putImageData(im, 0, 0); });
+    beamTex.wrapS = beamTex.wrapT = T.ClampToEdgeWrapping;
     const beamM = new T.MeshBasicMaterial({ map: beamTex, transparent: true, blending: T.AdditiveBlending, depthWrite: false });
+    beamM.color.setScalar(({ dawn: 0.4, dusk: 0.75 })[rcWorld(RC_ID).sky] || 1);
     const glowM = (c) => new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(c), transparent: true, blending: T.AdditiveBlending, depthWrite: false });
     F.smokeM = new T.SpriteMaterial({ map: GFX.glowTex(), color: 0x9aa0b8, transparent: true, opacity: 0.35, depthWrite: false });
     F.smoke = [];
