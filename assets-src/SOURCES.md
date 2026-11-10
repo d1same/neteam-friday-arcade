@@ -181,3 +181,110 @@ All files are .ogg (Vorbis q5, 44.1 kHz). Gunshots were trimmed: leading silence
 - poly.pizza: behind a Cloudflare bot check, and its API needs a key. Skipped.
 - Sketchfab "Firearms Kit 10 (CC0)": needs a login. Skipped.
 - The Free Firearm Sound Library covers 25 guns with near and mid-distance shots (194 MB 7z). More variants are on the same page.
+
+## Sounds (added 2026-11-10)
+
+Freesound.org "HQ preview" MP3s (128 kbps; the originals need a login). Each license was checked on the sound's own page on 2026-11-10. Descriptions come from each page, not from listening. Approved for download by Moe on 2026-11-10.
+
+| File | Size | Length | Source | Author | License | Notes |
+|---|---|---|---|---|---|---|
+| sounds/car/eng-merc-500.mp3 | 42 KB | 1.9 s | https://freesound.org/s/162506/ | Chippy569 | CC0 | Mercedes 190E dyno ~500rpm load |
+| sounds/car/eng-merc-2500.mp3 | 105 KB | 4.8 s | https://freesound.org/s/162509/ | Chippy569 | CC0 | ~2500rpm load |
+| sounds/car/eng-merc-6500.mp3 | 37 KB | 1.6 s | https://freesound.org/s/162512/ | Chippy569 | CC0 | ~6500rpm load |
+| sounds/car/eng-merc-sweep.mp3 | 77 KB | 4.3 s | https://freesound.org/s/162499/ | Chippy569 | CC0 | accel sweep |
+| sounds/car/eng-bmw-idle.mp3 | 71 KB | 3.1 s | https://freesound.org/s/401552/ | GiocoSound | CC0 | BMW 120d idle ext |
+| sounds/car/eng-bmw-low.mp3 | 49 KB | 2.1 s | https://freesound.org/s/401556/ | GiocoSound | CC0 | low |
+| sounds/car/eng-bmw-med.mp3 | 65 KB | 2.8 s | https://freesound.org/s/401555/ | GiocoSound | CC0 | med |
+| sounds/car/eng-bmw-high.mp3 | 48 KB | 2.0 s | https://freesound.org/s/401551/ | GiocoSound | CC0 | high |
+| sounds/car/passby-dodge.mp3 | 532 KB | 23.7 s | https://freesound.org/s/149789/ | theaudiosynthesist | CC0 | muscle car doppler |
+| sounds/car/passby-clean.mp3 | 118 KB | 5.4 s | https://freesound.org/s/171447/ | hinzebeat | CC0 | clean L-R pass |
+| sounds/car/passby-lemans.mp3 | 49 KB | 2.1 s | https://freesound.org/s/1930/ | RHumphries | CC-BY-4.0 | RHumphries Le Mans pass |
+| sounds/car/backfire-r8.mp3 | 2938 KB | 128.3 s | https://freesound.org/s/457733/ | Jonas_Jocys | CC-BY-4.0 | Jonas_Jocys Audi R8 backfires |
+| sounds/car/antilag.mp3 | 238 KB | 11.3 s | https://freesound.org/s/797835/ | modusmogulus | CC0 | raw antilag |
+| sounds/car/shift-lotus.mp3 | 303 KB | 13.5 s | https://freesound.org/s/697836/ | conicity | CC0 | manual shifts |
+| sounds/car/shift-auto.mp3 | 154 KB | 6.5 s | https://freesound.org/s/116598/ | mrmccormack | CC0 | shifter clunks |
+| sounds/car/skid-lhs04.mp3 | 350 KB | 16.5 s | https://freesound.org/s/71739/ | audible-edge | CC0 | sustained squeal |
+| sounds/car/skid-lhs02.mp3 | 238 KB | 11.1 s | https://freesound.org/s/71737/ | audible-edge | CC0 | cornering squeals |
+| sounds/car/skid-handbrake.mp3 | 221 KB | 10.4 s | https://freesound.org/s/76804/ | audible-edge | CC0 | handbrake slide |
+| sounds/car/crash-squareal.mp3 | 94 KB | 4.4 s | https://freesound.org/s/237375/ | squareal | CC0 | layered crash |
+| sounds/car/crash-glass.mp3 | 48 KB | 2.6 s | https://freesound.org/s/592388/ | magnuswaker | CC0 | crash with glass |
+| sounds/car/crash-metal.mp3 | 103 KB | 4.5 s | https://freesound.org/s/40158/ | moxobna | CC0 | loud metal crash |
+| sounds/car/bump-clank.mp3 | 14 KB | 0.5 s | https://freesound.org/s/151624/ | qubodup | CC0 | short clank |
+| sounds/battle/bed-marines.mp3 | 5041 KB | 244.1 s | https://freesound.org/s/161346/ | qubodup | CC0 | 4 min real firefight |
+| sounds/battle/bed-gunfire.mp3 | 1348 KB | 73.7 s | https://freesound.org/s/205588/ | qubodup | CC0 | mixed distances |
+| sounds/battle/bed-loop.mp3 | 544 KB | 23.8 s | https://freesound.org/s/239139/ | qubodup | CC0 | war ambience loop |
+| sounds/battle/far-tank.mp3 | 363 KB | 18.0 s | https://freesound.org/s/184275/ | qubodup | CC0 | distant tank shots |
+| sounds/battle/far-demolition.mp3 | 758 KB | 33.1 s | https://freesound.org/s/125937/ | alienistcog | CC0 | demolition boom |
+| sounds/battle/far-artillery.mp3 | 120 KB | 6.9 s | https://freesound.org/s/239137/ | qubodup | CC0 | artillery |
+| sounds/explosion/near-tnt.mp3 | 380 KB | 16.8 s | https://freesound.org/s/165808/ | sidohzen | CC0 | 4kg TNT + debris |
+| sounds/explosion/near-punchy.mp3 | 65 KB | 3.0 s | https://freesound.org/s/182429/ | qubodup | CC0 | short explosion |
+| sounds/explosion/near-windy.mp3 | 240 KB | 12.2 s | https://freesound.org/s/182797/ | qubodup | CC0 | ammo disposal |
+| sounds/debris/rockfall.mp3 | 750 KB | 31.6 s | https://freesound.org/s/381645/ | AlanCat | CC0 | boulders |
+| sounds/debris/falling-big.mp3 | 103 KB | 4.7 s | https://freesound.org/s/703247/ | xkeril | CC0 | construction debris |
+| sounds/debris/concrete-smash.mp3 | 37 KB | 1.3 s | https://freesound.org/s/522099/ | magnuswaker | CC0 | rubble impact |
+| sounds/bullet/flyby-real.mp3 | 3 KB | 0.1 s | https://freesound.org/s/855248/ | qubodup | CC0 | real flyby |
+| sounds/bullet/passbys.mp3 | 348 KB | 15.8 s | https://freesound.org/s/134024/ | Audionautics | CC-BY-3.0 | Audionautics whizzes |
+| sounds/bullet/crack.mp3 | 12 KB | 0.4 s | https://freesound.org/s/386854/ | morganpurkis | CC0 | synthetic crack |
+| sounds/bullet/ric-22.mp3 | 16 KB | 0.8 s | https://freesound.org/s/523403/ | C-V | CC0 | .22 + ricochet |
+| sounds/bullet/ric-22-string.mp3 | 56 KB | 3.1 s | https://freesound.org/s/523404/ | C-V | CC0 | string w/ ricochets |
+| sounds/bullet/ric-rifle.mp3 | 42 KB | 1.8 s | https://freesound.org/s/148840/ | cedarstudios | CC0 | real ricochets |
+| sounds/bullet/ric-granite.mp3 | 22 KB | 0.9 s | https://freesound.org/s/78092/ | Benboncan | CC-BY-4.0 | Benboncan |
+| sounds/bullet/imp-metal-45.mp3 | 104 KB | 4.5 s | https://freesound.org/s/148837/ | cedarstudios | CC0 | .45 on steel plate |
+| sounds/bullet/imp-metal-pings.mp3 | 316 KB | 12.7 s | https://freesound.org/s/144444/ | pushkin | CC0 | sliceable pings |
+| sounds/bullet/imp-metal-foley.mp3 | 440 KB | 20.0 s | https://freesound.org/s/182263/ | martian | CC0 | foley metal hits |
+| sounds/bullet/imp-metal-steel.mp3 | 17 KB | 0.7 s | https://freesound.org/s/238923/ | vumseplutten1709 | CC-BY-3.0 | vumseplutten1709 |
+| sounds/bullet/imp-wood.mp3 | 5 KB | 0.1 s | https://freesound.org/s/237448/ | NoiseCollector | CC-BY-3.0 | NoiseCollector |
+| sounds/handling/mag-glock.mp3 | 2013 KB | 85.1 s | https://freesound.org/s/842729/ | Stoniac | CC0 | many mag in/out |
+| sounds/handling/mag-ar15.mp3 | 112 KB | 4.9 s | https://freesound.org/s/263513/ | wadaltmon | CC0 | AR15 mag + actions |
+| sounds/handling/reload-m16.mp3 | 169 KB | 7.1 s | https://freesound.org/s/725397/ | serøutōnin--deprivəd | CC0 | full empty reload |
+| sounds/handling/slide-1911.mp3 | 313 KB | 13.5 s | https://freesound.org/s/508242/ | shelbyshark | CC0 | mag in + rack |
+| sounds/handling/slide-hipower.mp3 | 181 KB | 7.6 s | https://freesound.org/s/674744/ | serøutōnin--deprivəd | CC0 | 5 racks |
+| sounds/handling/charge-ak.mp3 | 66 KB | 3.0 s | https://freesound.org/s/171631/ | Pjkasinski3 | CC0 | AK charging handle |
+| sounds/handling/bolt-k98.mp3 | 617 KB | 25.7 s | https://freesound.org/s/508747/ | AugustSandberg | CC0 | Mauser bolt reload |
+| sounds/handling/bolt-mosin.mp3 | 301 KB | 14.2 s | https://freesound.org/s/370345/ | Zott820 | CC0 | bolt cycles |
+| sounds/handling/dryfire.mp3 | 14 KB | 0.5 s | https://freesound.org/s/725402/ | serøutōnin--deprivəd | CC0 | dry fire click |
+| sounds/feedback/victory-orch.mp3 | 104 KB | 4.5 s | https://freesound.org/s/470083/ | Sheyvan | CC-BY-4.0 | Sheyvan fanfare |
+| sounds/feedback/victory-brass.mp3 | 100 KB | 4.4 s | https://freesound.org/s/456966/ | FunWithSound | CC0 | brass fanfare |
+| sounds/feedback/victory-trumpet.mp3 | 97 KB | 4.5 s | https://freesound.org/s/578853/ | JellyDaisies | CC0 | trumpet + chimes |
+| sounds/feedback/defeat-dark.mp3 | 81 KB | 3.6 s | https://freesound.org/s/578576/ | nomiqbomi | CC0 | dark crescendo |
+| sounds/feedback/defeat-taps.mp3 | 715 KB | 40.1 s | https://freesound.org/s/651204/ | trumpetplayer | CC0 | trumpet Taps (cut opening) |
+| sounds/feedback/hit-madpan.mp3 | 9 KB | 0.4 s | https://freesound.org/s/660770/ | MadPanCake | CC0 | hit impact |
+| sounds/feedback/hit-tick.mp3 | 6 KB | 0.1 s | https://freesound.org/s/478057/ | Abacagi | CC0 | dry tick |
+| sounds/feedback/hit-flesh.mp3 | 7 KB | 0.2 s | https://freesound.org/s/138481/ | JustInvoke | CC0 | flesh layer |
+| sounds/feedback/head-madpan.mp3 | 9 KB | 0.4 s | https://freesound.org/s/660769/ | MadPanCake | CC0 | headshot |
+| sounds/feedback/head-ping.mp3 | 22 KB | 0.8 s | https://freesound.org/s/837455/ | Wavewire | CC0 | metal ping |
+| sounds/feedback/kill.mp3 | 41 KB | 1.7 s | https://freesound.org/s/567849/ | MadPanCake | CC0 | kill |
+| sounds/feedback/kill-head.mp3 | 34 KB | 1.7 s | https://freesound.org/s/567850/ | MadPanCake | CC0+szpury CC-BY-4.0 | headshot kill |
+| sounds/feedback/kill-bf.mp3 | 33 KB | 1.6 s | https://freesound.org/s/660768/ | MadPanCake | CC0+szpury CC-BY-4.0 | BF-style kill |
+
+### Credits required (CC BY)
+
+- "rbh Le Mans passby 05.wav" by RHumphries (freesound.org/s/1930), CC BY 4.0
+- "Audi R8 Idling Reving Backfire.wav" by Jonas_Jocys (freesound.org/s/457733), CC BY 4.0
+- "Bullet passbys.wav" by Audionautics (freesound.org/s/134024), CC BY 3.0
+- "Ricochet 3_2.wav" by Benboncan (freesound.org/s/78092), CC BY 4.0
+- "shot1.wav" by vumseplutten1709 (freesound.org/s/238923), CC BY 3.0
+- "bulletimpact_wood1.wav" by NoiseCollector (freesound.org/s/237448), CC BY 3.0
+- "Music: Orchestral Victory Fanfare" by Sheyvan (freesound.org/s/470083), CC BY 4.0
+- "subbass_hit_001" by szpury (freesound.org/s/233752), CC BY 4.0: used inside MadPanCake's kill-head (567850) and kill-bf (660768)
+
+Provenance notes: qubodup's battle/explosion files are cut from US Government (DVIDS) video, generally public domain; 855248 comes from NATO B-roll. Keep these in mind if provenance matters.
+
+## Animations (added 2026-11-10)
+
+| File | Size | Clips | Rig | Source | Author | License | Notes |
+|---|---|---|---|---|---|---|---|
+| anim/quaternius_ual2_standard.glb | 8.1 MB | 43 | 65 joints, UE-style names (root, pelvis, spine_01..03, neck_01, Head, clavicle_l, ...) | https://opengameart.org/content/universal-animation-library-2 | Quaternius | CC0 (OGA page and anim/quaternius_ual2_License.txt) | Universal Animation Library 2 [Standard], Unreal/Godot GLB. Clips: A_TPose, Chest_Open, ClimbUp_1m_RM, Consume, Farm_Harvest, Farm_PlantSeed, Farm_Watering, Hit_Knockback, Hit_Knockback_RM, Idle_FoldArms_Loop, Idle_Lantern_Loop, Idle_No_Loop, Idle_Rail_Call, Idle_Rail_Loop, Idle_Shield_Break, Idle_Shield_Loop, Idle_TalkingPhone_Loop, LayToIdle, Melee_Hook, Melee_Hook_Rec, NinjaJump_Idle_Loop, NinjaJump_Land, NinjaJump_Start, OverhandThrow, Shield_Dash_RM, Shield_OneShot, Slide_Exit, Slide_Loop, Slide_Start, Sword_Block, Sword_Dash_RM, Sword_Regular_A, Sword_Regular_A_Rec, Sword_Regular_B, Sword_Regular_B_Rec, Sword_Regular_C, Sword_Regular_Combo, TreeChopping_Loop, Walk_Carry_Loop, Yes, Zombie_Idle_Loop, Zombie_Scratch, Zombie_Walk_Fwd_Loop. |
+| anim/quaternius_ual2_mannequin_f.glb | 1.4 MB | 0 | same 65-joint rig | same | Quaternius | CC0 | Female mannequin for the UAL2 rig. |
+
+The UAL1 mannequin (46 clips) was already here: models/characters/quaternius_ual_mannequin.glb.
+
+## Characters for the Business vs IT teams (added 2026-11-10)
+
+| File | Size | Rig | Animations | Source | Author | License | Notes |
+|---|---|---|---|---|---|---|---|
+| chars/grab3d/grab3d_businessman-rigged.glb | 12.5 MB | 24 joints, Mixamo-style (Hips, LeftUpLeg, ...) | run, walk | https://grab3d.com/models/characters/businessman/ | Grab3D | CC0 (page and schema.org license field) | Bearded businessman, navy pinstripe three-piece suit, orange tie, pocket square. Raw download: decimate and resize textures before shipping, as was done for the soldier. |
+| chars/grab3d/grab3d_man-rigged.glb | 13.1 MB | 54 joints, Mixamo-style | walk, run | https://grab3d.com/models/characters/man/ | Grab3D | CC0 | Young bearded man, olive bomber jacket, cream sweater, dark jeans, white sneakers. |
+| chars/grab3d/grab3d_woman-rigged.glb | 13.0 MB | 54 joints, Mixamo-style | walk, run | https://grab3d.com/models/characters/woman/ | Grab3D | CC0 | Woman with wavy auburn hair, rust blazer, white top, navy wide-leg trousers, white sneakers. |
+| chars/grab3d/grab3d_teen-character-rigged.glb | 14.1 MB | 24 joints, Mixamo-style | run, walk | https://grab3d.com/models/characters/teen-character/ | Grab3D | CC0 | Teen in a blue T-shirt, cargo shorts and sneakers (an "intern" look). |
+| chars/quaternius_uacp/*.fbx (13 files, about 1.6 MB each) | 21 MB total | CharacterArmature (Hips, Abdomen, Torso, Neck, Head, Shoulder/UpperArm/LowerArm/Fist, UpperLeg/LowerLeg/Foot, L and R) | Defeat, Idle, PickUp, Punch, RecieveHit, Shoot_OneHanded, SitDown, StandUp, Victory, Walk, Walk_Carry | https://opengameart.org/content/animated-characters-pack | Quaternius | CC0 (OGA page) | Ultimate Animated Character Pack (Nov 2019), only the business and casual outfits: Suit_Male/Female, OldClassy_Male/Female, Casual_Male/Female, Casual2_Male/Female, Casual3_Male/Female, Casual_Bald, Worker_Male/Female. A chibi, cartoon low-poly style, so a fallback only. Preview.png shows the whole pack. |
