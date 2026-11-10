@@ -273,6 +273,7 @@ function exitGame() {
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
+  const st = $("#sndTest"); if (st && st.parentNode !== document.body) document.body.appendChild(st);
   $("#gameView").hidden = true; $("#lobbyView").hidden = false; updateLobby();
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
@@ -974,6 +975,7 @@ function bindEvents() {
   $("#photoDel").addEventListener("click", () => { DRAFT.c = DRAFT.c.slice(0, 5); SFX.play("pop"); buildEditorOpts(); });
   $("#soundBtn").addEventListener("click", () => { SFX.on = !SFX.on; store("nfa-sound", SFX.on); $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
+  $("#sndTestBtn").addEventListener("click", () => soundTest());
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
   $$(".tabs button").forEach(b => b.addEventListener("click", () => { APP.tab = b.dataset.tab; renderBoard(); }));
   $("#fsBtn").addEventListener("click", toggleFullscreen);
@@ -1024,7 +1026,8 @@ function soundTest() {
     d.querySelector(".set-x").addEventListener("click", () => { d.hidden = true; if (location.hash === "#sounds") history.replaceState(null, "", location.pathname + location.search); });
     ["mousedown", "pointerdown", "click"].forEach(ev => d.addEventListener(ev, (e) => e.stopPropagation()));
   }
-  const host = APP.view === "game" ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
+  // On the page itself, so it stays open when a match ends; inside the game view only in fullscreen (nothing else shows there).
+  const host = APP.view === "game" && fsElement() ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
   d.hidden = false; if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) { }
   SFX.ensure(); SFX.load();
 }

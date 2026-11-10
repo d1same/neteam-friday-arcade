@@ -445,6 +445,8 @@ dialog.editor { border: 1px solid var(--line); border-radius: 12px; padding: 0; 
 .snd-test .set-x { width: 32px; height: 32px; border-radius: 4px; border: 1px solid rgba(255,255,255,.12); background: transparent; color: var(--muted); font-size: 14px; cursor: pointer; }
 .snd-test .set-x:hover { color: var(--text); border-color: var(--bulb); }
 .snd-test p { margin: 12px 22px 0; color: var(--muted); font-size: 13px; }
+.snd-open { cursor: pointer; font: 600 13px/1 inherit; color: var(--text); }
+.snd-open:hover { border-color: var(--bulb); }
 .snd-ab { display: flex; gap: 8px; align-items: center; padding: 0 22px; color: #dfe2e7; font: 600 13px/1.3 inherit; cursor: pointer; }
 .snd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; padding: 14px 22px 22px; }
 .snd-grid button { text-align: left; padding: 9px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color: #dfe2e7; font: 600 13px/1.25 inherit; cursor: pointer; }
@@ -533,6 +535,7 @@ footer.foot { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-ali
     </div>
     <div class="top-right">
       <span class="pill" id="netPill"><span class="dot" id="netDot"></span><span id="netText">Connecting…</span></span>
+      <button class="pill snd-open" id="sndTestBtn" type="button" title="Hear every sound in the game">Sound test</button>
       <button class="icon-btn" id="soundBtn" aria-label="Toggle sound" title="Sound">🔊</button>
       <button class="me-chip" id="meChip" aria-label="Edit your character"><canvas id="meCanvas" width="68" height="68"></canvas><span id="meName">You</span></button>
     </div>
@@ -10275,6 +10278,7 @@ function exitGame() {
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
+  const st = $("#sndTest"); if (st && st.parentNode !== document.body) document.body.appendChild(st);
   $("#gameView").hidden = true; $("#lobbyView").hidden = false; updateLobby();
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
@@ -10976,6 +10980,7 @@ function bindEvents() {
   $("#photoDel").addEventListener("click", () => { DRAFT.c = DRAFT.c.slice(0, 5); SFX.play("pop"); buildEditorOpts(); });
   $("#soundBtn").addEventListener("click", () => { SFX.on = !SFX.on; store("nfa-sound", SFX.on); $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
+  $("#sndTestBtn").addEventListener("click", () => soundTest());
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
   $$(".tabs button").forEach(b => b.addEventListener("click", () => { APP.tab = b.dataset.tab; renderBoard(); }));
   $("#fsBtn").addEventListener("click", toggleFullscreen);
@@ -11026,7 +11031,8 @@ function soundTest() {
     d.querySelector(".set-x").addEventListener("click", () => { d.hidden = true; if (location.hash === "#sounds") history.replaceState(null, "", location.pathname + location.search); });
     ["mousedown", "pointerdown", "click"].forEach(ev => d.addEventListener(ev, (e) => e.stopPropagation()));
   }
-  const host = APP.view === "game" ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
+  // On the page itself, so it stays open when a match ends; inside the game view only in fullscreen (nothing else shows there).
+  const host = APP.view === "game" && fsElement() ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
   d.hidden = false; if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) { }
   SFX.ensure(); SFX.load();
 }
