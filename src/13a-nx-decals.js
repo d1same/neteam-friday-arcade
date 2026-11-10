@@ -225,6 +225,21 @@ const NXD = {
     x.save(); x.translate(w - h * 0.5, h * 0.5); if (d.a === "↗") x.rotate(0.6); x.fillStyle = "#f2f5f1"; x.beginPath(); x.moveTo(0, -h * 0.32); x.lineTo(h * 0.22, -h * 0.06); x.lineTo(h * 0.08, -h * 0.06); x.lineTo(h * 0.08, h * 0.3); x.lineTo(-h * 0.08, h * 0.3); x.lineTo(-h * 0.08, -h * 0.06); x.lineTo(-h * 0.22, -h * 0.06); x.closePath(); x.fill(); x.restore();
     NXD.wear(x, w, h, r, 120);
   },
+  // ---- race: rubber laid down under braking, and an iron manhole cover
+  k_tyre(x, w, h, d, r) {
+    x.clearRect(0, 0, w, h);
+    for (const c of [0.27, 0.73]) { const cx = c * w + (r() - 0.5) * w * 0.04, tw = w * 0.13, g = x.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0, "rgba(8,8,8,0)"); g.addColorStop(0.25, "rgba(8,8,8,.42)"); g.addColorStop(0.85, "rgba(8,8,8,.6)"); g.addColorStop(1, "rgba(8,8,8,0)"); x.fillStyle = g;
+      x.beginPath(); x.moveTo(cx - tw / 2, 0); x.bezierCurveTo(cx - tw / 2 + w * 0.03 * (d.v - 1), h * 0.4, cx - tw / 2 - w * 0.02 * (d.v - 1), h * 0.7, cx - tw / 2 + w * 0.04 * (d.v - 1), h); x.lineTo(cx + tw / 2 + w * 0.04 * (d.v - 1), h); x.bezierCurveTo(cx + tw / 2 - w * 0.02 * (d.v - 1), h * 0.7, cx + tw / 2 + w * 0.03 * (d.v - 1), h * 0.4, cx + tw / 2, 0); x.closePath(); x.fill(); }
+    NXD.wear(x, w, h, r, 90);
+  },
+  k_manhole(x, w, h, d, r) {
+    x.clearRect(0, 0, w, h); const c = w / 2, R = w * 0.47; x.fillStyle = "rgba(40,40,42,.96)"; x.beginPath(); x.arc(c, c, R, 0, 7); x.fill();
+    x.strokeStyle = "rgba(90,88,84,.9)"; x.lineWidth = w * 0.035; x.beginPath(); x.arc(c, c, R * 0.92, 0, 7); x.stroke(); x.lineWidth = w * 0.02;
+    for (let k = -4; k <= 4; k++) { const y = c + k * R * 0.19, hw = Math.sqrt(Math.max(0, (R * 0.8) ** 2 - (y - c) ** 2)); x.beginPath(); x.moveTo(c - hw, y); x.lineTo(c + hw, y); x.stroke(); }
+    x.fillStyle = "rgba(120,116,110,.9)"; x.font = NXD.FONT(700, Math.round(w * 0.1)); x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("NYC", c, c);
+    NXD.wear(x, w, h, r, 30);
+  },
   k_chev(x, w, h, d, r) {
     x.fillStyle = "#c81e26"; x.fillRect(0, 0, w, h); x.fillStyle = "#f4f1ea"; const n = Math.max(2, Math.round(w / h * 1.4)), cw = w / n;
     for (let i = 0; i < n; i++) { const cx = i * cw + cw / 2, s = d.v ? 1 : -1; x.beginPath(); x.moveTo(cx - s * cw * 0.28, h * 0.12); x.lineTo(cx + s * cw * 0.12, h * 0.5); x.lineTo(cx - s * cw * 0.28, h * 0.88); x.lineTo(cx - s * cw * 0.02, h * 0.88); x.lineTo(cx + s * cw * 0.38, h * 0.5); x.lineTo(cx - s * cw * 0.02, h * 0.12); x.closePath(); x.fill(); }
