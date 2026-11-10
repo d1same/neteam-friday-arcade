@@ -1043,12 +1043,12 @@ const SFX = {
   },
   // recorded samples (CC0, see sfx/CREDITS.txt); every caller falls back to the synth until a sample has loaded
   // menus (real switches), announcements (war drums, crowd), hits, cases, air and electricity: see sfx/CREDITS.txt
-  NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1 laser1 laser2 land1 eng-idle.wav eng-mid.wav shot-lmg shot-scout far-pistol far-smg far-rifle far-carbine far-sniper far-shotgun far-heavy far-lmg far-scout bolt-up bolt-back bolt-fwd bolt-down clip1 clip2 bullet1 rl-ar gun-pistol gun-heavy gun-smg gun-rifle gun-carbine gun-sniper gun-shotgun gun-lmg gun-scout gunm-pistol gunm-heavy gunm-smg gunm-rifle gunm-carbine gunm-sniper gunm-shotgun gunm-lmg gunm-scout",
-  S: {}, _ld: 0,
+  NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1 laser1 laser2 land1 eng-idle.wav eng-mid.wav shot-lmg shot-scout far-pistol far-smg far-rifle far-carbine far-sniper far-shotgun far-heavy far-lmg far-scout bolt-up bolt-back bolt-fwd bolt-down clip1 clip2 bullet1 rl-ar gun-pistol gun-heavy gun-smg gun-rifle gun-carbine gun-sniper gun-shotgun gun-lmg gun-scout gunm-pistol gunm-heavy gunm-smg gunm-rifle gunm-carbine gunm-sniper gunm-shotgun gunm-lmg gunm-scout fb-hit fb-tick fb-flesh fb-head fb-ping fb-kill fb-killhead fb-win fb-lose imp-metal1 imp-metal2 imp-metal3 imp-metal4 imp-metal5 imp-metal6 imp-metal7 ric1 ric2 ric3 ric4 imp-wood1 flyby1 crack1",
+  S: {}, _ld: 0, SV: 15,   // bump when recordings are replaced under the same name (the server caches /sfx for 7 days)
   load() {
     const a = this.ctx; if (!a || this._ld) return; this._ld = 1;
     ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall " + this.NEW).split(" ").forEach((n) => {
-      fetch("sfx/" + (n.includes(".") ? n : n + ".mp3")).then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n.replace(/\.wav$/, "")] = buf; }, () => {})).catch(() => {});
+      fetch("sfx/" + (n.includes(".") ? n : n + ".mp3") + "?v=" + this.SV).then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n.replace(/\.wav$/, "")] = buf; }, () => {})).catch(() => {});
     });
   },
   // play a sample: far 0..1 muffles it; returns false when it is not loaded so the caller can synthesise instead
@@ -1184,6 +1184,8 @@ const SFX = {
   // a bullet lands near you: 0 masonry, 1 metal; now and then it sings off as a ricochet
   impact(kind, vol, pan) {
     const a = this.ensure(); if (!a || vol < 0.02) return; const t = a.currentTime; if (t - this._it < 0.045) return; this._it = t;
+    if (!this.legacy && kind && this.samp("imp-metal" + (1 + (Math.random() * 7 | 0)), vol * 0.5, pan, 0.9 + Math.random() * 0.2, 0, 0, 0.3)) { if (Math.random() < 0.3) this.samp("ric" + (1 + (Math.random() * 4 | 0)), vol * 0.32, pan, 0.92 + Math.random() * 0.16, 0, 0.015, 0.4); return; }
+    if (!this.legacy && !kind && Math.random() < 0.06 && this.samp("ric" + (1 + (Math.random() * 4 | 0)), vol * 0.26, pan, 0.92 + Math.random() * 0.16, 0, 0.015, 0.4)) { this.samp("hit-wall", vol * 0.75, pan, 0.85 + Math.random() * 0.5, 0, 0, 0.3); return; }
     if (!this.samp(kind ? "hit-metal" : "hit-wall", vol * (kind ? 0.5 : 0.75), pan, 0.85 + Math.random() * 0.5, 0, 0, 0.3)) { const o = this.out(a, vol * 0.25, pan), s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = kind ? 3200 : 1300; f.Q.value = 1; const g = a.createGain(); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.1); }
     // now and then the round sings off the surface: air noise through a narrow filter that falls away (a pure tone here sounded like a cartoon)
     if (Math.random() < (kind ? 0.2 : 0.07)) { const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(), f0 = 2400 + Math.random() * 2600; s.buffer = this.noiseBuf(a); f.type = "bandpass"; f.Q.value = 22; f.frequency.setValueAtTime(f0, t + 0.02); f.frequency.exponentialRampToValueAtTime(f0 * (0.4 + Math.random() * 0.2), t + 0.4); g.gain.setValueAtTime(0.0001, t + 0.02); g.gain.exponentialRampToValueAtTime(1, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42); s.connect(f).connect(g).connect(this.out(a, vol * 0.5, pan)); s.start(t + 0.02, Math.random(), 0.45); }
@@ -1191,6 +1193,7 @@ const SFX = {
   // a round passing close to your head
   whiz(pan) {
     const a = this.ensure(); if (!a) return;
+    if (!this.legacy && this.S.flyby1 && this.S.crack1) { this.samp("crack1", 0.42, pan, 0.95 + Math.random() * 0.1, 0, 0, 0.25); this.samp("flyby1", 0.55, pan, 0.9 + Math.random() * 0.2, 0, 0.01, 0.3); return; }
     if (!this.legacy) { // the crack of a round breaking the sound barrier past your ear: a sharp N-shaped pressure wave
       const sr = a.sampleRate, n = Math.floor(sr * 0.006), b = this._crack || (this._crack = a.createBuffer(1, n, sr)), d = b.getChannelData(0);
       if (!this._crackOk) { this._crackOk = 1; const w = Math.floor(sr * 0.0012); for (let i = 0; i < n; i++) d[i] = i < w ? 1 - 2 * i / w : 0; for (let i = w; i < n; i++) d[i] += (Math.random() * 2 - 1) * 0.3 * Math.exp(-(i - w) / (sr * 0.0012)); }
@@ -1209,6 +1212,7 @@ const SFX = {
   },
   // you dropped someone: a dry recorded thwack over a low thud, with a helmet tick for a headshot
   kill(head) {
+    if (!this.legacy && this.samp(head ? "fb-killhead" : "fb-kill", 0.62, 0, 1, 0, 0, 0.1)) { if (head) this.samp("fb-ping", 0.32, 0, 0.92, 0, 0, 0.1); return; }
     if (this.samp("thwack1", 0.75, 0, head ? 1.1 : 0.94, 0, 0, 0.15)) { this.samp("thud1", 0.55, 0, 0.9, 0, 0.01, 0); if (head) this.samp("tink1", 0.5, 0, 0.9, 0, 0.02, 0.15); return; }
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.3, 0, 0);
     const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(190, t); th.frequency.exponentialRampToValueAtTime(70, t + 0.12); tg.gain.setValueAtTime(0.9, t); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.18);
@@ -1216,6 +1220,7 @@ const SFX = {
   },
   // your round landed: a dry recorded tick, a metal one for a head
   hit(head) {
+    if (!this.legacy && this.samp(head ? "fb-head" : "fb-hit", head ? 0.55 : 0.5, 0, 0.96 + Math.random() * 0.08, 0, 0, 0)) { if (head) this.samp("fb-ping", 0.3, 0, 1 + Math.random() * 0.06, 0, 0, 0.1); else this.samp("fb-flesh", 0.22, 0, 0.95 + Math.random() * 0.1, 0, 0, 0); return; }
     if (this.samp(head ? "tink1" : "tick1", head ? 0.42 : 0.4, 0, 0.94 + Math.random() * 0.12, 0, 0, 0)) return;
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.26, 0, 0);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = head ? 5200 : 3400; f.Q.value = 2.2;
@@ -1257,7 +1262,7 @@ const SFX = {
   shot(kind, vol = 1, pan = 0, far = 0) {
     const a = this.ensure(); if (!a || vol < 0.01) return;
     if (kind === "laser") { this.samp(Math.random() < 0.5 ? "laser1" : "laser2", 0.55 * vol, pan, 0.94 + Math.random() * 0.12, far * 0.7, 0, 0.5) || this.tone(1500, 0.2, "sine", 0.05 * vol, -1100); return; }
-    const G = this.GUNS[kind];
+    const G = (this.legacy ? this.GUNS_OLD : this.GUNS)[kind];
     if (G && !this.legacy) { // layered: the gun's own crack and body, a low punch, and its sound coming back off the surroundings
       const r = G[1] * (0.97 + Math.random() * 0.06), v = G[0] * vol * 1.35, out = this._space === "open" || this._space === "street";
       const dl = far > 0 ? far * 50 / 343 : 0;   // sound travels: a shot 50 m away is heard 0.15 s after it is fired
@@ -1266,7 +1271,7 @@ const SFX = {
         const tv = v * (out ? 0.3 : 0.14) * (1 - far);
         this.samp("far-" + kind, tv, clamp(pan - 0.45, -1, 1), r, 0.3 + far * 0.3, dl + (out ? 0.07 : 0.03), out ? 0.55 : 0.4);
         this.samp("far-" + kind, tv * 0.75, clamp(pan + 0.45, -1, 1), r * 0.985, 0.4 + far * 0.3, dl + (out ? 0.15 : 0.055), out ? 0.65 : 0.45);
-        if (far < 0.35) this.thump(v * (1 - far * 2.6) * (G[3] || 1), pan, dl);
+        if (far < 0.35 && G[3]) this.thump(v * (1 - far * 2.6) * (G[3] || 1), pan, dl);
         if (G[2]) this.bolt(vol * (far > 0 ? 0.3 * (1 - far) : 0.75), pan, G[2] + dl); return; }
     }
     // every gun plays its own recording: close up the near take, far away the same gun recorded from a distance, muffled further with range
@@ -1285,7 +1290,9 @@ const SFX = {
   },
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles)]
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles), weight of the low punch]
-  GUNS: { pistol: [0.5, 1, 0, 0.5], heavy: [0.62, 0.92, 0, 1.1], smg: [0.48, 1, 0, 0.45], rifle: [0.62, 1, 0, 0.8], carbine: [0.6, 1, 0, 0.7], lmg: [0.62, 0.95, 0, 0.9], sniper: [0.68, 1, 0.42, 1.4], scout: [0.6, 1, 0.36, 1.1], shotgun: [0.66, 1, 0, 1.3] },
+  GUNS: { pistol: [0.44, 1, 0, 0], heavy: [0.64, 1, 0, 1], smg: [0.44, 1, 0, 0], rifle: [0.6, 1, 0, 0.55], carbine: [0.56, 1, 0, 0.3], lmg: [0.64, 1, 0, 0.8], sniper: [0.72, 1, 0.42, 1.3], scout: [0.6, 1, 0.36, 0.7], shotgun: [0.7, 1, 0, 1.2] },
+  // pre-PR15 table, kept for the old/new switch on the sound page
+  GUNS_OLD: { pistol: [0.5, 1, 0, 0.5], heavy: [0.62, 0.92, 0, 1.1], smg: [0.48, 1, 0, 0.45], rifle: [0.62, 1, 0, 0.8], carbine: [0.6, 1, 0, 0.7], lmg: [0.62, 0.95, 0, 0.9], sniper: [0.68, 1, 0.42, 1.4], scout: [0.6, 1, 0.36, 1.1], shotgun: [0.66, 1, 0, 1.3] },
   legacy: false,
   // the low punch you feel in your chest: field recordings of guns have little below 80 Hz
   thump(vol, pan = 0, delay = 0) {
@@ -1402,8 +1409,8 @@ const SFX = {
       case "count": this.beep(880, 0.16, 0.5); break;
       case "go": this.beep(1760, 0.6, 0.55); break;
       case "start": u("ui-on", 0.55); break;
-      case "win": u("drum-win", 1, 1, 0, 0.2); this.samp("crowd1", 0.45, 0, 1, 0, 0.3, 0.4); break;
-      case "lose": u("drum-low", 0.95, 1, 0, 0.2); this.samp("power-down", 0.3, 0, 0.9, 0, 0.12, 0.3); break;
+      case "win": if (!this.legacy && this.samp("fb-win", 0.7, 0, 1, 0, 0, 0.25)) { this.samp("crowd1", 0.3, 0, 1, 0, 0.6, 0.4); break; } u("drum-win", 1, 1, 0, 0.2); this.samp("crowd1", 0.45, 0, 1, 0, 0.3, 0.4); break;
+      case "lose": if (!this.legacy && this.samp("fb-lose", 0.75, 0, 1, 0, 0, 0.25)) break; u("drum-low", 0.95, 1, 0, 0.2); this.samp("power-down", 0.3, 0, 0.9, 0, 0.12, 0.3); break;
       case "alarm": u("drum-low", 0.8, 1.15, 0, 0.2); u("ui-deny", 0.5, 1, 0.05); break;
       case "pickup": u("pickup1", 0.4, 0.9 + Math.random() * 0.15); break;
       case "bump": this.samp("thud1", 0.75, 0, 0.9 + Math.random() * 0.2) || this.tap(0.4, 500); break;
@@ -1448,7 +1455,7 @@ const SFX = {
       ["Rifle far away", () => s.shot("rifle", 0.6, 0, 0.8)], ["Sniper far away", () => s.shot("sniper", 0.6, 0, 0.8)], ["SMG far away", () => s.shot("smg", 0.6, 0, 0.8)], ["Laser shot", () => s.shot("laser")], ["Jump", () => s.jump(0.6)], ["Landing (short drop)", () => s.land(0.3)], ["Landing (big drop)", () => s.land(1)], ["Distant shot", () => s.shot("rifle", 0.7, 0.4, 0.9)],
       ["Reload pistol", () => s.reload("pistol", 1.5)], ["Reload magnum", () => s.reload("deagle", 2.2)], ["Reload SMG", () => s.reload("smg", 2.0)], ["Reload rifle", () => s.reload("rifle", 2.4)], ["Reload carbine", () => s.reload("carbine", 2.2)],
       ["Reload LMG", () => s.reload("lmg", 5.0)], ["Reload sniper", () => s.reload("sniper", 3.4)], ["Reload scout", () => s.reload("scout", 2.8)], ["Reload shotgun", () => s.reload("shotgun", 3)], ["Sniper bolt", () => s.bolt(0.8)], ["Empty click / pickup clank", () => s.clank(0.5)], ["Shell case", () => s.casing(1)],
-      ["Footstep", () => s.step(0.9, 0, 0)], ["Bullet on wall", () => s.impact(0, 0.8, 0)], ["Bullet on metal", () => s.impact(1, 0.8, 0)], ["Bullet passing", () => s.whiz(0.3)], ["Knife swing", () => s.swish(0.6)],
+      ["Footstep", () => s.step(0.9, 0, 0)], ["Bullet on wall", () => s.impact(0, 0.8, 0)], ["Bullet on metal", () => s.impact(1, 0.8, 0)], ["Bullet on metal x5", () => [0, 1, 2, 3, 4].forEach(k => setTimeout(() => { s._it = 0; s.impact(1, 0.8, (k - 2) * 0.3); }, k * 260))], ["Every gun in a row", () => ["pistol", "heavy", "smg", "rifle", "carbine", "lmg", "scout", "sniper", "shotgun"].forEach((g, k) => setTimeout(() => s.shot(g, 1, 0, 0), k * 900))], ["Bullet passing", () => s.whiz(0.3)], ["Knife swing", () => s.swish(0.6)],
       ["Grenade", () => s.blast(0.9, 0, 0, 0)], ["Big explosion", () => s.blast(1, 0, 1, 0)], ["Far explosion", () => s.blast(0.7, 0.3, 0, 0.8)], ["Smoke grenade", () => s.hiss(0.7, 0)], ["Crate breaks", () => s.crash(0, 0.7)], ["Glass breaks", () => s.crash(1, 0.7)],
       ["Jump pad", () => s.pad(0.7)], ["Hook misses", () => s.clack(0.4, 0, 1.3)], ["Fall / you died", p("fall")], ["Body bump", p("bump")],
       ["Car scrape", () => s.scrape(0.7, 0)], ["Nitro", () => s.whoosh(0.9, 0, 1)], ["EMP / bolt lands", () => s.zap(0.7, 0, 1)], ["Spark", () => s.zap(0.5)], ["Gun overheats", () => s.steam(0.7)], ["Shield", () => s.shield(0.7)], ["Crowd", () => s.cheer(0.8)],
