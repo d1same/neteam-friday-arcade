@@ -10,8 +10,11 @@ NXW.themes.race = (B, M, env) => {
   const wrap = (i) => ((i % N) + N) % N, at = (i, lat) => { const p = pts[wrap(i)], t = tan[wrap(i)]; return [p[0] - t[1] * lat, p[1] + t[0] * lat]; };
   const rnd = NXW.rng(NXW.strSeed("race:" + M.tid));
   const TUN = R.tunnel, inTun = (k, pad) => { if (!TUN) return false; pad = pad || 0; return wrap(k - TUN[0] + pad) <= TUN[1] - TUN[0] + 2 * pad; };
+  const BR = R.bridge, CAN = BR ? rcCanal(R) : null, inBr = (k, pad) => { if (!BR) return false; pad = pad || 0; return Math.abs(((k - BR.c + N * 1.5) % N) - N / 2) < BR.cw + pad; };
+  // everything that runs the full lap stops at the drawbridge (the leaves are drawn by the client, they move)
+  const runs = (fn) => { if (BR) fn(BR.c + BR.cw, N - 2 * BR.cw); else fn(0, N); };
   const atF = (f, lat) => { const i = Math.floor(f), u = f - i, a = at(i, lat), b = at(i + 1, lat); return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]; };
-  if (!MATS.rc_tunwall) Object.assign(MATS, { rc_tunwall: { t: "tiles", c: [0.62, 0.64, 0.62], s: 0.6, r: 0.35 }, rc_tunceil: { t: "concrete2", c: [0.55, 0.55, 0.56], s: 2 }, rc_ramp: { t: "diamond", c: [1.4, 1.4, 1.45], s: 1.4 } });
+  if (!MATS.rc_tunwall) Object.assign(MATS, { rc_tunwall: { t: "tiles", c: [0.62, 0.64, 0.62], s: 0.6, r: 0.35 }, rc_tunceil: { t: "concrete2", c: [0.55, 0.55, 0.56], s: 2 }, rc_ramp: { t: "diamond", c: [1.4, 1.4, 1.45], s: 1.4 }, rc_quay: { t: "blockwall", c: [0.72, 0.72, 0.7], s: 3 }, rc_coping: { t: "concrete2", c: [0.85, 0.85, 0.83], s: 3 }, rc_bridgeSteel: { t: "bluemetal", c: [0.85, 0.9, 0.95], s: 2, m: 0.6 }, rc_tank: { t: "darkplanks", c: [0.9, 0.8, 0.7], s: 1.5 }, rc_hwy: { t: "concrete", c: [0.8, 0.8, 0.79], s: 4 } });
 
   // ---- the look of each sky
   const LOOK = {
@@ -33,7 +36,7 @@ NXW.themes.race = (B, M, env) => {
   const cellD = new Float32Array(G * G), cellIn = new Uint8Array(G * G);
   for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) { const c = z * G + x, cx = x * CS + 2, cz = z * CS + 2; cellD[c] = near(cx, cz)[0]; cellIn[c] = inside(cx, cz) ? 1 : 0; }
   B.floorAlbOf = (x, z) => { const c = z * G + x; return matAlb(cellD[c] < WALL + 2 ? road : cellIn[c] ? "rc_grass" : "rc_walk"); };
-  for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) { const c = z * G + x; if (cellD[c] < WALL + 2.4) continue; B.floor(cellIn[c] ? "rc_grass" : "rc_walk", x * CS, z * CS, x * CS + CS, z * CS + CS, 0); }
+  for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) { const c = z * G + x; if (cellD[c] < WALL + 2.4 || (CAN && CAN.in(x * CS + 2, z * CS + 2))) continue; B.floor(cellIn[c] ? "rc_grass" : "rc_walk", x * CS, z * CS, x * CS + CS, z * CS + CS, 0); }
 
   // ---- ribbons along the track, lit by the ground lightmap
   const strip = (key, l0, l1, y, from, cnt) => {
@@ -41,15 +44,15 @@ NXW.themes.race = (B, M, env) => {
     for (let k = 0; k <= cnt; k++) { const a = at(from + k, l0), b = at(from + k, l1), v = (from + k) * STEP / s; V.push(a[0], y, a[1], 0, 1, 0, l0 / s, v, b[0], y, b[1], 0, 1, 0, l1 / s, v); if (k < cnt) { const q = k * 2; I.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } }
     mesh(key, V, I, { floor: true });
   };
-  strip(road, -HW - 0.6, HW + 0.6, 0.02);
+  runs((f, n) => strip(road, -HW - 0.6, HW + 0.6, 0.02, f, n));
   for (const s of [-1, 1]) {
     const a = s * (HW + 0.6), b = s * (HW + 1.6), lo = Math.min(a, b), hi = Math.max(a, b);
-    for (let k = 0; k < N; k += 2) strip((k >> 1) & 1 ? "rc_kerbW" : "rc_kerbR", lo, hi, 0.045, k, Math.min(2, N - k));
-    strip("rc_runoff", Math.min(s * (HW + 1.6), s * (WALL + 0.4)), Math.max(s * (HW + 1.6), s * (WALL + 0.4)), 0.015);
-    strip("rc_verge", Math.min(s * (WALL + 0.4), s * (WALL + 6.5)), Math.max(s * (WALL + 0.4), s * (WALL + 6.5)), 0.012);
-    strip("rc_white", s * (HW - 0.5) - 0.08, s * (HW - 0.5) + 0.08, 0.02);
-    for (let k = 0; k < N; k += 8) strip("rc_white", s * HW * 0.5 - 0.07, s * HW * 0.5 + 0.07, 0.02, k, Math.min(3, N - k));
-    strip("rc_yellow", s * 0.22 - 0.07, s * 0.22 + 0.07, 0.02);
+    for (let k = 0; k < N; k += 2) { if (inBr(k + 1, 0.5)) continue; strip((k >> 1) & 1 ? "rc_kerbW" : "rc_kerbR", lo, hi, 0.045, k, Math.min(2, N - k)); }
+    runs((f, n) => strip("rc_runoff", Math.min(s * (HW + 1.6), s * (WALL + 0.4)), Math.max(s * (HW + 1.6), s * (WALL + 0.4)), 0.015, f, n));
+    runs((f, n) => strip("rc_verge", Math.min(s * (WALL + 0.4), s * (WALL + 6.5)), Math.max(s * (WALL + 0.4), s * (WALL + 6.5)), 0.012, f, n));
+    runs((f, n) => strip("rc_white", s * (HW - 0.5) - 0.08, s * (HW - 0.5) + 0.08, 0.02, f, n));
+    for (let k = 0; k < N; k += 8) { if (inBr(k + 1.5, 1.5)) continue; strip("rc_white", s * HW * 0.5 - 0.07, s * HW * 0.5 + 0.07, 0.02, k, Math.min(3, N - k)); }
+    runs((f, n) => strip("rc_yellow", s * 0.22 - 0.07, s * 0.22 + 0.07, 0.02, f, n));
   }
   // ---- concrete barriers, a catch fence on the outside of every bend
   const wallStrip = (key, lat, y0, y1, f, from, cnt) => { // f = +1: faces towards +lat, -1: towards -lat
@@ -57,23 +60,23 @@ NXW.themes.race = (B, M, env) => {
     for (let k = 0; k <= cnt; k++) { const p = at(from + k, lat), t = tan[wrap(from + k)], nx = -t[1] * f, nz = t[0] * f, u = (from + k) * STEP / s; V.push(p[0], y0, p[1], nx, 0, nz, u, y0 / s, p[0], y1, p[1], nx, 0, nz, u, y1 / s); if (k < cnt) { const q = k * 2; if (f > 0) I.push(q, q + 2, q + 1, q + 1, q + 2, q + 3); else I.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } }
     mesh(key, V, I, { gs: 4 });
   };
-  const topStrip = (key, l0, l1, y) => { const s = sc(key), V = [], I = []; for (let k = 0; k <= N; k++) { const a = at(k, l0), b = at(k, l1), v = k * STEP / s; V.push(a[0], y, a[1], 0, 1, 0, l0 / s, v, b[0], y, b[1], 0, 1, 0, l1 / s, v); if (k < N) { const q = k * 2; I.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } } mesh(key, V, I, { gs: 4 }); };
+  const topStrip = (key, l0, l1, y, from, cnt) => { from = from || 0; cnt = cnt == null ? N : cnt; const s = sc(key), V = [], I = []; for (let k = 0; k <= cnt; k++) { const a = at(from + k, l0), b = at(from + k, l1), v = (from + k) * STEP / s; V.push(a[0], y, a[1], 0, 1, 0, l0 / s, v, b[0], y, b[1], 0, 1, 0, l1 / s, v); if (k < cnt) { const q = k * 2; I.push(q, q + 1, q + 2, q + 1, q + 3, q + 2); } } mesh(key, V, I, { gs: 4 }); };
   const BOARDS = ["NETEAM SOLUTIONS", "PATCH TUESDAY", "IT DONE RIGHT", "MFA EVERYWHERE", "BACK UP TODAY", "ZERO TRUST RACING", "HELPDESK 4802", "FIBRE TO THE FINISH"];
   for (const s of [-1, 1]) {
     const li = s * (WALL + 0.4), lo = s * (WALL + 0.78);
-    wallStrip("rc_barrier", li, 0, 1.05, -s); wallStrip("rc_barrier", lo, 0, 1.05, s); topStrip("rc_barrier", Math.min(li, lo), Math.max(li, lo), 1.05);
-    wallStrip(s > 0 ? "rc_kerbR" : "rc_blue", s * (WALL + 0.385), 0.86, 0.98, -s);
+    runs((f, n) => { wallStrip("rc_barrier", li, 0, 1.05, -s, f, n); wallStrip("rc_barrier", lo, 0, 1.05, s, f, n); topStrip("rc_barrier", Math.min(li, lo), Math.max(li, lo), 1.05, f, n);
+      wallStrip(s > 0 ? "rc_kerbR" : "rc_blue", s * (WALL + 0.385), 0.86, 0.98, -s, f, n); });
     // sponsor boards where the wall runs straight enough
-    for (let k = 6, n = 0; k < N - 4; k += 14) { if (R.curv[k] > 0.05 || R.curv[k + 3] > 0.05) continue; const a = at(k, s * (WALL + 0.36)), b = at(k + 3, s * (WALL + 0.36)), p = s > 0 ? b : a, q = s > 0 ? a : b;
+    for (let k = 6, n = 0; k < N - 4; k += 14) { if (R.curv[k] > 0.05 || R.curv[k + 3] > 0.05 || inBr(k + 1.5, 3)) continue; const a = at(k, s * (WALL + 0.36)), b = at(k + 3, s * (WALL + 0.36)), p = s > 0 ? b : a, q = s > 0 ? a : b;
       B.decal("decal", [p[0], 0.16, p[1]], [q[0] - p[0], 0, q[1] - p[1]], [0, 0.62, 0], 56, { k: "shop", t: BOARDS[(n++ + (s > 0 ? 3 : 0)) % BOARDS.length], v: n + (s > 0 ? 2 : 0) }); }
     // fence: runs of samples where the road bends away from this side
     let k = 0; while (k < N) { const t0 = tan[wrap(k - 3)], t1 = tan[wrap(k + 3)], turn = t0[0] * t1[1] - t0[1] * t1[0], out = Math.abs(turn) > 0.05 && (turn > 0 ? -1 : 1) === s; if (!out) { k++; continue; } let e = k; while (e < N) { const a0 = tan[wrap(e - 3)], a1 = tan[wrap(e + 3)], tn = a0[0] * a1[1] - a0[1] * a1[0]; if (!(Math.abs(tn) > 0.03 && (tn > 0 ? -1 : 1) === s)) break; e++; }
       const fenceRun = (k, e) => { wallStrip("rc_fence", s * (WALL + 0.6), 1.05, 3.4, -s, k, e - k); for (let j = k; j <= e; j += 3) { const p = at(j, s * (WALL + 0.62)); tube("trimSteel", p[0], 1.05, p[1], p[0], 3.5, p[1], 0.04, 5, { seg: 2.5 }); } const a = at(k, s * (WALL + 0.62)); for (let j = k; j < e; j += 3) { const p = at(j, s * (WALL + 0.62)), q = at(Math.min(e, j + 3), s * (WALL + 0.62)); tube("trimSteel", p[0], 3.4, p[1], q[0], 3.4, q[1], 0.025, 4, {}); } }
-      for (let j0 = k, j = k; j <= e + 1; j++) { if (j > e || inTun(j, 2)) { if (j - j0 >= 6) fenceRun(j0, j - 1); j0 = j + 1; } }
+      for (let j0 = k, j = k; j <= e + 1; j++) { if (j > e || inTun(j, 2) || inBr(j, 2)) { if (j - j0 >= 6) fenceRun(j0, j - 1); j0 = j + 1; } }
       k = e + 1; }
   }
   // ---- street lamps: every 32 m on alternate sides, arm reaching over the road
-  for (let k = 5, n = 0; k < N - 6; k += 20, n++) { if (inTun(k, 5)) continue; const s = n & 1 ? 1 : -1, p = at(k, s * (WALL + 2.2)), h = at(k, s * (WALL - 2.6)), y = 8.6, mat = n & 2 ? lampB : lampA, col = n & 2 && SK.lamp2 ? SK.lamp2 : SK.lamp;
+  for (let k = 5, n = 0; k < N - 6; k += 20, n++) { if (inTun(k, 5) || inBr(k, 3)) continue; const s = n & 1 ? 1 : -1, p = at(k, s * (WALL + 2.2)), h = at(k, s * (WALL - 2.6)), y = 8.6, mat = n & 2 ? lampB : lampA, col = n & 2 && SK.lamp2 ? SK.lamp2 : SK.lamp;
     tube("trimBlack", p[0], 0, p[1], p[0], y, p[1], 0.09, 7, { seg: 3 }); tube("trimBlack", p[0], y, p[1], h[0], y + 0.35, h[1], 0.055, 6, { seg: 3 });
     box("trimBlack", h[0] - 0.42, y + 0.2, h[1] - 0.42, h[0] + 0.42, y + 0.36, h[1] + 0.42, { f: ALL, occ: false }); box(mat, h[0] - 0.36, y + 0.185, h[1] - 0.36, h[0] + 0.36, y + 0.2, h[1] + 0.36, { f: NY, occ: false });
     rectLight([h[0], y + 0.17, h[1]], [0.36, 0, 0], [0, 0, 0.36], [0, -1, 0], mul(col, SK.lampL * 0.24), { range: 34 }); }
@@ -98,7 +101,7 @@ NXW.themes.race = (B, M, env) => {
   // ---- billboards and the Neteam tower
   const taken = [W.stand];
   const BILL = [[["NETEAM", "Managed IT for NYC"], 0.14, 1, 1], [["PATCH YOUR STUFF", "Mike & Pavlos"], 0.3, -1, 3], [["MFA ON?", "Good. Now drive."], 0.46, 1, 0], [["TICKET #4802", "Car won't go faster"], 0.6, -1, 2], [["BACKUPS", "3 copies, 2 media, 1 offsite"], 0.75, 1, 4], [["NETEAM", "Since 2001"], 0.88, -1, 1]];
-  BILL.forEach(([l, fi, s, col]) => { const i = Math.round(N * fi), p = at(i, s * (WALL + 9)), t = tan[i], a = Math.atan2(t[0], t[1]) + s * -0.9 + Math.PI, ux = Math.cos(a), uz = -Math.sin(a), w = 14, h = 7, y0 = 5;
+  BILL.forEach(([l, fi, s, col]) => { const i = Math.round(N * fi), p = at(i, s * (WALL + 9)); if (CAN && CAN.in(p[0], p[1], 9)) return; const t = tan[i], a = Math.atan2(t[0], t[1]) + s * -0.9 + Math.PI, ux = Math.cos(a), uz = -Math.sin(a), w = 14, h = 7, y0 = 5;
     tube("trimSteel", p[0], 0, p[1], p[0], y0 + h, p[1], 0.3, 8, { seg: 3 }); const x0 = p[0] - ux * w / 2, z0 = p[1] - uz * w / 2;
     for (const y of [y0, y0 + h]) tube("trimBlack", x0, y, z0, x0 + ux * w, y, z0 + uz * w, 0.14, 4, { seg: 4 }); for (const f of [0, 1]) tube("trimBlack", x0 + ux * w * f, y0, z0 + uz * w * f, x0 + ux * w * f, y0 + h, z0 + uz * w * f, 0.14, 4, { seg: 4 });
     const nx = -uz, nz = ux; B.decal("glow", [x0 + nx * 0.16, y0, z0 + nz * 0.16], [ux * w, 0, uz * w], [0, h, 0], 30, { k: "bill", l, col }); B.decal("glow", [x0 + ux * w - nx * 0.16, y0, z0 + uz * w - nz * 0.16], [-ux * w, 0, -uz * w], [0, h, 0], 30, { k: "bill", l, col });
@@ -109,7 +112,7 @@ NXW.themes.race = (B, M, env) => {
     B.decal("glowHi", [p[0] - w + 1, h + 0.8, p[1] + w + 0.35], [2 * w - 2, 0, 0], [0, 3.4, 0], 24, { k: "logo" }); B.decal("glowHi", [p[0] + w - 1, h + 0.8, p[1] - w - 0.35], [-(2 * w - 2), 0, 0], [0, 3.4, 0], 24, { k: "logo" });
     B.decal("glowHi", [p[0] + w + 0.35, h + 0.8, p[1] + w - 1], [0, 0, -(2 * w - 2)], [0, 3.4, 0], 24, { k: "logo" }); B.decal("glowHi", [p[0] - w - 0.35, h + 0.8, p[1] - w + 1], [0, 0, 2 * w - 2], [0, 3.4, 0], 24, { k: "logo" });
     W.hq = { x: p[0], z: p[1], h: h + 5 }; taken.push({ x0: p[0] - w - 8, x1: p[0] + w + 8, z0: p[1] - w - 8, z1: p[1] + w + 8 }); }
-  const free = (x, z, r) => !taken.some(q => x + r > q.x0 && x - r < q.x1 && z + r > q.z0 && z - r < q.z1);
+  const free = (x, z, r) => !taken.some(q => x + r > q.x0 && x - r < q.x1 && z + r > q.z0 && z - r < q.z1) && !(CAN && CAN.in(x, z, r + 5));
 
   // ---- jumps: a steel kicker ramp across the middle of the road (the edges stay flat for anyone who wants to stay down)
   for (const r of R.ramps || []) {
@@ -154,9 +157,38 @@ NXW.themes.race = (B, M, env) => {
       if (dir < 0) { const A = at(k, 6.5), Bq = at(k, -6.5); B.decal("glowHi", [A[0] - t[0] * 0.05, TH + 0.7, A[1] - t[1] * 0.05], [Bq[0] - A[0], 0, Bq[1] - A[1]], [0, 2.0, 0], 30, { k: "banner", t: "NETEAM TUNNEL" }); }
       else { const A = at(k, -6.5), Bq = at(k, 6.5); B.decal("glowHi", [A[0] + t[0] * 0.05, TH + 0.7, A[1] + t[1] * 0.05], [Bq[0] - A[0], 0, Bq[1] - A[1]], [0, 2.0, 0], 30, { k: "banner", t: "NETEAM TUNNEL" }); } }
   }
+  // ---- the canal under the drawbridge: quay walls, stone coping along both banks, a pit under each hinge, the bridge
+  // gantries and the bridge-keeper's house. The water and the two steel leaves are drawn (and moved) by the client.
+  if (CAN) {
+    const { o, t, n, hw, E } = CAN, P = (s2, a) => [o[0] + t[0] * s2 + n[0] * a, o[1] + t[1] * s2 + n[1] * a], RW = WALL + 1.2, WY = -3.6, HL = BR.cw * 1.6;
+    const wallAB = (key, A, Bq, y0, y1) => { const s0 = sc(key), L = Math.hypot(Bq[0] - A[0], Bq[1] - A[1]), nx = -(Bq[1] - A[1]) / L, nz = (Bq[0] - A[0]) / L;
+      mesh(key, [A[0], y0, A[1], nx, 0, nz, 0, y0 / s0, Bq[0], y0, Bq[1], nx, 0, nz, L / s0, y0 / s0, A[0], y1, A[1], nx, 0, nz, 0, y1 / s0, Bq[0], y1, Bq[1], nx, 0, nz, L / s0, y1 / s0], [0, 1, 2, 1, 3, 2], { gs: 4 }); };
+    const flat = (key, s0, s1, a0, a1, y) => { const k = sc(key), A = P(s0, a0), Bq = P(s0, a1), C = P(s1, a0), D = P(s1, a1); mesh(key, [A[0], y, A[1], 0, 1, 0, a0 / k, s0 / k, Bq[0], y, Bq[1], 0, 1, 0, a1 / k, s0 / k, C[0], y, C[1], 0, 1, 0, a0 / k, s1 / k, D[0], y, D[1], 0, 1, 0, a1 / k, s1 / k], [0, 1, 2, 1, 3, 2], { floor: true }); };
+    // banks: the wall drops lower where the road (and a lifting leaf) passes over it
+    for (const [a0, a1, top] of [[-E, -RW, 0.05], [-RW, RW, -1.15], [RW, E, 0.05]]) { wallAB("rc_quay", P(hw, a0), P(hw, a1), WY, top); wallAB("rc_quay", P(-hw, a1), P(-hw, a0), WY, top); }
+    wallAB("rc_quay", P(hw, E), P(-hw, E), WY, 0.05); wallAB("rc_quay", P(-hw, -E), P(hw, -E), WY, 0.05);
+    for (const s2 of [-1, 1]) { for (const [a0, a1] of [[-E - 2.2, -RW], [RW, E + 2.2]]) flat("rc_coping", s2 > 0 ? hw : -hw - 2.4, s2 > 0 ? hw + 2.4 : -hw, a0, a1, 0.07);
+      flat("rc_coping", s2 > 0 ? hw - 0.2 : -HL - 0.4, s2 > 0 ? HL + 0.4 : -hw + 0.2, -RW, RW, -1.15);   // the hinge pit under the end of each leaf
+      flat("rc_coping", -hw - 0.1, hw + 0.1, s2 * E, s2 * (E + 2.4), 0.07); }
+    // the bed of the canal, dark under the water
+    flat("rc_quay", -hw, hw, -E, E, WY);
+    // bollards along the quay
+    for (const s2 of [-1, 1]) for (let a = RW + 5; a < E - 2; a += 9) for (const sg of [-1, 1]) { const p = P(s2 * (hw + 0.9), sg * a); cyl("trimBlack", p[0], 0.07, p[1], 0.22, 0.55, 8, { occ: false }); }
+    // two portal gantries, one over each hinge, with the bridge's name facing the cars that come at it
+    for (const [k, face] of [[BR.c - BR.cw - 2, 1], [BR.c + BR.cw + 2, 0]]) { const L = at(k, -(WALL + 1.8)), Rr = at(k, WALL + 1.8), tt = tan[wrap(k)], Y = 8.2;
+      for (const p of [L, Rr]) { box("rc_bridgeSteel", p[0] - 0.45, 0, p[1] - 0.45, p[0] + 0.45, Y + 2.8, p[1] + 0.45, { f: ALL & ~NY, seg: 2.5 }); box(lightMat("rcAmber", [1.0, 0.55, 0.12], 30), p[0] - 0.2, Y + 2.8, p[1] - 0.2, p[0] + 0.2, Y + 3.1, p[1] + 0.2, { f: ALL, occ: false }); }
+      for (const y of [Y, Y + 2.6]) tube("rc_bridgeSteel", L[0], y, L[1], Rr[0], y, Rr[1], 0.22, 6, { seg: 3 });
+      for (let j = 0; j < 14; j++) { const f0 = j / 14, f1 = (j + 1) / 14, x0 = L[0] + (Rr[0] - L[0]) * f0, z0 = L[1] + (Rr[1] - L[1]) * f0, x1 = L[0] + (Rr[0] - L[0]) * f1, z1 = L[1] + (Rr[1] - L[1]) * f1; tube("rc_bridgeSteel", x0, j & 1 ? Y : Y + 2.6, z0, x1, j & 1 ? Y + 2.6 : Y, z1, 0.07, 4, {}); }
+      if (face) { const A = at(k, -8), Bq = at(k, 8); B.decal("glowHi", [A[0] - tt[0] * 0.3, Y + 0.25, A[1] - tt[1] * 0.3], [Bq[0] - A[0], 0, Bq[1] - A[1]], [0, 2.1, 0], 30, { k: "banner", t: "NETEAM DRAWBRIDGE" }); } }
+    // the bridge-keeper's house beside the near hinge, on the side away from the canal's longer reach
+    { const k = BR.c - BR.cw - 6, sd = inside(at(k, WALL + 9)[0], at(k, WALL + 9)[1]) ? -1 : 1, p = at(k, sd * (WALL + 7.5)), w = 3.2, h = 7.5;
+      box(FAC[1], p[0] - w, 0, p[1] - w, p[0] + w, h, p[1] + w, { f: ALL & ~NY, seg: 3 }); box("trimBlack", p[0] - w - 0.4, h, p[1] - w - 0.4, p[0] + w + 0.4, h + 0.5, p[1] + w + 0.4, { f: ALL & ~NY, occ: false, seg: 3 });
+      box(lightMat("rcRed", [1.0, 0.12, 0.08], 30), p[0] - 0.35, h + 0.5, p[1] - 0.35, p[0] + 0.35, h + 1.0, p[1] + 0.35, { f: ALL, occ: false });
+      taken.push({ x0: p[0] - w - 2, x1: p[0] + w + 2, z0: p[1] - w - 2, z1: p[1] + w + 2 }); }
+  }
   // ---- sign gantries over the road (motorway style), on straight-ish stretches away from the jumps and the tunnel
   { const GS = [["NETEAM HQ", "HELPDESK · 4802", "↑"], ["DATA CENTER", "NEXT EXIT", "↗"], ["FINISH", "KEEP LEFT FOR BOOST", "↑"]];
-    let made = 0; for (const f of [0.28, 0.6, 0.86, 0.38, 0.7]) { if (made >= 2) break; const k = Math.round(N * f); if (inTun(k, 25) || (R.ramps || []).some(r => Math.abs(wrap(k - r.c + N / 2) - N / 2) < 20) || R.curv[k] > 0.08) continue;
+    let made = 0; for (const f of [0.28, 0.6, 0.86, 0.38, 0.7]) { if (made >= 2) break; const k = Math.round(N * f); if (inTun(k, 25) || inBr(k, 25) || (R.ramps || []).some(r => Math.abs(wrap(k - r.c + N / 2) - N / 2) < 20) || R.curv[k] > 0.08) continue;
       const L = at(k, -(WALL + 1.6)), Rr = at(k, WALL + 1.6), t = tan[k], Y = 7.4;
       for (const p of [L, Rr]) { box("trimSteel", p[0] - 0.25, 0, p[1] - 0.25, p[0] + 0.25, Y + 2.6, p[1] + 0.25, { f: ALL & ~NY, seg: 2.5 }); }
       for (const y of [Y, Y + 2.4]) tube("trimSteel", L[0], y, L[1], Rr[0], y, Rr[1], 0.12, 5, { seg: 3 });
@@ -164,9 +196,32 @@ NXW.themes.race = (B, M, env) => {
       const g = GS[made % GS.length]; for (const [lat0, lat1, gi] of [[-11, -1.5, 0], [1.5, 11, 1]]) { const A = at(k, lat1), Bq = at(k, lat0); B.decal("glow", [A[0] - t[0] * 0.25, Y - 0.1, A[1] - t[1] * 0.25], [Bq[0] - A[0], 0, Bq[1] - A[1]], [0, 2.6, 0], 26, { k: "gsign", t: gi ? g[1] : g[0], v: gi, a: g[2] }); }
       made++; } }
   // ---- red and white chevron boards on the outside of every hard bend
-  for (let k = 0, run = 0; k < N; k++) { const t0 = tan[wrap(k - 4)], t1 = tan[wrap(k + 4)], turn = t0[0] * t1[1] - t0[1] * t1[0]; if (Math.abs(turn) < 0.16 || inTun(k, 2)) { run = 0; continue; } if (run++ % 7) continue;
+  for (let k = 0, run = 0; k < N; k++) { const t0 = tan[wrap(k - 4)], t1 = tan[wrap(k + 4)], turn = t0[0] * t1[1] - t0[1] * t1[0]; if (Math.abs(turn) < 0.16 || inTun(k, 2) || inBr(k, 3)) { run = 0; continue; } if (run++ % 7) continue;
     const s2 = turn > 0 ? -1 : 1, a = at(k, s2 * (WALL + 0.34)), b = at(k + 2, s2 * (WALL + 0.34)), p = s2 > 0 ? b : a, q = s2 > 0 ? a : b;
     B.decal("glow", [p[0], 1.15, p[1]], [q[0] - p[0], 0, q[1] - p[1]], [0, 1.0, 0], 30, { k: "chev", v: s2 > 0 ? 1 : 0 }); }
+  // ---- rubber on the road: dark braking marks into every hard bend, a few manhole covers, the circuit's name on the grid
+  { let prev = -99; for (let k = 0; k < N; k++) { const t0 = tan[wrap(k + 6)], t1 = tan[wrap(k + 14)], turn = t0[0] * t1[1] - t0[1] * t1[0]; if (Math.abs(turn) < 0.2 || k - prev < 30 || inTun(k, 4) || inBr(k, 6) || (R.ramps || []).some(r => Math.abs(((k - r.c + N * 1.5) % N) - N / 2) < r.L + 6)) continue; prev = k;
+      for (const [lat, v] of [[turn > 0 ? 3.2 : -3.2, 0], [turn > 0 ? -1.4 : 1.4, 1 + (k & 1)]]) { const a = at(k, lat - 1.3), b = at(k, lat + 1.3), c2 = at(k + 9, lat - 1.3); B.decal("decal", [a[0], 0.025, a[1]], [b[0] - a[0], 0, b[1] - a[1]], [c2[0] - a[0], 0, c2[1] - a[1]], 14, { k: "tyre", v }); } }
+    for (let k = 17; k < N; k += 61) { if (inTun(k, 2) || inBr(k, 3) || (R.ramps || []).some(r => Math.abs(((k - r.c + N * 1.5) % N) - N / 2) < r.L + 3)) continue; const lat = (k & 2 ? 1 : -1) * (2.5 + (k % 3)), a = at(k, lat - 0.45), b = at(k, lat + 0.45), t = tan[wrap(k)];
+      B.decal("decal", [a[0], 0.026, a[1]], [b[0] - a[0], 0, b[1] - a[1]], [t[0] * 0.9, 0, t[1] * 0.9], 60, { k: "manhole" }); } }
+  // ---- an elevated expressway crosses over the circuit once: a concrete deck on pairs of piers, lit underneath
+  const obox = (key, c0, u, hu, hv, y0, y1, o) => { // box turned to the direction u (unit, horizontal): hu along u, hv across
+    const v = [-u[1], u[0]], P = (a, b) => [c0[0] + u[0] * a + v[0] * b, c0[1] + u[1] * a + v[1] * b], s0 = sc(key), F = [[[-hu, -hv], [hu, -hv]], [[hu, -hv], [hu, hv]], [[hu, hv], [-hu, hv]], [[-hu, hv], [-hu, -hv]]];
+    for (const [A0, B0] of F) { const A = P(A0[0], A0[1]), Bq = P(B0[0], B0[1]), L = Math.hypot(Bq[0] - A[0], Bq[1] - A[1]), nx = -(Bq[1] - A[1]) / L, nz = (Bq[0] - A[0]) / L;
+      mesh(key, [A[0], y0, A[1], nx, 0, nz, 0, y0 / s0, Bq[0], y0, Bq[1], nx, 0, nz, L / s0, y0 / s0, A[0], y1, A[1], nx, 0, nz, 0, y1 / s0, Bq[0], y1, Bq[1], nx, 0, nz, L / s0, y1 / s0], [0, 2, 1, 1, 2, 3], { gs: 3 }); }
+    for (const [y, ny] of [[y1, 1], [y0, -1]]) { if (o && o.noBot && ny < 0) continue; const A = P(-hu, -hv), Bq = P(hu, -hv), C = P(-hu, hv), D = P(hu, hv);
+      mesh(key, [A[0], y, A[1], 0, ny, 0, -hu / s0, -hv / s0, Bq[0], y, Bq[1], 0, ny, 0, hu / s0, -hv / s0, C[0], y, C[1], 0, ny, 0, -hu / s0, hv / s0, D[0], y, D[1], 0, ny, 0, hu / s0, hv / s0], ny > 0 ? [0, 2, 1, 1, 2, 3] : [0, 1, 2, 1, 3, 2], { gs: 3 }); }
+    if (!(o && o.occ === false)) { const xs = [], zs = []; for (const [a, b] of [[-hu, -hv], [hu, -hv], [-hu, hv], [hu, hv]]) { const q = P(a, b); xs.push(q[0]); zs.push(q[1]); } if (hu < 4 && hv < 4) B.occ(Math.min(...xs), y0, Math.min(...zs), Math.max(...xs), y1, Math.max(...zs), [0.45, 0.45, 0.44]); } };
+  if (M.tid !== "bridge") { let hk = -1; for (const f of [0.53, 0.8, 0.24, 0.35, 0.68, 0.9, 0.12, 0.45, 0.6]) { const k = Math.round(N * f); if (inTun(k, 30) || inBr(k, 45) || R.curv[k] > 0.16 || (R.ramps || []).some(r => Math.abs(((k - r.c + N * 1.5) % N) - N / 2) < 40)) continue; hk = k; break; }
+    if (hk >= 0) { W.hwy = hk; const t = tan[hk], ang = 0.35, u = [-t[1] * Math.cos(ang) + t[0] * Math.sin(ang), t[0] * Math.cos(ang) + t[1] * Math.sin(ang)], c0 = pts[hk], Y0 = 8.6, Y1 = 9.7, HWD = 6, LEN = 95, SEG = 4;
+      // the deck in short pieces (each one a shadow caster for the baker), the parapets, and piers clear of the circuit
+      for (let a = -LEN; a < LEN; a += SEG) { const cc = [c0[0] + u[0] * (a + SEG / 2), c0[1] + u[1] * (a + SEG / 2)]; obox("rc_hwy", cc, u, SEG / 2, HWD, Y0, Y1); for (const sd of [-1, 1]) obox("rc_barrier", [cc[0] - u[1] * sd * (HWD - 0.2), cc[1] + u[0] * sd * (HWD - 0.2)], u, SEG / 2, 0.2, Y1, Y1 + 1.0, { occ: false });
+        taken.push({ x0: cc[0] - 8, x1: cc[0] + 8, z0: cc[1] - 8, z1: cc[1] + 8 }); }
+      for (let a = -LEN + 6; a < LEN; a += 19) { const cc = [c0[0] + u[0] * a, c0[1] + u[1] * a]; if (near(cc[0], cc[1])[0] < WALL + 2.5) continue; for (const sd of [-1, 1]) obox("rc_hwy", [cc[0] - u[1] * sd * 3.6, cc[1] + u[0] * sd * 3.6], u, 0.7, 0.7, 0, Y0); obox("rc_hwy", cc, u, 0.9, HWD - 0.3, Y0 - 1.0, Y0); }
+      // lamps under the deck over the circuit, and the road's name on both faces
+      for (const a of [-6, 0, 6]) { const cc = [c0[0] + u[0] * a, c0[1] + u[1] * a]; for (const sd of [-1, 1]) { const q = [cc[0] - u[1] * sd * 3, cc[1] + u[0] * sd * 3]; box(lampA, q[0] - 0.5, Y0 - 0.06, q[1] - 0.5, q[0] + 0.5, Y0 - 0.02, q[1] + 0.5, { f: NY, occ: false }); rectLight([q[0], Y0 - 0.1, q[1]], [0.5, 0, 0], [0, 0, 0.5], [0, -1, 0], mul(SK.lamp, SK.lampL * 0.12), { range: 22 }); } }
+      for (const sd of [-1, 1]) { const v = [-u[1] * sd, u[0] * sd], base = [c0[0] + v[0] * (HWD + 0.05), c0[1] + v[1] * (HWD + 0.05)], A = [base[0] - u[0] * 9 * sd, base[1] - u[1] * 9 * sd], Bq = [base[0] + u[0] * 9 * sd, base[1] + u[1] * 9 * sd];
+        B.decal("glowHi", [A[0], Y0 + 0.05, A[1]], [Bq[0] - A[0], 0, Bq[1] - A[1]], [0, 1.6, 0], 26, { k: "banner", t: "NETEAM EXPRESSWAY" }); } } }
   // ---- city blocks outside the loop, a few low pavilions and many trees inside
   const harbor = M.tid === "harbor", SIGNS = ["OPEN 24H", "DINER", "HOTEL", "NOODLES", "ARCADE", "CLOUD BAR", "PIXEL", "RAMEN", "TAXI", "KARAOKE"];
   let signN = 0;
@@ -183,6 +238,12 @@ NXW.themes.race = (B, M, env) => {
     box(m, x - w, 0, z - dp, x + w, h, z + dp, { f: ALL & ~NY & ~PY, seg: Math.max(3, h / 7), occ: inGrid });
     box("trimBlack", x - w - 0.2, h, z - dp - 0.2, x + w + 0.2, h + 0.7, z + dp + 0.2, { f: ALL & ~NY, occ: false, seg: 6 });
     if (q[3] < 0.5 && !inn) box("trimBlack", x - w * 0.4, h + 0.7, z - dp * 0.4, x + w * 0.4, h + 0.7 + 2 + q[0] * 4, z + dp * 0.4, { f: ALL & ~NY, occ: false, seg: 6 });
+    // the New York roof: a timber water tank on steel legs, or a cluster of air-conditioning units
+    else if (!inn && h < 70 && d < 85) { const rx = x + (q[1] - 0.5) * w * 0.8, rz = z + (q[2] - 0.5) * dp * 0.8, y = h + 0.7;
+      if (q[0] < 0.55) { for (const [ox, oz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) tube("trimBlack", rx + ox * 1.1, y, rz + oz * 1.1, rx + ox * 1.05, y + 2.6, rz + oz * 1.05, 0.08, 4, {});
+        box("trimBlack", rx - 1.6, y + 2.5, rz - 1.6, rx + 1.6, y + 2.7, rz + 1.6, { f: ALL, occ: false }); cyl("rc_tank", rx, y + 2.7, rz, 1.55, 3.3, 12, { occ: false }); cyl("trimBlack", rx, y + 6.0, rz, 1.65, 1.1, 12, { r1: 0.12, occ: false });
+        for (const yy of [3.4, 4.6, 5.7]) cyl("trimBlack", rx, y + yy, rz, 1.58, 0.07, 12, { occ: false, cap: false }); }
+      else for (let j = 0; j < 3; j++) box("trimSteel", rx - 1 + j * 1.3 - 0.5, y, rz - 0.6, rx - 1 + j * 1.3 + 0.5, y + 1.1, rz + 0.6, { f: ALL & ~NY, occ: false }); }
     // a lit sign on the side that faces the road, on the nearer blocks
     if (!inn && d < 52 && q[3] < (night ? 0.95 : 0.5)) { const p = pts[bi], ax = Math.abs(p[0] - x) > Math.abs(p[1] - z), sg = ax ? Math.sign(p[0] - x) : Math.sign(p[1] - z), y = 5 + q[0] * 7, sw = Math.min(8, (ax ? dp : w) * 1.5), txt = SIGNS[signN++ % SIGNS.length];
       if (ax) B.decal("glowHi", [x + sg * (w + 0.12), y, z + sg * sw / 2], [0, 0, -sg * sw], [0, sw * 0.3, 0], 26, { k: "sign", t: txt, sub: "NETEAM CITY", col: signN % 4 });

@@ -23,6 +23,7 @@ function rcSetTrack(id) {
   RC_PADS = [[0.08, 0], [0.2, -4], [0.36, 4], [0.5, 0], [0.64, -4], [0.8, 3], [0.92, -3]].map(([f, l]) => [Math.round(f * RC.N), l]);
   // a pad never sits on a jump: it moves to the run-up instead (boost into the ramp, fly further)
   RC_PADS.forEach(pd => { for (const r of RC.ramps) { const d = rcWrap(pd[0] - r.c); if (d > -r.L - 12 && d < 30) { pd[0] = (r.c - r.L - 14 + RC.N) % RC.N; pd[1] = 0; } } });
+  if (RC.bridge) RC_PADS.forEach(pd => { const d = rcWrap(pd[0] - RC.bridge.c); if (d > -RC.bridge.cw - 14 && d < RC.bridge.cw + 6) { pd[0] = (RC.bridge.c - RC.bridge.cw - 16 + RC.N) % RC.N; pd[1] = 0; } });
   RC_BOXES = [0.14, 0.43, 0.72].flatMap(f => [-5, -1.7, 1.7, 5].map(l => [Math.round(f * RC.N), l]));
 }
 function rcBuild(P, TD) {
@@ -86,16 +87,52 @@ function rcFeatures(R, TD) {
   if (TD.tunnel !== 0) for (let k = 0; k < N && !tun; k++) { const a = wrap(Math.round(N * (TD.tunnel || 0.47)) + (k >> 1) * (k & 1 ? 1 : -1)), b = a + TL;
     if (a < 40 || b > N - 30) continue; if (ramps.some(r => r.c + 30 > a - 10 && r.c - r.L - 10 < b + 6)) continue; tun = [a, b]; }
   R.tunnel = tun;
+  // the drawbridge: two steel leaves over a canal that tilt up on a timer and turn the crossing into a jump.
+  // { c: centre sample (where the leaves meet), cw: leaf length in samples (hinges at c - cw and c + cw), nx/nz: canal direction }
+  let br = null;
+  if (TD.bridge !== 0) {
+    const tun2 = tun || [-999, -999], ok = (c) => c > 50 && c < N - 40 && clear(c) && ramps.every(r => { const d = ((c - r.c + N * 1.5) % N) - N / 2; return d > 32 || d < -r.L - 30; })
+      && !(c + 22 > tun2[0] - 12 && c - 22 < tun2[1] + 12);
+    const bend = (c) => { const a = R.tan[wrap(c - 11)], b = R.tan[wrap(c + 11)]; return Math.abs(Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1])); };
+    // the canal must run clear of every other part of the circuit for a good way on both sides
+    const free = (c) => { const p = R.pts[c], t = R.tan[c]; for (const s of [-1, 1]) for (let d = 14; d <= 46; d += 4) { const x = p[0] - t[1] * s * d, z = p[1] + t[0] * s * d; for (let i = 0; i < N; i += 2) { if (Math.abs(((i - c + N * 1.5) % N) - N / 2) < 24) continue; const q = R.pts[i]; if ((q[0] - x) ** 2 + (q[1] - z) ** 2 < 22 * 22) return false; } } return true; };
+    const want = Math.round(N * (TD.bridgeAt || 0.62)), cand = [];
+    for (let c = 50; c < N - 40; c++) { if (!ok(c)) continue; const b = bend(c); if (b < 0.3) cand.push([b * 2 + Math.abs(((c - want + N * 1.5) % N) - N / 2) / N, c]); }
+    cand.sort((a, b) => a[0] - b[0]);
+    for (const [, c] of cand) if (free(c)) { br = { c, cw: RC_BR_CW }; break; }
+  }
+  R.bridge = br;
+  if (br && tun && ((br.c - tun[0] + N) % N) < tun[1] - tun[0] + 40) R.tunnel = null;
+}
+// the client's race clock: runs on its own between host updates (tenths of a second) and is eased onto them
+function rcClock(F, g, dt) { const ht = (g.t || 0) / 10; if (F.clk == null || Math.abs(F.clk - ht) > 0.5) return ht; return F.clk + dt + (ht + 0.05 - F.clk) * Math.min(1, dt * 2); }
+const RC_BR_CW = 7, RC_BR_TAN = 0.3;
+// the canal under the drawbridge, as a rectangle: centre o, track direction t, canal direction n, half width hw (m, across
+// the track), half length E (m, along the canal); in(x, z, pad) says whether a point is over the water
+function rcCanal(R) {
+  const br = R.bridge; if (!br) return null; const o = R.pts[br.c], t = R.tan[br.c], n = [-t[1], t[0]], hw = br.cw * 1.6 - 1.2, E = 46;
+  return { o, t, n, hw, E, in: (x, z, pad) => { pad = pad || 0; const dx = x - o[0], dz = z - o[1]; return Math.abs(dx * t[0] + dz * t[1]) < hw + pad && Math.abs(dx * n[0] + dz * n[1]) < E + pad; } };
+}
+// how far the drawbridge is open (0 = flat road, 1 = fully up) at race time t: down for 9 s, 2 s up, open 7 s, 2 s down
+function rcBridgeLift(t) {
+  if (!(t > 0)) return 0; const ph = (t + 4) % 20, ss = (x) => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+  return ph < 9 ? 0 : ph < 11 ? ss((ph - 9) / 2) : ph < 18 ? 1 : ss((20 - ph) / 2);
 }
 // height of the ground under a point on the road (ramps) and its slope along the road (m per m)
 function rcGround(i, lat, frac) {
-  if (!RC.ramps.length) return RC_G0;
+  RC_G0.br = 0;
+  const br = RC.bridge; if (br) { const d = rcWrap(i - br.c) + (frac || 0); if (d > -br.cw - 0.2 && d < br.cw + 0.2) {
+    const u = rcBridgeLift(RC.clk), tn = u * RC_BR_TAN, L = br.cw * 1.6, cs = 1 / Math.sqrt(1 + tn * tn), tip = L * cs - (u > 0 ? 0.25 : 0), x = (d < 0 ? d + br.cw : br.cw - d) * 1.6;
+    RC_G0.br = 1;
+    if (x > tip) { RC_G0.h = -9; RC_G0.sl = 0; RC_G0.gap = 1; return RC_G0; }
+    RC_G0.gap = 0; RC_G0.h = Math.max(0, x) * tn; RC_G0.sl = d < 0 ? tn : -tn; return RC_G0; } }
+  if (!RC.ramps.length) { RC_G0.h = 0; RC_G0.sl = 0; return RC_G0; }
   for (const r of RC.ramps) { if (Math.abs(lat) > r.w) continue; const d = rcWrap(i - r.c) + (frac || 0);
     if (d > -r.L && d <= 0) { const f = (d + r.L) / r.L; RC_G0.h = r.H * Math.pow(f, 1.35); RC_G0.sl = r.H * 1.35 * Math.pow(f, 0.35) / (r.L * 1.6); return RC_G0; }
     if (d > 0 && d < 0.6) { RC_G0.h = r.H * (1 - d / 0.6); RC_G0.sl = -r.H / (0.6 * 1.6); return RC_G0; } }
   RC_G0.h = 0; RC_G0.sl = 0; return RC_G0;
 }
-const RC_G0 = { h: 0, sl: 0 };
+const RC_G0 = { h: 0, sl: 0, br: 0, gap: 0 };
 rcSetTrack("manhattan");
 // the track as a world for the NX engine: an open grid of 4 m cells that only carries the baked light
 function rcWorld(id) {
@@ -170,10 +207,14 @@ function rcDrive(c, dt, gas, steer, drift, isBot) {
     c.y = c.y || 0; c.vy = c.vy || 0;
     if (!air && c.y <= gh + 0.35 && gh >= c.y - 0.6) { c.y = gh; c.vy = gr.sl * c.v; }
     else { c.vy -= 21 * dt; c.y += c.vy * dt; c.air = (c.air || 0) + dt;
-      if (c.y <= gh) { const k = clamp(-c.vy / 11, 0, 1); c.y = gh; c.landK = k; c.landEv = (c.landEv || 0) + 1;
+      if (c.y <= gh && gr.br && gh - c.y > 0.8) c.y = -2;   // flew into the end of a bridge leaf: straight into the canal
+      else if (c.y <= gh) { const k = clamp(-c.vy / 11, 0, 1); c.y = gh; c.landK = k; c.landEv = (c.landEv || 0) + 1;
         if (c.air > 0.45 && Math.abs(c.slip || 0) < 0.2 && !(c.spin > 0)) { c.bo = Math.max(c.bo, 0.5 + Math.min(0.6, c.air * 0.5)); c.boEv = (c.boEv || 0) + 1; c.airT = c.air; }
         c.vy = 0; c.air = 0; } }
-    if (!air && c.y > gh + 0.35) c.air = dt; }
+    if (!air && c.y > gh + 0.35) c.air = dt;
+    // in the canal: back on the road just past the bridge, slowly (the splash costs a second or two)
+    if (c.y < -1.4 && RC.bridge) { const k = (RC.bridge.c + RC.bridge.cw + 3) % RC.N, p = rcAt(k, clamp(n2.lat, -6, 6)); c.x = p[0]; c.z = p[1]; c.a = rcHead(k); c.i = k; n2.i = k; n2.lat = clamp(n2.lat, -6, 6);
+      c.v = Math.min(Math.abs(c.v), 12); c.y = 0; c.vy = 0; c.air = 0; c.slip = 0; c.dc = 0; c.splashEv = (c.splashEv || 0) + 1; } }
   // boost pads
   for (const [pi, pl] of RC_PADS) { if (c.air > 0) break; const d = Math.abs(rcWrap(n2.i - pi)); if (d <= 2 && Math.abs(n2.lat - pl) < 2.6 && c.v > 5) { if (!(c.bo > 0.9)) c.boEv = (c.boEv || 0) + 1; c.bo = Math.max(c.bo, 1.3); } }
   c.lat = n2.lat; c.off = Math.abs(n2.lat) > RC_HW + 0.6;
@@ -204,7 +245,7 @@ function rcBump(c, others, mm) {
 
 const race = {
   id: "race", title: "Neteam Grand Prix", tag: "3D street race · six NYC circuits", custom3d: true,
-  blurb: "3 laps through NYC in real cars: jumps, a tunnel, homing missiles, EMPs, coffee spills and drift boosts. Bump your rivals into the wall.",
+  blurb: "3 laps through NYC in real cars: a drawbridge that jumps, ramps, a tunnel, homing missiles, EMPs, coffee spills and drift boosts. Bump your rivals into the wall.",
   how: [],
   keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera", "B look back"],
   rec: { label: "Best lap", better: "min", fmt: v => (v / 1000).toFixed(2) + " s" },
@@ -222,7 +263,7 @@ const race = {
     S.g = { tr, t: -this.GRID, P, place: 0, firstFin: 0, boxes: RC_BOXES.map(() => 0), hz: [], hzN: 0, ev: [], evN: 0, bl: [], blN: 0, bm: [], bmN: 0, sk: [], skN: 0, rk: [], rkN: 0 };
   },
   hostTick(S, dt, inputs) {
-    const g = S.g; g.t += dt;
+    const g = S.g; g.t += dt; RC.clk = g.t;
     if (g.boxes) g.boxes.forEach((b, k) => { if (b > 0) g.boxes[k] = b - dt; });
     const go = g.t >= 0;
     g.P.forEach((p, i) => {
@@ -607,7 +648,9 @@ const race = {
     // slipstream: tucked in behind another car you gain on it
     { let tow = 0; const sa = Math.sin(c.a), ca = Math.cos(c.a); if (c.v > 24 && go) Object.keys(F.remote).forEach(k => { if (+k === me) return; const o = F.remote[k], dx = o.x - c.x, dz = o.z - c.z, fw = dx * sa + dz * ca; if (fw > 3 && fw < 22 && Math.abs(dx * ca - dz * sa) < 2.2) tow = Math.max(tow, 1 - (fw - 3) / 19); });
       c.tow = lerp(c.tow || 0, tow, 1 - Math.exp(-dt * (tow > (c.tow || 0) ? 1.6 : 4))); }
+    RC.clk = F.clk = rcClock(F, g, dt);
     rcDrive(c, dt, gas, steer, F.drift, false);
+    if ((c.splashEv || 0) !== (F.splashSeen || 0)) { F.splashSeen = c.splashEv; F.shake = 0.5; SFX.samp("thud1", 0.6, 0, 0.5, 0, 0, 0.3); SFX.whoosh(0.8, 0, 0.6); F.splashFx = 1.2; F.toast = { s: "SPLASH!", sub: "the bridge was up", life: 1.4, col: "#4cc9f0" }; }
     if ((c.landEv || 0) !== (F.landSeen || 0)) { F.landSeen = c.landEv; const k = c.landK || 0; F.shake = Math.max(F.shake || 0, 0.15 + k * 0.5); SFX.samp("thud1", 0.25 + k * 0.5, 0, 0.8, 0, 0, 0.3); if (k > 0.45) { SFX.samp("car-crash1", 0.2 + k * 0.25, 0, 1.2, 0, 0, 0.3); this.sparks(V, c.x, c.z, 0xffc27a, 10); }
       if (c.airT > 0.45) { F.toast = { s: c.airT > 0.9 ? "BIG AIR!" : "AIR TIME", sub: c.airT.toFixed(1) + " s · boost", life: 1.2, col: "#4cc9f0" }; c.airT = 0; } }
     if ((c.boEv || 0) !== ev) { SFX.whoosh(0.9, 0, 1); SFX.tone(110, 0.35, "sine", 0.12, 90); F.shake = 0.25; }
@@ -802,8 +845,72 @@ const race = {
     F.crowdC = { x: (C.x0 + C.x1) / 2, z: C.rows[2][0] };
   },
   // ---- everything that moves: cars, pickups, spills, effects
+  // ---- the drawbridge: two steel leaves that tilt about their hinges (rcGround has the same shape), the canal water under
+  // them, and warning lights on the gantries that flash before and while the bridge is up. A handful of draws in all.
+  buildBridge(V, scene) {
+    const F = V.fps, T = THREE, br = RC.bridge; if (!br) return;
+    const CAN = rcCanal(RC), WL = RC_WALL + 0.9, Lm = br.cw * 1.6, N = RC.N;
+    const atF = (f, lat) => { const i = Math.floor(f), u = f - i, a = rcAt(((i % N) + N) % N, lat), b = rcAt((((i + 1) % N) + N) % N, lat); return [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]; };
+    // deck: a steel road deck with the lane paint carried across and yellow and black hazard bars at the tip
+    const deckTex = GFX.tex(256, 512, (x, w, h) => {
+      x.fillStyle = "#3b3f45"; x.fillRect(0, 0, w, h);
+      for (let k = 0; k < 2600; k++) { const v = 40 + Math.random() * 40 | 0; x.fillStyle = `rgba(${v},${v + 2},${v + 6},.5)`; x.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+      const U = (lat) => (0.5 + lat / (2 * WL)) * w; x.fillStyle = "#5a6068"; x.fillRect(0, 0, U(-RC_HW - 0.6), h); x.fillRect(U(RC_HW + 0.6), 0, w, h);
+      x.strokeStyle = "rgba(20,22,26,.8)"; x.lineWidth = 2; for (let y = 24; y < h; y += 46) { x.beginPath(); x.moveTo(0, y); x.lineTo(w, y); x.stroke(); }
+      x.fillStyle = "#e9e6dc"; for (const l of [-RC_HW + 0.5, RC_HW - 0.5]) x.fillRect(U(l) - 2, 0, 4, h);
+      x.fillStyle = "#e9b524"; for (const l of [-0.22, 0.22]) x.fillRect(U(l) - 2, 0, 4, h);
+      x.fillStyle = "#e9e6dc"; for (const l of [-RC_HW / 2, RC_HW / 2]) for (let y = 30; y < h - 40; y += 90) x.fillRect(U(l) - 2, y, 4, 44);
+      // (the canvas is flipped onto the deck: its top row is the tip, its bottom row the hinge)
+      const T2 = 34; x.fillStyle = "#e9b524"; x.fillRect(0, 0, w, T2); x.fillStyle = "#15171a"; for (let i = -2; i < w / 16 + 2; i += 2) { x.beginPath(); x.moveTo(i * 16, 0); x.lineTo(i * 16 + 16, 0); x.lineTo(i * 16 + 16 + T2, T2); x.lineTo(i * 16 + T2, T2); x.closePath(); x.fill(); }
+      x.fillStyle = "#23262b"; x.fillRect(0, h - 10, w, 10); });
+    deckTex.wrapS = deckTex.wrapT = T.ClampToEdgeWrapping;
+    // sides: a riveted girder below the deck and an open railing above it (cut out by the alpha test)
+    const sideTex = GFX.tex(256, 128, (x, w, h) => { x.clearRect(0, 0, w, h); const mid = h * 0.5;
+      x.fillStyle = "#24547a"; x.fillRect(0, mid, w, h - mid); x.fillStyle = "#1a3e5c"; x.fillRect(0, mid, w, 8); x.fillRect(0, h - 10, w, 10);
+      x.fillStyle = "#8fb2cc"; for (let i = 8; i < w; i += 16) { x.beginPath(); x.arc(i, mid + 14, 2.2, 0, 7); x.fill(); x.beginPath(); x.arc(i, h - 16, 2.2, 0, 7); x.fill(); }
+      x.fillStyle = "#c9ced6"; x.fillRect(0, 4, w, 7); x.fillRect(0, mid * 0.52, w, 4); for (let i = 0; i < w; i += 32) x.fillRect(i, 4, 5, mid - 4); });
+    const steel = new T.MeshStandardMaterial({ color: 0x31475c, roughness: 0.55, metalness: 0.6 });
+    const deckM = new T.MeshStandardMaterial({ map: deckTex, roughness: 0.7, metalness: 0.35 }), sideM = new T.MeshStandardMaterial({ map: sideTex, roughness: 0.5, metalness: 0.5, alphaTest: 0.5, side: T.DoubleSide });
+    // every vertex remembers its hinge point, its direction away from the hinge, its distance along the leaf and its height
+    // off the deck: the lift is a rotation of (distance, height) about the hinge
+    const leaf = (dir) => { const rows = br.cw * 2, P = { deck: [], side: [], tip: [] };
+      const add = (arr, lat, x, yb, u, v) => { const hp = atF(br.c - dir * br.cw, lat), q = atF(br.c - dir * br.cw + dir * x / 1.6, lat), dx = q[0] - hp[0], dz = q[1] - hp[1], l = Math.hypot(dx, dz) || 1; arr.push({ hx: hp[0], hz: hp[1], dx: x > 0 ? dx / l : 0, dz: x > 0 ? dz / l : 0, x, yb, u, v }); };
+      for (let r = 0; r <= rows; r++) { const x = r / rows * Lm; add(P.deck, -WL, x, 0.03, 0, x / Lm); add(P.deck, WL, x, 0.03, 1, x / Lm);
+        for (const sd of [-1, 1]) { add(P.side, sd * WL, x, -1.2, x / 4, 0); add(P.side, sd * WL, x, 1.1, x / 4, 1); } }
+      add(P.tip, -WL, Lm, -1.2, 0, 0); add(P.tip, WL, Lm, -1.2, 1, 0); add(P.tip, -WL, Lm, 0.03, 0, 0.2); add(P.tip, WL, Lm, 0.03, 1, 0.2);
+      const mk = (pts, idx, mat) => { const g = new T.BufferGeometry(), pos = new Float32Array(pts.length * 3), uv = new Float32Array(pts.length * 2); pts.forEach((p, k) => { uv[k * 2] = p.u; uv[k * 2 + 1] = p.v; });
+        g.setAttribute("position", new T.BufferAttribute(pos, 3)); g.setAttribute("uv", new T.BufferAttribute(uv, 2)); g.setIndex(idx); const m = new T.Mesh(g, mat); m.frustumCulled = false; m.userData.pts = pts; scene.add(m); return m; };
+      const di = [], si = []; for (let r = 0; r < rows; r++) { const a = r * 2; if (dir > 0) di.push(a, a + 1, a + 2, a + 1, a + 3, a + 2); else di.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+        for (let sd = 0; sd < 2; sd++) { const b = r * 4 + sd * 2; si.push(b, b + 4, b + 1, b + 1, b + 4, b + 5); } }
+      return [mk(P.deck, di, deckM), mk(P.side, si, sideM), mk(P.tip, [0, 1, 2, 1, 3, 2, 0, 2, 1, 1, 2, 3], steel)]; };
+    // the water: a dark green-grey canal with a slow ripple
+    const rip = GFX.tex(256, 256, (x, w, h) => { const im = x.createImageData(w, h), d = im.data; for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) { const a = Math.sin(i / w * 6.283 * 3 + Math.sin(j / h * 6.283 * 2) * 1.3), b = Math.sin(j / h * 6.283 * 4 + Math.sin(i / w * 6.283) * 2.1), k = (j * w + i) * 4;
+      d[k] = 128 + a * 34; d[k + 1] = 128 + b * 34; d[k + 2] = 255; d[k + 3] = 255; } x.putImageData(im, 0, 0); });
+    rip.colorSpace = T.NoColorSpace; rip.repeat.set(5, 22);
+    const waterM = new T.MeshStandardMaterial({ color: 0x1f3a40, roughness: 0.12, metalness: 0.15, normalMap: rip, normalScale: new T.Vector2(0.16, 0.16) });
+    const wg = new T.PlaneGeometry(CAN.hw * 2 + 0.2, CAN.E * 2 + 0.2); wg.rotateX(-Math.PI / 2); const water = new T.Mesh(wg, waterM);
+    water.position.set(CAN.o[0], -2.5, CAN.o[1]); water.rotation.y = Math.atan2(-CAN.t[1], CAN.t[0]); water.userData.noShadow = 1; scene.add(water);
+    // warning lights on the gantries (red, both sides, both ends)
+    const lm = new T.SpriteMaterial({ map: GFX.glowTex(), color: 0xff2a1a, transparent: true, blending: T.AdditiveBlending, depthWrite: false }), lights = [];
+    for (const k of [br.c - br.cw - 2, br.c + br.cw + 2]) for (const sd of [-1, 1]) { const p = rcAt(((k % N) + N) % N, sd * (RC_WALL + 1.8)), sp = new T.Sprite(lm); sp.scale.set(2.6, 2.6, 1); sp.position.set(p[0], 8.2 + 2.95, p[1]); scene.add(sp); lights.push(sp); }
+    F.bridge = { leaves: [leaf(1), leaf(-1)], u: -1, water, waterM, lm, lights, bell: 0 };
+  },
+  bridgeTick(V, dt, t) {
+    const F = V.fps, B = F.bridge; if (!B) return;
+    const clk = F.clk || 0, u = rcBridgeLift(clk), ph = clk > 0 ? (clk + 4) % 20 : 0, warn = clk > 0 && (u > 0 || (ph > 7 && ph < 9));
+    B.waterM.normalMap.offset.set(t * 0.012, t * 0.03);
+    B.lm.opacity = warn ? (Math.sin(t * 9) > 0 ? 1 : 0.15) : 0.12; B.lights.forEach(l => { l.visible = B.lm.opacity > 0.13; });
+    // the bell rings while the bridge moves, for anyone near it
+    if (warn && F.me) { const p = rcAt(RC.bridge.c, 0), d = Math.hypot(F.me.x - p[0], F.me.z - p[1]); B.bell -= dt; if (B.bell <= 0 && d < 140 && (u < 1 || ph < 11.4)) { B.bell = 0.55; SFX.tone(1180, 0.22, "triangle", 0.09 * (1 - d / 140), 1150); } }
+    if (Math.abs(u - B.u) < 1e-4) return; B.u = u;
+    const tn = u * RC_BR_TAN, cs = 1 / Math.sqrt(1 + tn * tn), sn = tn * cs;
+    for (const L of B.leaves) for (const m of L) { const pts = m.userData.pts, a = m.geometry.attributes.position.array;
+      for (let k = 0; k < pts.length; k++) { const p = pts[k], hor = p.x * cs - p.yb * sn; a[k * 3] = p.hx + p.dx * hor; a[k * 3 + 1] = p.x * sn + p.yb * cs; a[k * 3 + 2] = p.hz + p.dz * hor; }
+      m.geometry.attributes.position.needsUpdate = true; m.geometry.computeVertexNormals(); }
+  },
   buildDyn(V, scene) {
     const F = V.fps, T = THREE, m4 = new T.Matrix4();
+    this.buildBridge(V, scene);
     // cars: see 09b-cars.js. Your character drives from the open cockpit.
     // headlight pool on the road: two soft lobes that merge and fade with distance (no hard edge anywhere), dimmer by day
     const beamTex = GFX.tex(64, 128, (x, w, h) => { const im = x.createImageData(w, h), d = im.data;
@@ -930,6 +1037,7 @@ const race = {
     });
     if (F.inst) { const I = F.inst; F.cars.forEach((car, i) => { car.grp.updateWorldMatrix(false, true); car.wheels.forEach((wh) => wh.slots.forEach(([m, j]) => m.setMatrixAt(j, wh.w.matrixWorld))); I.beam.setMatrixAt(i, car.inst[0].matrixWorld); I.glow.setMatrixAt(i, car.inst[1].matrixWorld); I.shad.setMatrixAt(i, car.inst[2].matrixWorld); });
       F.wheelIM.forEach(m => { m.instanceMatrix.needsUpdate = true; }); I.beam.instanceMatrix.needsUpdate = I.glow.instanceMatrix.needsUpdate = I.shad.instanceMatrix.needsUpdate = true; }
+    this.bridgeTick(V, dt, t);
     // pickups, spills and item effects
     { const C = F.crate, M = new T.Matrix4(); C.pos.forEach((p, k) => { const on = !g.bx || !!g.bx[k];
         if (C.was[k] && !on) { this.sparks(V, p[0], p[1], 0xffa04a, GFX.lowEnd() ? 8 : 18); const dme = F.me ? Math.hypot(p[0] - F.me.x, p[1] - F.me.z) : 99; if (dme > 4 && dme < 40) SFX.samp("pickup", 0.2 * (1 - dme / 40), 0, 1.1, 0, 0, 0.3); }
