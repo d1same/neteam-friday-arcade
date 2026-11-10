@@ -102,6 +102,36 @@ const OPS_MAPS = {
     "#11..^....##....^..11#",
     "######################",
   ] },
+  // Laser Arena only: two tower roofs high over the city with nothing between them. v = open air (fall in and you are out),
+  // ^ = booster that throws you across: jumps [pad x, pad z, landing x, landing z]
+  sky: { n: "Uplink", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["", ""], spawns: ["", ""],
+    jumps: [[9, 4, 16, 4], [14, 5, 7, 5], [9, 11, 16, 11], [14, 12, 7, 12], [9, 18, 16, 18], [14, 19, 7, 19]],
+    rows: [
+    "##########vvvv##########",
+    "#11.......vvvv11.....###",
+    "#11.......vvvv.........#",
+    "#....##...vvvv..1....2.#",
+    "#....##..^vvvv.......2.#",
+    "#.........vvvv^........#",
+    "#..2....1.vvvv..##.....#",
+    "#..2....1.vvvv..##.....#",
+    "#.........vvvv.........#",
+    "####......vvvv..11..1..#",
+    "####...2..vvvv......1..#",
+    "#......2.^vvvv.........#",
+    "#.........vvvv^.2......#",
+    "#..1......vvvv..2...####",
+    "#..1..11..vvvv......####",
+    "#.........vvvv.........#",
+    "#.....##..vvvv.1....2..#",
+    "#.....##..vvvv.1....2..#",
+    "#........^vvvv.........#",
+    "#.2.......vvvv^..##....#",
+    "#.2....1..vvvv...##....#",
+    "#.........vvvv.......11#",
+    "###.....11vvvv.......11#",
+    "##########vvvv##########",
+  ] },
   roof: { n: "Rooftop", theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
     "########################",
     "#aaaaa...........uuuuuu#",
@@ -133,7 +163,7 @@ const OPS_MAPS = {
 function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq", "sand", "roof"] : ["sand", "roof"]; return pool[Math.floor(Math.random() * pool.length)]; }
 // feet height of whoever is moving, and how high a step they can take onto a box (more with legs tucked mid-air)
 let OPS_FEET = 0, OPS_STEP = 0.35;
-let OPS_ID = "", OPS_M = null, OPS_MAP = [], OG = 0, OPS_CELLS = null, OPS_SITE = null, OPS_PROPS = [], OPS_PALIVE = new Uint8Array(0);
+let OPS_JUMP = {}, OPS_ID = "", OPS_M = null, OPS_MAP = [], OG = 0, OPS_CELLS = null, OPS_SITE = null, OPS_PROPS = [], OPS_PALIVE = new Uint8Array(0);
 // breakable props: 0 hardware crate, 1 old monitor on a cart, 2 Li-ion UPS battery (explodes)
 const OPROP = [{ n: "crate", hp: 45, hx: 0.48, hz: 0.48, h: 0.96 }, { n: "monitor", hp: 25, hx: 0.42, hz: 0.34, h: 1.25 }, { n: "battery", hp: 30, hx: 0.38, hz: 0.38, h: 1.05 }];
 // same layout on every machine: seeded from the map id, placed against walls, never in spawns
@@ -165,8 +195,10 @@ function opsSetMap(id) {
   if (!OPS_MAPS[id]) id = "hq"; if (id === OPS_ID) return;
   OPS_ID = id; OPS_M = OPS_MAPS[id]; OPS_MAP = OPS_M.rows; OG = OPS_MAP.length;
   OPS_CELLS = { r: [], u: [], a: [], b: [], open: [], spawn: [], T: [] };
-  OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (ch !== "#") OPS_CELLS.open.push([x, z]); if (".rubaT".includes(ch)) OPS_CELLS.spawn.push([x, z]); if (OPS_CELLS[ch]) OPS_CELLS[ch].push([x, z]); }));
+  OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (ch !== "#" && ch !== "v") OPS_CELLS.open.push([x, z]); if (".rubaT".includes(ch)) OPS_CELLS.spawn.push([x, z]); if (OPS_CELLS[ch]) OPS_CELLS[ch].push([x, z]); }));
   OPS_PROPS = opsPlaceProps(id); OPS_PALIVE = new Uint8Array(OPS_PROPS.length).fill(1);
+  // boosters that throw you across open air: pad cell -> landing point (world metres)
+  OPS_JUMP = {}; (OPS_M.jumps || []).forEach(([px, pz, tx, tz]) => { OPS_JUMP[pz * OG + px] = [tx * CS + CS / 2, tz * CS + CS / 2, tx, tz]; });
   if (!OPS_CELLS.a.length) { OPS_SITE = [[0, 0], [0, 0]]; return; }
   OPS_SITE = ["a", "b"].map(k => { const c = OPS_CELLS[k]; return [c.reduce((s, q) => s + q[0], 0) / c.length * CS + CS / 2, c.reduce((s, q) => s + q[1], 0) / c.length * CS + CS / 2]; });
 }
@@ -180,8 +212,14 @@ function oBlocked(x, z, r = PR) { return oSolid(x - r, z - r) || oSolid(x + r, z
 const DECK_H = { "1": 1.2, "2": 2.6 };
 function oCellH(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return 0; return DECK_H[OPS_MAP[cz][cx]] || 0; }
 function oHAt(x, z) { return oCellH(Math.floor(x / CS), Math.floor(z / CS)); }
-function oDeckBlocks(x, z, r, feet) { if (!OPS_M || !OPS_M.open) return false; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) if (oHAt(x + a, z + b) > feet + 0.55) return true; return false; }
-function oGround(x, z, r, feet) { let g = oPropTop(x, z, r, feet); for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) { const h = oHAt(x + a, z + b); if (h <= feet + 0.55 && h > g) g = h; } return g; }
+// open air (Uplink): no floor at all. Below roof level the side of the tower is a wall
+const OPS_DEEP = -99;
+function oVoid(x, z) { return !!(OPS_M && OPS_M.sky) && oCh(x, z) === "v"; }
+function oFloorAt(x, z) { return oVoid(x, z) ? OPS_DEEP : oHAt(x, z); }
+function oDeckBlocks(x, z, r, feet) { if (!OPS_M || !OPS_M.open) return false; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) if (oFloorAt(x + a, z + b) > feet + 0.55) return true; return false; }
+function oGround(x, z, r, feet) { let g = oPropTop(x, z, r, feet); if (!g && OPS_M && OPS_M.sky) g = OPS_DEEP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) { const h = oFloorAt(x + a, z + b); if (h <= feet + 0.55 && h > g) g = h; } return g; }
+// bots keep clear of the edge: a step that would put them near open air is not taken
+function oMoveSafe(p, dx, dz) { if (!OPS_M || !OPS_M.sky) return oMove(p, dx, dz); const ox = p.x, oz = p.z; oMove(p, dx, dz); const m = 0.7; if (oVoid(p.x - m, p.z - m) || oVoid(p.x + m, p.z - m) || oVoid(p.x - m, p.z + m) || oVoid(p.x + m, p.z + m)) { p.x = ox; p.z = oz; } }
 // 3D ray vs decks (slab test per deck cell along the way)
 function oRayDecks(o, d, maxT) {
   if (!OPS_M || !OPS_M.open) return maxT; let best = maxT;
@@ -237,8 +275,9 @@ function oPath(sx, sz, tx, tz) {
   const start = sz * OG + sx, goal = tz * OG + tx; if (start === goal) return [];
   const prev = new Int16Array(OG * OG).fill(-1); prev[start] = start; const q = [start];
   for (let h = 0; h < q.length; h++) {
-    const c = q[h]; if (c === goal) break; const x = c % OG, z = (c / OG) | 0;
-    for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + ax, nz = z + az; if (oWall(nx, nz) || oCellH(nx, nz)) continue; const n = nz * OG + nx; if (prev[n] !== -1) continue; prev[n] = c; q.push(n); }
+    const c = q[h]; if (c === goal) break; const x = c % OG, z = (c / OG) | 0, J = OPS_JUMP[c];
+    if (J) { const n = J[3] * OG + J[2]; if (prev[n] === -1) { prev[n] = c; q.push(n); } continue; }
+    for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + ax, nz = z + az; if (oWall(nx, nz) || oCellH(nx, nz) || OPS_MAP[nz][nx] === "v") continue; const n = nz * OG + nx; if (prev[n] !== -1) continue; prev[n] = c; q.push(n); }
   }
   if (prev[goal] === -1) return [];
   const out = []; for (let c = goal; c !== start; c = prev[c]) out.push([c % OG, (c / OG) | 0]); return out.reverse();
@@ -287,16 +326,16 @@ function makeOps(md) {
     tag: team ? "Red Team vs Blue Team · 3D" : troph ? "Jump arena · hold the trophy · 3D" : laser ? "Lasers + grappling hook · 3D" : "Free-for-all shooter · 3D",
     blurb: team ? "Red plants the payload. Blue stops it. First to 7 rounds." : troph ? "Grab the Golden Router and keep it. First to 90 seconds held wins." : laser ? "Every hit kills. Hook, jump and fly. First to 25 wins." : "Everyone for themselves. First to 25 wins.",
     how: [],
-    keys: troph ? ["WASD move", "Space jump (hold to bunny hop)", "Strafe in the air to speed up", "Walk over pads for guns, health, armor", "Rocket at your feet to rocket jump", "Touch the Golden Router to grab it", "4 / G frag"] : laser ? ["WASD move", "Space jump (hold to bunny hop)", "Right-click or F: grappling hook", "Click fire the laser · one hit kills", "Jump pads launch you up"] : team ? ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "E plant / defuse", "B buy"] : ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "B loadout", "Right-click scope / stab"],
+    keys: troph ? ["WASD move", "Space jump (hold to bunny hop)", "Strafe in the air to speed up", "Walk over pads for guns, health, armor", "Rocket at your feet to rocket jump", "Touch the Golden Router to grab it", "4 / G frag"] : laser ? ["WASD move", "Space jump (hold to bunny hop)", "Right-click or F: grappling hook", "Click fire the laser · one hit kills", "Jump pads launch you up", "Uplink: boosters fly you over the gap · falling is out"] : team ? ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "E plant / defuse", "B buy"] : ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "B loadout", "Right-click scope / stab"],
     rec: troph ? { label: "Longest router hold", better: "max", fmt: v => v + "s" } : { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: 300, GOAL: 25, HOLD: 90,
-    mapList() { return Object.keys(OPS_MAPS).filter(id => arena ? OPS_MAPS[id].only === "golden" : !OPS_MAPS[id].only).map(id => ({ id, n: OPS_MAPS[id].n, sub: OPS_MAPS[id].only ? "Jump arena · 2–10" : id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
+    mapList() { return Object.keys(OPS_MAPS).filter(id => arena ? OPS_MAPS[id].only === "golden" || (laser && OPS_MAPS[id].only === "laser") : !OPS_MAPS[id].only).map(id => ({ id, n: OPS_MAPS[id].n, sub: OPS_MAPS[id].sky ? "Sky towers · fall = out · 2–10" : OPS_MAPS[id].only ? "Jump arena · 2–10" : id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
     fill(nHumans) { if (arena) return Math.max(6, Math.min(10, nHumans)); if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
     // ---------------- host ----------------
     hostStart(S) {
-      const n = S.ro.length, mp = arena ? "arena" : S.mapPick && OPS_MAPS[S.mapPick] && !OPS_MAPS[S.mapPick].only ? S.mapPick : opsPickMap(n); opsSetMap(mp);
+      const n = S.ro.length, mp = arena ? (laser && S.mapPick && OPS_MAPS[S.mapPick] && OPS_MAPS[S.mapPick].only ? S.mapPick : "arena") : S.mapPick && OPS_MAPS[S.mapPick] && !OPS_MAPS[S.mapPick].only ? S.mapPick : opsPickMap(n); opsSetMap(mp);
       const P = S.ro.map((r, i) => ({ tm: 0, x: 0, z: 0, a: 0, hp: 100, alive: 1, k: 0, d: 0, hsk: 0, as: 0, dmg: 0, pln: 0, dfs: 0, hb: {}, idle: 0, seen: 0, gone: 0, arm: 0, w: -1, cur: 0, cr: 800, rsq: 0, rx: 0, rz: 0, lastClaim: 0, gr: [0, 0], thSeq: 0, lastHitT: -9, actT: 0, ax: 0, az: 0, rT: 0, jh: 0, hold: 0, rkSeq: 0, rkT: -9, kb: 0, kbs: 0, pk: 0, hasTr: 0, bs: 0, shot: null,
         bot: r.b ? { path: [], pT: 0, fT: 0.5, tgt: -1, react: 0, strafe: 1, sT: 0, boss: !!r.boss, goal: null, gT: 0 } : null }));
       if (team) {
@@ -448,7 +487,7 @@ function makeOps(md) {
       const others = g.P.filter((q, j) => j !== i && q.alive);
       let best = null, bs = -1;
       for (let k = 0; k < 24; k++) { const c = cellC(OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]); const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
-      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.hb = {}; p.jh = 0; p.hasTr = 0;
+      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
       if (troph) { p.w = -1; p.pw = 0; p.cur = 0; p.gr = [1, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (laser) { p.w = LASER; p.pw = 0; p.cur = LASER; p.gr = [0, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.cur = p.w = [1, 2, 2, 3, 5, 7, 8, 9][rint(0, 7)]; p.pw = Math.random() < 0.5 ? 6 : 0; }
@@ -509,7 +548,9 @@ function makeOps(md) {
         const inp = inputs[i]; if (!inp) return;
         if (Number.isFinite(inp.x) && Number.isFinite(inp.z) && inp.q === p.rsq && !(team && g.ph === "buy" && Math.hypot(inp.x - p.rx, inp.z - p.rz) > 1.5)) { p.x = clamp(inp.x, 0, OG * CS); p.z = clamp(inp.z, 0, OG * CS); p.a = +inp.a || 0; }
         if (Number.isInteger(inp.w) && OW[inp.w] && this.owns(S, p, inp.w)) p.cur = inp.w;
-        p.jh = clamp(+inp.jh || 0, 0, 40);
+        p.jh = clamp(+inp.jh || 0, OPS_M.sky ? -60 : 0, 40);
+        // fell into the open air between the towers: out
+        if (OPS_M.sky && p.jh < -7) { this.damage(S, i, i, -5, false, 999); return; }
         if (Array.isArray(inp.rk) && inp.rk[0] !== p.rkSeq) { p.rkSeq = inp.rk[0]; if (this.owns(S, p, ROCKET) && g.t - p.rkT > 0.6) { p.rkT = g.t; this.hostRocket(S, i, [p.x, +inp.rk[2] || 1.5, p.z], [+inp.rk[4] || 0, +inp.rk[5] || 0, +inp.rk[6] || 0]); } }
         if (Array.isArray(inp.th) && inp.th[0] !== p.thSeq) { p.thSeq = inp.th[0]; const k = inp.th[1] === 1 ? 1 : 0; if (p.gr[k] > 0 && (!team || g.ph === "live")) { p.gr[k]--; this.hostThrow(S, i, k, +inp.th[2] || p.a, clamp(+inp.th[3] || 0, -1.4, 1.4), inp.th[4] ? 1 : 0); } }
         // shop
@@ -573,6 +614,9 @@ function makeOps(md) {
     botTick(S, i, dt) {
       const g = S.g, p = g.P[i], b = p.bot;
       if (team && g.ph !== "live") return;
+      // riding a booster arc across the open air
+      if (b.fly) { const f = b.fly; f.t += dt; const k = Math.min(1, f.t / f.T); p.x = f.x0 + (f.x1 - f.x0) * k; p.z = f.z0 + (f.z1 - f.z0) * k; p.jh = Math.max(0, f.vy * f.t - 8.5 * f.t * f.t); if (k >= 1) { p.jh = 0; b.fly = null; b.path = []; b.pT = 0; } return; }
+      if (OPS_M.sky) { const J = OPS_JUMP[Math.floor(p.z / CS) * OG + Math.floor(p.x / CS)]; if (J) { const T = clamp(Math.hypot(J[0] - p.x, J[1] - p.z) / 15, 0.9, 2.6); b.fly = { t: 0, T, x0: p.x, z0: p.z, x1: J[0], z1: J[1], vy: 8.5 * T }; p.a = Math.atan2(J[0] - p.x, J[1] - p.z); return; } }
       const W0 = OW[p.cur] || OW[0];
       let tgt = -1, td = 1e9;
       // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
@@ -596,10 +640,10 @@ function makeOps(md) {
         const moving = !OW[p.cur].scope;
         // close the gap when the gun is out of its range, give ground when someone is in their face
         const adv = W0.melee ? 0 : td > Math.min(20, W0.range * 0.45) ? 0.5 : td < 3.2 && !W0.pel ? -0.45 : 0;
-        if (moving) oMove(p, (sx * 0.6 + Math.sin(p.a) * adv) * speed * dt, (sz * 0.6 + Math.cos(p.a) * adv) * speed * dt);
+        if (moving) oMoveSafe(p, (sx * 0.6 + Math.sin(p.a) * adv) * speed * dt, (sz * 0.6 + Math.cos(p.a) * adv) * speed * dt);
         b.ls = [q.x, q.z];
         if (b.amW !== p.cur) { b.amW = p.cur; b.am = W0.mag; b.bn = 0; }
-        if (W0.melee && td > 2.2) { const s2 = speed * dt, dx = q.x - p.x, dz = q.z - p.z; oMove(p, dx / td * s2, dz / td * s2); return; }
+        if (W0.melee && td > 2.2) { const s2 = speed * dt, dx = q.x - p.x, dz = q.z - p.z; oMoveSafe(p, dx / td * s2, dz / td * s2); return; }
         if (W0.rocket && b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.2) {
           b.fT = W0.rate * 1.6 + Math.random() * 0.6; const ty = (q.jh || 0) + 0.4, err = (Math.random() - 0.5) * 0.12, ang = p.a + err;
           this.hostRocket(S, i, [p.x, 1.4, p.z], [Math.sin(ang) * td, ty - 1.4, Math.cos(ang) * td]); p.shot = [++p.bs, +q.x.toFixed(2), 1, +q.z.toFixed(2), p.cur]; return;
@@ -634,9 +678,9 @@ function makeOps(md) {
           else { const wp = g.wp.filter(w => !w.rt && !w.y && typeof w.it === "number"); b.goal = p.w < 0 && wp.length ? (w => [Math.floor(w.x / CS), Math.floor(w.z / CS)])(wp[rint(0, wp.length - 1)]) : sp[rint(0, sp.length - 1)]; }
         }
         goal = b.goal;
-        if (b.pick && !b.pick.rt && Math.floor(p.x / CS) === Math.floor(b.pick.x / CS) && Math.floor(p.z / CS) === Math.floor(b.pick.z / CS)) { const dx = b.pick.x - p.x, dz = b.pick.z - p.z, d = Math.hypot(dx, dz) || 1; oMove(p, dx / d * speed * dt, dz / d * speed * dt); }
+        if (b.pick && !b.pick.rt && Math.floor(p.x / CS) === Math.floor(b.pick.x / CS) && Math.floor(p.z / CS) === Math.floor(b.pick.z / CS)) { const dx = b.pick.x - p.x, dz = b.pick.z - p.z, d = Math.hypot(dx, dz) || 1; oMoveSafe(p, dx / d * speed * dt, dz / d * speed * dt); }
         // last stretch to the router: walk straight at it
-        if (tr.by < 0 && !p.hasTr && Math.floor(p.x / CS) === Math.floor(tr.x / CS) && Math.floor(p.z / CS) === Math.floor(tr.z / CS)) { const dx = tr.x - p.x, dz = tr.z - p.z, d = Math.hypot(dx, dz) || 1; oMove(p, dx / d * speed * dt, dz / d * speed * dt); }
+        if (tr.by < 0 && !p.hasTr && Math.floor(p.x / CS) === Math.floor(tr.x / CS) && Math.floor(p.z / CS) === Math.floor(tr.z / CS)) { const dx = tr.x - p.x, dz = tr.z - p.z, d = Math.hypot(dx, dz) || 1; oMoveSafe(p, dx / d * speed * dt, dz / d * speed * dt); }
       } else if (!team) {
         // lost sight of someone: go and look where they were last seen
         if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1)]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
@@ -651,7 +695,7 @@ function makeOps(md) {
       } else {
         if (bm.st === 1) {
           if (Math.hypot(p.x - bm.x, p.z - bm.z) < 1.5) { act = true; goal = null; }
-          else { const bc = [Math.floor(bm.x / CS), Math.floor(bm.z / CS)]; if (!b.goal || b.goalKind !== "bomb") { b.goal = bc; b.goalKind = "bomb"; b.path = []; } goal = b.goal; if (!b.path.length && Math.floor(p.x / CS) === bc[0] && Math.floor(p.z / CS) === bc[1]) { const dx = bm.x - p.x, dz = bm.z - p.z, d = Math.hypot(dx, dz) || 1; oMove(p, dx / d * speed * dt, dz / d * speed * dt); } }
+          else { const bc = [Math.floor(bm.x / CS), Math.floor(bm.z / CS)]; if (!b.goal || b.goalKind !== "bomb") { b.goal = bc; b.goalKind = "bomb"; b.path = []; } goal = b.goal; if (!b.path.length && Math.floor(p.x / CS) === bc[0] && Math.floor(p.z / CS) === bc[1]) { const dx = bm.x - p.x, dz = bm.z - p.z, d = Math.hypot(dx, dz) || 1; oMoveSafe(p, dx / d * speed * dt, dz / d * speed * dt); } }
         } else { const site = ["a", "b"][b.site || 0]; if (!b.goal || b.gT <= 0 || b.goalKind !== site) { const c = OPS_CELLS[site]; b.goal = c[rint(0, c.length - 1)]; b.gT = 7 + Math.random() * 5; b.path = []; b.goalKind = site; } goal = b.goal; }
       }
       b.gT -= dt;
@@ -662,7 +706,7 @@ function makeOps(md) {
       if (nx) {
         const tx = nx[0] * CS + CS / 2, tz = nx[1] * CS + CS / 2, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
         if (d < 0.4) b.path.shift();
-        else { const want = Math.atan2(dx, dz); let da = ((want - p.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; p.a += clamp(da, -dt * 6, dt * 6); const s = Math.min(d, speed * dt); oMove(p, dx / d * s, dz / d * s); }
+        else { const want = Math.atan2(dx, dz); let da = ((want - p.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; p.a += clamp(da, -dt * 6, dt * 6); const s = Math.min(d, speed * dt); oMoveSafe(p, dx / d * s, dz / d * s); }
       }
     },
     pack(S) {
@@ -670,7 +714,7 @@ function makeOps(md) {
       return {
         md, mp: g.mp, rd: g.rd, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
         pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr]),
-        bt: g.P.map(p => p.bot ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)] : 0),
+        bt: g.P.map(p => p.bot ? (p.jh > 0.05 ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2), +p.jh.toFixed(2)] : [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)]) : 0),
         bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann, pr: g.pr.map(q => q.hp > 0 ? 1 : 0).join(""), fx: g.fx,
         kb: g.P.map(p => p.kb || 0), rk: g.rk.map(r => [r.id, +r.x.toFixed(2), +r.y.toFixed(2), +r.z.toFixed(2)]), wp: g.wp.map(w => w.rt > 0 ? 0 : 1).join(""), tr: g.tr ? [+g.tr.x.toFixed(2), +g.tr.y.toFixed(2), +g.tr.z.toFixed(2), g.tr.by] : 0,
         gn: g.gn.map(n => [n.id, n.k, +n.x.toFixed(2), +n.y.toFixed(2), +n.z.toFixed(2)]), sm: g.sm.map(s => [s.id, +s.x.toFixed(2), +s.z.toFixed(2), Math.round(s.t * 10)]),
@@ -1000,7 +1044,9 @@ function makeOps(md) {
         // velocity with acceleration / friction instead of instant start-stop; little air control
         const tvx = (-sa * fx + ca * sx) * top, tvz = (-ca * fx - sa * sx) * top, air = airPre;
         F.vel = F.vel || { x: 0, z: 0 };
-        if (arena && air) {
+        F.padFly = Math.max(0, (F.padFly || 0) - dt);
+        if (F.padFly > 0) { /* booster flight: the arc is set, no steering until the last stretch */ }
+        else if (arena && air) {
           // Quake air control: strafing while turning adds speed, holding forward alone doesn't
           const wl = Math.hypot(tvx, tvz);
           if (wl > 0.01) { const wx = tvx / wl, wz = tvz / wl, cur = F.vel.x * wx + F.vel.z * wz, add = 1.1 - cur; if (add > 0) { const ac = Math.min(add, 14 * wl * dt); F.vel.x += ac * wx; F.vel.z += ac * wz; } }
@@ -1011,7 +1057,7 @@ function makeOps(md) {
           if (hd < 1.6 || !alive) F.hk = null;
           else { const pull = 34 * dt; F.vel.x += hx / hd * pull; F.vel.z += hz / hd * pull; F.vy = (F.vy || 0) + hy / hd * pull + 17 * dt * 0.55; if (!air && hy > 0) F.jh = (F.jh || 0) + 0.02; }
         }
-        { const sp = Math.hypot(F.vel.x, F.vel.z), cap = arena ? 17 : 99; if (sp > cap) { F.vel.x *= cap / sp; F.vel.z *= cap / sp; } }
+        { const sp = Math.hypot(F.vel.x, F.vel.z), cap = F.padFly > 0 ? 99 : arena ? 17 : 99; if (sp > cap) { F.vel.x *= cap / sp; F.vel.z *= cap / sp; } }
         const mx = F.vel.x * dt, mz = F.vel.z * dt, ox0 = F.me.x, oz0 = F.me.z;
         OPS_FEET = F.jh || 0; oMove(F.me, mx, mz); OPS_FEET = 0;
         // stop velocity going into walls so you don't stick
@@ -1024,7 +1070,13 @@ function makeOps(md) {
         if (onG) {
           F.jh = gNow; F.vy = 0;
           if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.jump(0.5); }
-          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.pad(0.7); F.padT = 0.4; }
+          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") {
+            const J = OPS_JUMP[Math.floor(F.me.z / CS) * OG + Math.floor(F.me.x / CS)];
+            if (J) { // booster: a fixed arc that lands on the far side whatever way you walked onto it
+              const dx = J[0] - F.me.x, dz = J[1] - F.me.z, T = clamp(Math.hypot(dx, dz) / 15, 0.9, 2.6); F.vel.x = dx / T; F.vel.z = dz / T; F.vy = 8.5 * T; F.padFly = T * 0.82; F.hk = null; SFX.swish(1); SFX.pad(0.9);
+            } else { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.pad(0.7); }
+            F.padT = 0.4;
+          }
         }
         F.wantJump = false;
         if (!onG || F.vy > 0) {
@@ -1256,6 +1308,7 @@ function makeOps(md) {
       bump.repeat.set(OG, OG);
       const floor = new T.Mesh(new T.PlaneGeometry(size, size), new T.MeshStandardMaterial({ map: floorTex, emissiveMap: glowTex, emissive: 0xffffff, emissiveIntensity: outdoor ? 0.22 : 0.45, normalMap: GFX.normal(bump, 3), normalScale: new T.Vector2(0.6, 0.6), roughness: 0.82, metalness: 0.05 }));
       floor.rotation.x = -Math.PI / 2; floor.position.set(size / 2, 0, size / 2); scene.add(floor);
+      if (OPS_M.sky) { const am = tex(OG * 8, OG * 8, (x, w) => { x.fillStyle = "#fff"; x.fillRect(0, 0, w, w); x.fillStyle = "#000"; OPS_MAP.forEach((r, z) => [...r].forEach((ch, c) => { if (ch === "v") x.fillRect(c * 8, z * 8, 8, 8); })); }); floor.material.alphaMap = am; floor.material.alphaTest = 0.5; floor.material.side = T.DoubleSide; }
       // real floor material: loop-pile carpet (office), scuffed steel plates (server farm), warm stone pavers (desert), weathered concrete (rooftops)
       const FLR = { farm: ["metal", 2, { color: 0x8a9099, metal: 0.6, rough: 1.25, ns: 0.9 }], desert: ["concrete", 3, { color: 0xf3d9ae, ns: 1.3 }], roof: ["concrete", 3.5, { color: 0xa4a8b0, ns: 1.3 }] }[TH] || ["carpet", 0.6, { ns: 0.8 }];
       GFX.skin(floor.material, FLR[0], size / FLR[1], size / FLR[1], FLR[2]).then((ok) => { if (!ok || F.gone) return; GFX.paint(floor.material, tex(FW, FW, (x) => drawFloor(x, true))); floor.material.emissiveIntensity *= 0.55; });
@@ -1913,7 +1966,12 @@ function makeOps(md) {
         const disc = new T.Mesh(new T.CylinderGeometry(0.7, 0.7, 0.02, 24), mStd({ color: 0x3ddc97, emissive: 0x3ddc97, emissiveIntensity: 1.6 })); disc.position.y = 0.15;
         const ring = new T.Mesh(new T.RingGeometry(0.78, 0.92, 32), new T.MeshBasicMaterial({ color: new T.Color(0.6, 3, 1.6), transparent: true, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.16;
         const arrows = [0, 1, 2].map(() => { const a = new T.Sprite(new T.SpriteMaterial({ map: arrowT, color: new T.Color(0.6, 2.6, 1.4), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); a.scale.set(0.9, 0.9, 1); g.add(a); return a; });
-        g.add(base, disc, ring); g.position.set(cx, 0, cz); scene.add(g); F.pads.push({ ring, arrows });
+        g.add(base, disc, ring); g.position.set(cx, 0, cz); scene.add(g);
+        // a booster across open air: a trail of light shows the arc it throws you along
+        const J = OPS_JUMP[z * OG + x]; let arc = null;
+        if (J) { const fT = clamp(Math.hypot(J[0] - cx, J[1] - cz) / 15, 0.9, 2.6), dm = new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(0.5, 2.4, 1.3), transparent: true, blending: T.AdditiveBlending, depthWrite: false });
+          arc = { x0: cx, z0: cz, x1: J[0], z1: J[1], T: fT, dots: Array.from({ length: 18 }, () => { const d = new T.Sprite(dm.clone()); d.scale.set(0.42, 0.42, 1); scene.add(d); return d; }) }; }
+        F.pads.push({ ring, arrows, arc });
       }));
       // router home pedestal
       const tc = OPS_CELLS.T; if (tc.length && troph) { const hx = tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, hz = tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2;
@@ -1954,7 +2012,8 @@ function makeOps(md) {
     },
     arenaDraw(V, g, dt, t) {
       const F = V.fps, T = THREE;
-      (F.pads || []).forEach((pd, k) => { pd.ring.material.opacity = 0.6 + 0.4 * Math.sin(t * 4 + k); pd.arrows.forEach((a, j) => { const u = (t * 0.9 + j / 3 + k * 0.17) % 1; a.position.y = 0.3 + u * 2.4; a.material.opacity = Math.sin(u * Math.PI) * 0.9; }); });
+      (F.pads || []).forEach((pd, k) => { pd.ring.material.opacity = 0.6 + 0.4 * Math.sin(t * 4 + k); pd.arrows.forEach((a, j) => { const u = (t * 0.9 + j / 3 + k * 0.17) % 1; a.position.y = 0.3 + u * 2.4; a.material.opacity = Math.sin(u * Math.PI) * 0.9; });
+        if (pd.arc) { const A = pd.arc, n = A.dots.length; A.dots.forEach((d, j) => { const u = (j + (t * 0.55) % 1) / n, tt = u * A.T; d.position.set(A.x0 + (A.x1 - A.x0) * u, 0.5 + 8.5 * A.T * tt - 8.5 * tt * tt, A.z0 + (A.z1 - A.z0) * u); const cp = F.cam.position, dc = Math.hypot(d.position.x - cp.x, d.position.y - cp.y, d.position.z - cp.z); d.material.opacity = 0.75 * Math.sin(Math.min(1, u) * Math.PI) ** 0.5 * clamp((dc - 1.5) / 5, 0, 1); }); } });
       if (F.picks && typeof g.wp === "string") F.picks.forEach((pk, k) => {
         const on = g.wp.charCodeAt(k) === 49;
         if (pk.on === true && !on && Math.hypot(pk.x - F.me.x, pk.z - F.me.z) < 2.5) SFX.play("blip");
@@ -2026,7 +2085,8 @@ function makeOps(md) {
           if (av.spd > 3.6) { av.stepT = (av.stepT || 0) + v * dt; if (av.stepT > 2.45) { av.stepT = 0; const d = Math.hypot(av.x - F.me.x, av.z - F.me.z); if (d < 26) SFX.step(0.75 * (1 - d / 26), this.panOf(F, av.x, av.z, d), i & 1); } }
         }
         const rin = r.b ? null : V.inputOf(i);
-        av.cr = lerp(av.cr || 0, rin && rin.cr ? 1 : 0, 1 - Math.pow(0.0005, dt)); av.jh = rin && rin.jh > 0 ? lerp(av.jh || 0, rin.jh, 0.5) : Math.max(0, (av.jh || 0) - dt * 6);
+        const tjh = r.b ? +((g.bt[i] || [])[3] || 0) : rin ? +rin.jh || 0 : 0;   // in the air (or, on Uplink, falling below the roof)
+        av.cr = lerp(av.cr || 0, rin && rin.cr ? 1 : 0, 1 - Math.pow(0.0005, dt)); av.jh = tjh > 0 || tjh < 0 ? lerp(av.jh || 0, tjh, 0.5) : Math.max(0, (av.jh || 0) - dt * 6);
         F.remote[i] = { x: av.x, z: av.z, a, cr: av.cr, jh: av.jh };
         av.grp.position.set(av.x, av.jh || 0, av.z); av.grp.rotation.y = a + Math.PI; av.bd.scale.y = 1 - 0.3 * (av.cr || 0); av.grp.visible = !(pl && pl[16]);
         const alive = !!(pl && pl[1]);
@@ -2368,7 +2428,7 @@ function makeOps(md) {
         const [a, b, wi, hs] = o.k, A = V.ro[a], B = V.ro[b]; if (!B) return;
         const pa = g.pl && g.pl[a], pb = g.pl && g.pl[b];
         const ca = team && pa ? TEAM[pa[2]].hex : A ? A.hex : "#fff", cb = team && pb ? TEAM[pb[2]].hex : B.hex;
-        const mid = " " + (wi === -1 ? "PAYLOAD" : wi === -2 ? "⚡ BATTERY" : wi === -3 ? "FRAG" : wi === -4 ? "ROCKET" : (OW[wi] || OW[0]).short) + (hs ? " ◎ " : " "), an = A && a !== b ? A.n : "💥", bn = B.n;
+        const mid = " " + (wi === -1 ? "PAYLOAD" : wi === -2 ? "⚡ BATTERY" : wi === -3 ? "FRAG" : wi === -4 ? "ROCKET" : wi === -5 ? "FELL" : (OW[wi] || OW[0]).short) + (hs ? " ◎ " : " "), an = A && a !== b ? A.n : "💥", bn = B.n;
         ctx.font = "700 11px 'JetBrains Mono', monospace"; const wm = ctx.measureText(mid).width; ctx.font = "700 13px Inter, sans-serif"; const wa = ctx.measureText(an).width, wb = ctx.measureText(bn).width, w = wa + wm + wb + 22;
         const y = 62 + k * 30, x = W - w - 14, mine = a === me || b === me;
         ctx.globalAlpha = Math.min(1, o.life); plate(x - 4, y, w + 4, 25, mine ? "#ff8a3d" : null, "r", mine ? 0.92 : 0.7, 7);
@@ -2380,6 +2440,7 @@ function makeOps(md) {
       plate(mx - 6, my - 6, mw + 12, mw + 26, null, "l", 0.74, 10);
       ctx.textAlign = "left"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText(OPS_M.n.toUpperCase(), mx, my + mw + 11);
       OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "#") { ctx.fillStyle = "rgba(170,180,230,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "a" || ch === "b") { ctx.fillStyle = ch === "a" ? "rgba(76,201,240,.25)" : "rgba(61,220,151,.25)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
+      if (OPS_M.sky) OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "v") { ctx.fillStyle = "rgba(255,77,94,.16)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
       if (OPS_M.only) { OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { const hh = oCellH(x, z); if (hh) { ctx.fillStyle = hh > 2 ? "rgba(255,138,61,.45)" : "rgba(76,201,240,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "^") { ctx.fillStyle = "#3ddc97"; ctx.fillRect(mx + x * ms + ms * 0.25, my + z * ms + ms * 0.25, ms * 0.5, ms * 0.5); } }));
         if (Array.isArray(g.tr)) { ctx.fillStyle = Math.floor(t * 3) % 2 ? "#ffd23f" : "#fff2b0"; ctx.beginPath(); ctx.arc(mx + g.tr[0] / CS * ms, my + g.tr[2] / CS * ms, 4, 0, 7); ctx.fill(); } }
       ctx.font = "700 12px 'Chakra Petch', sans-serif"; if (OPS_CELLS.a.length) { ctx.textAlign = "center"; ctx.fillStyle = "#4cc9f0"; ctx.fillText("A", mx + OPS_SITE[0][0] / CS * ms, my + OPS_SITE[0][1] / CS * ms); ctx.fillStyle = "#3ddc97"; ctx.fillText("B", mx + OPS_SITE[1][0] / CS * ms, my + OPS_SITE[1][1] / CS * ms); }

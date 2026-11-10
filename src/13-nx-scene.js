@@ -195,7 +195,8 @@ void main(){ vec3 d = normalize( vDir );
     const PITCH = 64, c0 = size / 2, R = 980;
     for (let j = -16; j <= 16; j++) for (let i = -16; i <= 16; i++) {
       const q = [r(), r(), r(), r(), r(), r(), r()], bx = c0 + i * PITCH + (q[0] - 0.5) * 8, bz = c0 + j * PITCH + (q[1] - 0.5) * 8;
-      const out = (sides.includes(0) && bx < -30) || (sides.includes(1) && bx > size + 30) || (sides.includes(2) && bz < -30) || (sides.includes(3) && bz > size + 30), dist = Math.hypot(bx - c0, bz - c0);
+      // d.all: buildings under the map too (a map high in the air), except where they would run into d.avoid rectangles
+      const out = d.all ? !(d.avoid || []).some(([ax, az, bx2, bz2]) => bx + 22 > ax && bx - 22 < bx2 && bz + 22 > az && bz - 22 < bz2) : (sides.includes(0) && bx < -30) || (sides.includes(1) && bx > size + 30) || (sides.includes(2) && bz < -30) || (sides.includes(3) && bz > size + 30), dist = Math.hypot(bx - c0, bz - c0);
       if (!out || dist > R) continue;
       const w = 22 + q[2] * 22, dp = 22 + q[3] * 22, tall = q[4] < 0.2 && dist > 150, h = tall ? 165 + q[5] * 150 : 46 + q[5] * q[5] * 92, fi = Math.floor(q[6] * names.length) % names.length, ts = NXS.FACADE_M[names[fi]] || 30;
       const x0 = bx - w / 2, x1 = bx + w / 2, z0 = bz - dp / 2, z1 = bz + dp / 2, top = base + h;
