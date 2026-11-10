@@ -2280,7 +2280,7 @@ function makeOps(md) {
           if (idle) R.lag = Math.min(0.5, (R.lag || 0) + dt); else { if (R.rest) for (const [bn, q0] of R.rest) bn.quaternion.copy(q0); R.mixer.update(dt + (R.lag || 0)); R.lag = 0; }
           if (!idle && R.hum && R.spine && Math.abs(av.legY) > 0.01) opsTwist(R.spine, -av.legY);
           if (!idle && R.hum && R.B) opsPose(av, R, alive, spd, dt, t, i);
-          if (!idle && R.ppl && R.B && R.hs !== 1) R.B.hd.scale.multiplyScalar(R.hs);
+          if (!idle && R.ppl && R.B) R.B.hd.scale.setScalar(R.hs);   // absolute: when no clip is playing nothing resets it, so multiplying would grow the head every frame
           // weapon rides the right hand but always points where the player faces
           if (!idle && R.hum && R.hand && alive) {
             // arms hold the weapon whatever the legs are doing: swing each upper arm and forearm onto a pose for the weapon class
