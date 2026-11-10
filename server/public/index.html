@@ -6747,6 +6747,9 @@ opsApplyTeamColors();
 const OPS_ANN = ["", "IT Team eliminated", "Business eliminated", "Time ran out", "Payload defused", "Payload detonated"];
 const OPS_EXTRA_BOTS = ["Kernel Bot", "Proxy Bot", "Daemon Bot", "Sudo Bot", "Root Bot", "Packet Bot", "Byte Bot", "Cron Bot", "Hash Bot", "Socket Bot"];
 
+// each player's colour comes from their side, in roster order (the host and every client work it out the same way)
+function opsTeamCols(ro, tms) { const used = [0, 0]; ro.forEach((r, i) => { const t = tms[i] ? 1 : 0, cols = TEAM[t].cols; r.col = cols[used[t]++ % cols.length]; r.hex = PALETTE[r.col]; }); }
+
 function makeOps(md) {
   const team = md === "team", troph = md === "trophy", laser = md === "laser", arena = troph || laser;
   return {
@@ -6772,8 +6775,7 @@ function makeOps(md) {
         const cnt = [0, 0];
         S.ro.forEach((r, i) => { if (!r.b) { P[i].tm = cnt[0] <= cnt[1] ? 0 : 1; cnt[P[i].tm]++; } });
         S.ro.forEach((r, i) => { if (r.b) { P[i].tm = cnt[0] <= cnt[1] ? 0 : 1; cnt[P[i].tm]++; } });
-        const used = [0, 0];
-        S.ro.forEach((r, i) => { const t = P[i].tm, cols = TEAM[t].cols; r.col = cols[used[t]++ % cols.length]; r.hex = PALETTE[r.col]; });
+        opsTeamCols(S.ro, P.map(p => p.tm));
       } else P.forEach((p, i) => { p.tm = i; p.w = troph ? -1 : laser ? LASER : 2; p.pw = 0; p.cur = troph ? 0 : laser ? LASER : 2; });
       OPS_SMOKES = [];
       const tc = OPS_CELLS.T.length ? OPS_CELLS.T : [[OG >> 1, OG >> 1]], hx = tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, hz = tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2;
@@ -6896,6 +6898,11 @@ function makeOps(md) {
       });
     },
     say(S, a) { const g = S.g; g.ann = a.concat([++g.aseq]); },
+    swapSides(S) {
+      const g = S.g; g.half = 1; g.sc = [g.sc[1], g.sc[0]]; g.ls = [0, 0];
+      g.P.forEach(p => { p.tm = 1 - p.tm; p.cr = 800; p.w = -1; p.pw = 0; p.arm = 0; p.gr = [0, 0]; p.alive = 0; if (p.bot) p.bot.site = 0; });
+      opsTeamCols(S.ro, g.P.map(p => p.tm));
+    },
     startRound(S) {
       const g = S.g; g.rd++; g.ph = "buy"; g.pt = this.BUY; g.bomb = { st: 0, x: 0, z: 0, t: 0, site: 0 }; g.pr = this.propsFresh(); g.gb = []; g.gn = []; g.sm = []; OPS_SMOKES = g.sm; g.rsite = Math.random() < 0.5 ? 0 : 1;
       const spots = [shuffle(OPS_CELLS.r.slice()), shuffle(OPS_CELLS.u.slice())], k = [0, 0];
@@ -6906,7 +6913,7 @@ function makeOps(md) {
         p.a = p.tm === 0 ? Math.PI : 0; p.hp = 100; p.alive = p.gone ? 0 : 1; p.hb = {}; p.rsq++; p.actT = 0; p.cur = p.w >= 0 ? p.w : p.pw;
         if (p.bot) { p.bot.path = []; p.bot.goal = null; p.bot.tgt = -1; this.botBuy(p); p.bot.site = (i % 2); }
       });
-      this.say(S, [1, g.rd]);
+      this.say(S, [1, g.rd, g.half === 1 ? 1 : 0]); if (g.half === 1) g.half = 2;
     },
     botBuy(p) {
       if (p.w < 0) {
@@ -7007,7 +7014,7 @@ function makeOps(md) {
     },
     hostTick(S, dt, inputs) {
       const g = S.g; g.t += dt; const P = g.P;
-      if (team) { g.pt -= dt; if (g.ph === "buy" && g.pt <= 0) { g.ph = "live"; g.pt = this.ROUND; this.say(S, [4]); } else if (g.ph === "post" && g.pt <= 0) { if (g.sc[0] >= this.WIN || g.sc[1] >= this.WIN) g.over = true; else this.startRound(S); } }
+      if (team) { g.pt -= dt; if (g.ph === "buy" && g.pt <= 0) { g.ph = "live"; g.pt = this.ROUND; this.say(S, [4]); } else if (g.ph === "post" && g.pt <= 0) { if (g.sc[0] >= this.WIN || g.sc[1] >= this.WIN) g.over = true; else { if (!g.half && g.sc[0] + g.sc[1] === this.WIN - 1) this.swapSides(S); this.startRound(S); } } }
       P.forEach((p, i) => {
         // a human who closed the tab stops sending input: take them out so rounds can still end
         if (!p.bot) {
@@ -7169,7 +7176,7 @@ function makeOps(md) {
     pack(S) {
       const g = S.g, b = g.bomb;
       return {
-        md, mp: g.mp, rd: g.rd, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
+        md, mp: g.mp, rd: g.rd, hf: g.half ? 1 : 0, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
         pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr]),
         bt: g.P.map(p => p.bot ? (p.jh > 0.05 ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2), +p.jh.toFixed(2)] : [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)]) : 0),
         bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann, gb: (g.gb || []).map(e => e[0]), pr: g.pr.map((q, k) => { if (q.hp <= 0) return 0; const f = q.hp / OPROP[OPS_PROPS[k].t].hp; return f > 0.67 ? 1 : f > 0.34 ? 2 : 3; }).join(""), fx: g.fx,
@@ -8842,6 +8849,7 @@ function makeOps(md) {
     hud(ctx, V, dt, t) {
       const F = V.fps, g = V.g || {}, me = V.meIdx, pl = me >= 0 && g.pl ? g.pl[me] : null;
       const tm = pl ? pl[2] : 0;
+      if (team && g.hf && F.hf !== g.hf && Array.isArray(g.pl)) { F.hf = g.hf; opsTeamCols(V.ro, g.pl.map(q => q[2])); }   // halftime: colours follow the new sides
       const box = (x, y, w, h, r = 12, a = 0.72) => { ctx.fillStyle = "rgba(10,11,13," + a + ")"; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); };
       ctx.textBaseline = "middle";
       // HUD plates: dark glass with a cut corner and a thin accent edge
@@ -8866,7 +8874,7 @@ function makeOps(md) {
       if (F.toasts.length > 5) F.toasts.splice(0, F.toasts.length - 5);
       if (g.ann && g.ann[g.ann.length - 1] !== F.annSeen) {
         F.annSeen = g.ann[g.ann.length - 1]; const a = g.ann;
-        if (a[0] === 1) F.ann = { big: "ROUND " + a[1], sub: team ? (tm === 0 ? "ATTACK" : "DEFEND") : "", col: "#f5f1e6", life: 3 };
+        if (a[0] === 1) F.ann = { big: a[2] ? "HALFTIME · SWITCH SIDES" : "ROUND " + a[1], sub: team ? (a[2] ? "ROUND " + a[1] + " · YOU NOW " : "") + (tm === 0 ? "ATTACK" : "DEFEND") : "", col: "#f5f1e6", life: a[2] ? 4.5 : 3 };
         if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("alarm"); }
         if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "lose"); }
         if (a[0] === 4) { F.ann = { big: "GO GO GO", sub: "", col: "#ff8a3d", life: 1.6 }; SFX.play("go"); }
