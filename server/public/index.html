@@ -275,19 +275,22 @@ body.playing #gameView input, body.playing #gameView textarea { -webkit-user-sel
 @keyframes ml-blink { 50% { opacity: .25; } }
 .ml-row.me { background: color-mix(in srgb, var(--bulb) 10%, #101215); box-shadow: inset 2px 0 0 var(--bulb); }
 .map-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: rgba(255,255,255,.06); }
-.map-btn { position: relative; display: grid; grid-template-columns: 52px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 10px 14px; border: 0; border-radius: 0; background: #101215; color: var(--text); cursor: pointer; text-align: left; font: inherit; transition: background .12s; }
+.map-btn { position: relative; display: grid; grid-template-columns: minmax(0,1fr); gap: 9px; align-content: start; padding: 10px 10px 12px; border: 0; border-radius: 0; background: #101215; color: var(--text); cursor: pointer; text-align: left; font: inherit; transition: background .12s; }
 .map-btn:last-child:nth-child(odd) { grid-column: span 2; }
-.map-btn .map-thumb { width: 52px; height: 52px; display: block; background: #090a0c; border: 1px solid rgba(255,255,255,.1); }
+.map-btn:last-child:nth-child(odd) .map-shot { aspect-ratio: 32 / 9; }
+.map-btn .map-shot { position: relative; display: block; aspect-ratio: 16 / 9; background: #090a0c center / cover no-repeat; border: 1px solid rgba(255,255,255,.1); overflow: hidden; transition: border-color .12s, filter .12s; filter: saturate(.85) brightness(.9); }
+.map-btn:hover .map-shot, .map-btn.on .map-shot { filter: none; }
+.map-btn .map-thumb { position: absolute; left: 6px; bottom: 6px; width: 40px; height: 40px; display: block; background: rgba(9,10,12,.82); border: 1px solid rgba(255,255,255,.14); }
 .map-btn .tx { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .map-btn b { font-family: var(--f-display); font-size: 15px; line-height: 1.1; letter-spacing: .04em; text-transform: uppercase; overflow-wrap: anywhere; }
 .map-btn .tx span { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .06em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.map-btn i { font-style: normal; min-width: 26px; height: 26px; padding: 0 4px; display: grid; place-items: center; font-family: var(--f-mono); font-weight: 700; font-size: 13px; border-radius: 3px; visibility: hidden; }
+.map-btn i { position: absolute; top: 6px; right: 6px; font-style: normal; min-width: 26px; height: 26px; padding: 0 4px; display: grid; place-items: center; font-family: var(--f-mono); font-weight: 700; font-size: 13px; border-radius: 3px; visibility: hidden; }
 .map-btn i.has { visibility: visible; color: #0b0c0e; background: var(--bulb); }
-.map-btn.on::after { content: "Your vote"; position: absolute; right: 8px; bottom: 5px; font-family: var(--f-mono); font-size: 8.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: var(--bulb); }
+.map-btn.on::after { content: "Your vote"; position: absolute; left: 16px; top: 16px; padding: 3px 6px; border-radius: 2px; font-family: var(--f-mono); font-size: 8.5px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; color: #0b0c0e; background: var(--bulb); }
 .map-btn:hover { background: #171a1e; }
 .map-btn.on { background: color-mix(in srgb, var(--bulb) 13%, #101215); box-shadow: inset 0 0 0 1px var(--bulb); }
 .map-btn.on b { color: var(--bulb); }
-.map-btn.on .map-thumb { border-color: var(--bulb); }
+.map-btn.on .map-thumb, .map-btn.on .map-shot { border-color: var(--bulb); }
 @media (max-width: 760px) { .ml-in { grid-template-columns: minmax(0, 1fr); align-items: start; } .ml-left h2 { font-size: clamp(30px, 8vw, 46px); } .ml-stat { margin-top: 4px; } }
 @media (max-width: 1000px) and (min-width: 761px) { .ml-in { grid-template-columns: minmax(0, 1fr) minmax(300px, 1fr); gap: 20px; padding: 16px; } .ml-stat > div { min-width: 0; padding-inline: 16px; } .ml-actions .ready-btn { min-width: 0; } }
 @media (max-width: 520px) { .map-grid, .ml-roster.many { grid-template-columns: minmax(0, 1fr); } .map-btn:last-child:nth-child(odd), .ml-roster.many .ml-row:last-child:nth-child(odd) { grid-column: auto; } .ml-stat > div { min-width: 0; padding: 10px 16px 12px; } .ml-clock b, .ml-rdy b { font-size: 32px; } }
@@ -10047,7 +10050,10 @@ function renderReady(V) {
       const on = V.myVote === m.id, n = cnt[m.id] || 0, b = mkEl("button", "map-btn" + (on ? " on" : "")); b.type = "button"; b.setAttribute("aria-pressed", String(on));
       const tx = mkEl("span", "tx"); tx.append(mkEl("b", null, m.n), mkEl("span", null, m.sub || ""));
       const vc = mkEl("i", n ? "has" : null, n ? String(n) : ""); vc.title = n + (n === 1 ? " vote" : " votes");
-      b.append(mapThumb(id, m.id), tx, vc);
+      // a real screenshot of the map, with its plan in the corner
+      const shot = mkEl("span", "map-shot"); shot.style.backgroundImage = "url(models/map-" + (race ? "race-" : "") + m.id + ".jpg?v=" + MAP_SHOT_V + ")";
+      shot.append(mapThumb(id, m.id), vc);
+      b.append(shot, tx);
       b.addEventListener("click", () => setVote(V, m.id)); grid.append(b);
     });
     mp.append(mh, grid); right.append(mp);
@@ -10271,6 +10277,8 @@ function renderMe() {
 }
 // homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
 const SHOT_V = 3;
+// map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
+const MAP_SHOT_V = 1;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;

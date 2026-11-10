@@ -493,7 +493,10 @@ function renderReady(V) {
       const on = V.myVote === m.id, n = cnt[m.id] || 0, b = mkEl("button", "map-btn" + (on ? " on" : "")); b.type = "button"; b.setAttribute("aria-pressed", String(on));
       const tx = mkEl("span", "tx"); tx.append(mkEl("b", null, m.n), mkEl("span", null, m.sub || ""));
       const vc = mkEl("i", n ? "has" : null, n ? String(n) : ""); vc.title = n + (n === 1 ? " vote" : " votes");
-      b.append(mapThumb(id, m.id), tx, vc);
+      // a real screenshot of the map, with its plan in the corner
+      const shot = mkEl("span", "map-shot"); shot.style.backgroundImage = "url(models/map-" + (race ? "race-" : "") + m.id + ".jpg?v=" + MAP_SHOT_V + ")";
+      shot.append(mapThumb(id, m.id), vc);
+      b.append(shot, tx);
       b.addEventListener("click", () => setVote(V, m.id)); grid.append(b);
     });
     mp.append(mh, grid); right.append(mp);
@@ -717,6 +720,8 @@ function renderMe() {
 }
 // homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
 const SHOT_V = 3;
+// map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
+const MAP_SHOT_V = 1;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;
