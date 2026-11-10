@@ -76,8 +76,24 @@ void main(){ vec2 c = texture2D( t, vUv ).rg; float s = 0.0, w = 0.0;
   for ( int y = -1; y <= 2; y ++ ) for ( int x = -1; x <= 2; x ++ ) { vec2 q = texture2D( t, vUv + ( vec2( float( x ), float( y ) ) - 0.5 ) * uP ).rg; float k = max( 0.0, 1.0 - abs( q.g - c.g ) / ( c.g * 0.04 + 1e-5 ) ); s += q.r * k; w += k; }
   gl_FragColor = vec4( w > 0.0 ? s / w : c.r, c.g, 0.0, 1.0 ); }`, { t: { value: null }, uP: { value: new T.Vector2() } });
     }
-    const cdef = {}; if (tier.ao) cdef.AO = 1; if (tier.ca) cdef.CA = 1; if (!tier.fxaa) cdef.FINAL = 1;
-    P.comp = pass(`uniform sampler2D tScene, tBloom, tAO, tExpo; uniform vec4 uA, uB; uniform vec3 uTint; uniform float hurt; varying vec2 vUv;
+    // light shafts (High and Ultra, maps with a sun): the bright sky around the sun, wherever nothing stands in front of it,
+    // smeared away from the sun across the picture at quarter size. Walls, roofs and people cut dark gaps into it.
+    P.shK = 0;
+    if (tier.ao && S && S.W && S.W.sun) { const E = S.W.sun.E || [8, 8, 8]; P.shK = L.shafts == null ? 0.5 * Math.min(1, 0.45 + (0.2126 * E[0] + 0.7152 * E[1] + 0.0722 * E[2]) / 8) : L.shafts; }   // moonlight gets about half
+    if (P.shK) {
+      P.shA = rt(); P.shB = rt(); P.v3 = new T.Vector3(); P.v3b = new T.Vector3();
+      P.shMask = pass(`uniform sampler2D tScene, tDepth, tExpo; uniform vec4 uS; varying vec2 vUv;
+void main(){ float sky = step( 0.99995, texture2D( tDepth, vUv ).r ); vec3 c = min( texture2D( tScene, vUv ).rgb * texture2D( tExpo, vec2( 0.5 ) ).r, vec3( 6.0 ) );
+  vec2 q = ( vUv - uS.xy ) * vec2( uS.z, 1.0 ); float d2 = dot( q, q ), glow = exp( - d2 * 9.0 ) + 0.22 * exp( - sqrt( d2 ) * 2.6 );
+  gl_FragColor = vec4( c * sky * glow, 1.0 ); }`, { tScene: { value: null }, tDepth: { value: null }, tExpo: { value: null }, uS: { value: new T.Vector4() } });
+      P.shBlur = pass(`uniform sampler2D t; uniform vec4 uS; varying vec2 vUv;
+float nxHash( vec2 p ) { vec3 q = fract( vec3( p.xyx ) * 0.1031 ); q += dot( q, q.yzx + 33.33 ); return fract( ( q.x + q.y ) * q.z ); }
+void main(){ vec2 dv = ( uS.xy - vUv ) * uS.w / 14.0; float j = nxHash( gl_FragCoord.xy + uS.z ), w = 1.0, ws = 0.0; vec3 a = vec3( 0.0 );
+  for ( int i = 0; i < 14; i ++ ) { a += texture2D( t, vUv + dv * ( float( i ) + j ) ).rgb * w; ws += w; w *= 0.94; }
+  gl_FragColor = vec4( a / ws, 1.0 ); }`, { t: { value: null }, uS: { value: new T.Vector4() } });
+    }
+    const cdef = {}; if (tier.ao) cdef.AO = 1; if (tier.ca) cdef.CA = 1; if (!tier.fxaa) cdef.FINAL = 1; if (look && look.speed && tier.i > 0) cdef.SPD = 1; if (P.shK) cdef.SHAFT = 1;
+    P.comp = pass(`uniform sampler2D tScene, tBloom, tAO, tExpo, tShaft; uniform vec4 uA, uB; uniform vec3 uTint; uniform float hurt, uSpd, uShaft; varying vec2 vUv;
 ${NXP.GLSL_TONE}
 void main(){ vec2 d = vUv - 0.5; float r2 = dot( d, d ); vec3 c;
 #ifdef CA
@@ -85,18 +101,24 @@ void main(){ vec2 d = vUv - 0.5; float r2 = dot( d, d ); vec3 c;
 #else
   c = texture2D( tScene, vUv ).rgb;
 #endif
+#ifdef SPD
+  if ( uSpd > 0.002 ) { vec2 sd = d * ( uSpd * 0.02 * smoothstep( 0.03, 0.3, r2 ) ); float sj = nxHash( gl_FragCoord.xy + fract( uB.w ) * 57.0 ); vec3 sa = c; for ( int i = 0; i < 6; i ++ ) sa += texture2D( tScene, vUv - sd * ( float( i ) + sj ) ).rgb; c = sa / 7.0; }
+#endif
   float e = texture2D( tExpo, vec2( 0.5 ) ).r; c *= e;
 #ifdef AO
   c *= mix( 1.0, texture2D( tAO, vUv ).r, uB.z * ( 1.0 - smoothstep( 0.8, 3.0, dot( c, vec3( 0.2126, 0.7152, 0.0722 ) ) ) ) );
 #endif
   c += texture2D( tBloom, vUv ).rgb * uA.x;
+#ifdef SHAFT
+  if ( uShaft > 0.003 ) c += texture2D( tShaft, vUv ).rgb * uShaft;
+#endif
   c *= uTint * ( 1.0 - uA.y * smoothstep( 0.12, 0.85, r2 * 2.0 ) );
   float hv = hurt * smoothstep( 0.02, 0.45, r2 * 1.5 ); c = mix( c, vec3( dot( c, vec3( 0.3, 0.5, 0.2 ) ) * 1.5 + 0.12, 0.0, 0.0 ), hv * 0.8 );
   c = nxSrgb( nxAgx( c, uB.x, uB.y ) );
 #ifdef FINAL
   c += ( nxHash( gl_FragCoord.xy + fract( uB.w ) * 311.0 ) - 0.5 ) * uA.z * ( 1.0 - 0.55 * dot( c, vec3( 0.3, 0.5, 0.2 ) ) );
 #endif
-  gl_FragColor = vec4( c, 1.0 ); }`, { tScene: { value: null }, tBloom: { value: null }, tAO: { value: null }, tExpo: { value: null }, uA: { value: new T.Vector4() }, uB: { value: new T.Vector4() }, uTint: { value: new T.Vector3(1, 1, 1) }, hurt: { value: 0 } }, cdef);
+  gl_FragColor = vec4( c, 1.0 ); }`, { tScene: { value: null }, tBloom: { value: null }, tAO: { value: null }, tExpo: { value: null }, uA: { value: new T.Vector4() }, uB: { value: new T.Vector4() }, uTint: { value: new T.Vector3(1, 1, 1) }, hurt: { value: 0 }, uSpd: { value: 0 }, tShaft: { value: null }, uShaft: { value: 0 } }, cdef);
     P.comp.uniforms = P.comp.u;   // the games set comp.uniforms.hurt
     if (tier.fxaa) P.fxaa = pass(`uniform sampler2D t; uniform vec4 uP; varying vec2 vUv;
 float nxHash( vec2 p ) { vec3 q = fract( vec3( p.xyx ) * 0.1031 ); q += dot( q, q.yzx + 33.33 ); return fract( ( q.x + q.y ) * q.z ); }
@@ -117,6 +139,7 @@ void main(){ vec2 inv = uP.xy; vec3 lw = vec3( 0.299, 0.587, 0.114 );
       for (let i = 0; i < N; i++) { bw = Math.max(2, bw >> 1); bh = Math.max(2, bh >> 1); P.D[i].setSize(bw, bh); if (i < N - 1) P.U[i].setSize(bw, bh); }
       if (tier.ao) { P.aoA.setSize(w >> 1, h >> 1); P.aoB.setSize(w >> 1, h >> 1); }
       if (P.ldr) P.ldr.setSize(w, h);
+      if (P.shK) { P.shA.setSize(Math.max(2, w >> 2), Math.max(2, h >> 2)); P.shB.setSize(Math.max(2, w >> 2), Math.max(2, h >> 2)); }
     };
     const BW = [0.34, 0.22, 0.16, 0.12, 0.09, 0.07];
     P.render = (scene, cam, t) => {
@@ -135,12 +158,27 @@ void main(){ vec2 inv = uP.xy; vec3 lw = vec3( 0.299, 0.587, 0.114 );
         const pm = cam.projectionMatrix.elements; P.ao.u.tDepth.value = P.scene.depthTexture; P.ao.u.uProj.value.set(1 / pm[0], 1 / pm[5], cam.near, cam.far); P.ao.u.uAO.value.set(L.aoR, 2.4, 0, 0); P.ao.u.uInv.value.set(1 / P.w, 1 / P.h); NXS.blit(r, P.ao.q, P.aoA);
         P.aoBlur.u.t.value = P.aoA.texture; P.aoBlur.u.uP.value.set(1 / P.aoA.width, 1 / P.aoA.height); NXS.blit(r, P.aoBlur.q, P.aoB);
       }
+      let shf = 0;
+      if (P.shK) {
+        const sd = S.uni.nxSunDir.value, v = P.v3, f = cam.getWorldDirection(P.v3b), facing = f.dot(sd);
+        if (facing > 0.02) {
+          cam.getWorldPosition(v).addScaledVector(sd, 1000).project(cam); const off = Math.max(Math.abs(v.x), Math.abs(v.y));
+          shf = P.shK * Math.min(1, facing / 0.3) * (1 - Math.min(1, Math.max(0, (off - 1) / 0.8)));
+          if (shf > 0.003) {
+            const su = v.x * 0.5 + 0.5, sv = v.y * 0.5 + 0.5, mu = P.shMask.u, bu = P.shBlur.u;
+            mu.tScene.value = P.scene.texture; mu.tDepth.value = P.scene.depthTexture; mu.tExpo.value = eB.texture; mu.uS.value.set(su, sv, P.w / P.h, 0); NXS.blit(r, P.shMask.q, P.shA);
+            bu.t.value = P.shA.texture; bu.uS.value.set(su, sv, (t || 0) % 13, 0.92); NXS.blit(r, P.shBlur.q, P.shB);
+            bu.t.value = P.shB.texture; bu.uS.value.set(su, sv, (t || 0) % 7 + 3, 0.92 / 14); NXS.blit(r, P.shBlur.q, P.shA);
+          }
+        }
+        P.comp.u.tShaft.value = P.shA.texture; P.comp.u.uShaft.value = shf;
+      }
       const cu = P.comp.u; cu.tScene.value = P.scene.texture; cu.tBloom.value = P.U[0].texture; cu.tAO.value = tier.ao ? P.aoB.texture : null; cu.tExpo.value = eB.texture;
       cu.uA.value.set(L.bloom, L.vig, tier.grain ? L.grain : 0, L.ca); cu.uB.value.set(L.contrast, L.sat, L.ao, (t || 0) % 97); cu.uTint.value.set(L.tint[0], L.tint[1], L.tint[2]);
       if (P.fxaa) { NXS.blit(r, P.comp.q, P.ldr); P.fxaa.u.t.value = P.ldr.texture; P.fxaa.u.uP.value.set(1 / P.w, 1 / P.h, tier.grain ? L.grain : 0, (t || 0) % 97); NXS.blit(r, P.fxaa.q, null); }
       else NXS.blit(r, P.comp.q, null);
     };
-    P.dispose = () => { [P.scene, P.aoA, P.aoB, P.ldr].concat(P.D, P.U, P.expo).forEach(x => { if (x) x.dispose(); }); if (P.scene.depthTexture) P.scene.depthTexture.dispose(); [P.pre, P.down, P.up, P.adapt, P.ao, P.aoBlur, P.comp, P.fxaa].forEach(x => { if (x) x.m.dispose(); }); };
+    P.dispose = () => { [P.scene, P.aoA, P.aoB, P.ldr, P.shA, P.shB].concat(P.D, P.U, P.expo).forEach(x => { if (x) x.dispose(); }); if (P.scene.depthTexture) P.scene.depthTexture.dispose(); [P.pre, P.down, P.up, P.adapt, P.ao, P.aoBlur, P.comp, P.fxaa, P.shMask, P.shBlur].forEach(x => { if (x) x.m.dispose(); }); };
     return P;
   },
 };

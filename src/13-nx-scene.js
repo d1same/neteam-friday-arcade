@@ -111,13 +111,14 @@ const NXS = {
       if (kind === "glass") { m.transparent = true; m.opacity = def.op == null ? 0.2 : def.op; m.depthWrite = false; m.side = T.DoubleSide; m.premultipliedAlpha = true; o.glass = 1; o.macro = 0; order = 30; }
       else if (kind === "decal") { m.map = S.decalTex; m.transparent = true; m.depthWrite = false; m.roughness = 0.82; m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -2; order = 10; }
       else if (kind === "glow") { m.map = S.decalTex; m.emissiveMap = S.decalTex; m.color.setRGB(0.55, 0.55, 0.55); m.emissive.setScalar(def.k || 1); m.roughness = 0.2; m.transparent = true; m.depthWrite = false; m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -2; order = 11; }
+      if (def.po) { m.polygonOffset = true; m.polygonOffsetFactor = -def.po; m.polygonOffsetUnits = -def.po; order = Math.max(order, 5); }
       NX.patchStatic(m, S, o); m.userData.order = order; S.mats[key] = m;
     }
   },
 
   // ---- meshes: one per material, big ones split into 16 m tiles so what is behind you is not drawn
   buildMeshes(S, vl) {
-    const T = THREE, W = S.W, CH = 16, nC = Math.max(1, Math.ceil(W.size / CH));
+    const T = THREE, W = S.W, CH = W.size > 200 ? 64 : 16, nC = Math.max(1, Math.ceil(W.size / CH));
     const add = (geo, mat) => { geo.computeBoundingSphere(); const m = new T.Mesh(geo, mat); m.matrixAutoUpdate = false; m.renderOrder = mat.userData.order || 0; m.userData.nxStatic = 1; S.group.add(m); return m; };
     for (const key in W.bat) {
       const b = W.bat[key], mat = S.mats[key]; if (!mat || !b.nv) continue;
@@ -208,7 +209,7 @@ void main(){ vec3 d = normalize( vDir );
       g.setAttribute("position", new T.BufferAttribute(new Float32Array(b.p), 3)); g.setAttribute("normal", new T.BufferAttribute(new Float32Array(b.n), 3)); g.setAttribute("uv", new T.BufferAttribute(new Float32Array(b.uv), 2)); g.setAttribute("uv1", new T.BufferAttribute(l, 2)); g.setAttribute("nxl", new T.BufferAttribute(new Uint8Array(b.l), 4, true)); g.setIndex(new T.BufferAttribute(new Uint32Array(b.ix), 1)); g.computeBoundingSphere();
       const m = new T.Mesh(g, mat); m.matrixAutoUpdate = false; m.userData.nxStatic = 1; m.frustumCulled = false; m.renderOrder = 900; S.group.add(m); };
     names.forEach((n, i) => { const ts = S.tex[n], info = NX_TEX[n], m = new T.MeshStandardMaterial({ name: "nx:city:" + n, map: ts.c }); if (ts.n) m.normalMap = ts.n; if (ts.m) { m.roughnessMap = m.metalnessMap = ts.m; m.roughness = 1; m.metalness = 1; } else { m.roughness = Math.max(0.1, info.r); m.metalness = info.m; }
-      if (ts.e) { m.emissiveMap = ts.e; m.emissive.setRGB(2.6, 2.1, 1.4); } NX.patchStatic(m, S, { haze: 1, noShadow: 1, noDir: 1, macro: 0 }); S.mats["city:" + n] = m; mesh(B[i], m); });
+      if (ts.e) { m.emissiveMap = ts.e; { const k = d.em || 1; m.emissive.setRGB(2.6 * k, 2.1 * k, 1.4 * k); } } NX.patchStatic(m, S, { haze: 1, noShadow: 1, noDir: 1, macro: 0 }); S.mats["city:" + n] = m; mesh(B[i], m); });
     const rm = new T.MeshStandardMaterial({ name: "nx:city:roof", color: new T.Color(0.11, 0.115, 0.125), roughness: 0.9 }); NX.patchStatic(rm, S, { haze: 1, noShadow: 1, noDir: 1, macro: 0 }); S.mats["city:roof"] = rm; mesh(roof, rm);
     const lm = new T.MeshStandardMaterial({ name: "nx:city:lamp", color: 0x000000, emissive: new T.Color(26, 1.2, 0.8), side: T.DoubleSide }); NX.patchStatic(lm, S, { haze: 1, noShadow: 1, noDir: 1, macro: 0 }); S.mats["city:lamp"] = lm; mesh(lamp, lm);
   },
@@ -244,7 +245,7 @@ void main(){ vec3 d = normalize( vDir );
     return { probes, own, G };
   },
   async reflBuild(S) {
-    const T = THREE, tier = S.tier, r = S.renderer; if (!tier.refl || !tier.reflN || !r.capabilities.isWebGL2) return;
+    const T = THREE, tier = S.tier, r = S.renderer; if (!tier.refl || !tier.reflN || !r.capabilities.isWebGL2 || S.W.noRefl) return;
     const plan = NXS.reflPlan(S); if (!plan) return;
     const P = plan.probes, n = P.length, G = plan.G, size = tier.refl, tw = 3 * Math.max(size, 112), th = 4 * size, cols = Math.min(n, Math.max(1, Math.floor(4096 / tw))), rws = Math.ceil(n / cols);
     NX.prog.n += n;

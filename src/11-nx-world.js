@@ -5,7 +5,7 @@
 // same code in Node to pre-compute the lighting. Everything here must be deterministic: no Math.random, no Date.
 const NXW = (() => {
   const CS = 4;            // metres per grid cell
-  const FP = 32, CP = 16;  // lightmap texels per cell on floors / ceilings (12.5 cm / 25 cm)
+  const FP0 = 32, CP = 16;  // lightmap texels per cell on floors / ceilings (12.5 cm / 25 cm)
   const WP = 8;            // lightmap texels per metre on walls
   const AW = 2048;         // lightmap atlas width
   const VER = 1;           // bump when the generator changes shape (old bakes are then ignored)
@@ -48,6 +48,14 @@ const NXW = (() => {
     d_base: { t: "sandstone2", c: [0.75, 0.72, 0.68], s: 2 }, d_wood: { t: "planks", c: [1.25, 1.05, 0.8], s: 1.2 }, d_dwood: { t: "darkwood", s: 1.2 }, d_blue: { t: "planks", c: [0.3, 0.75, 1.0], s: 1.2 }, d_green: { t: "planks", c: [0.35, 0.8, 0.55], s: 1.2 },
     d_cloth0: { t: "fabric", c: [1.7, 0.35, 0.25], s: 0.5 }, d_cloth1: { t: "fabric", c: [0.3, 0.7, 1.5], s: 0.5 }, d_cloth2: { t: "fabric", c: [2.1, 1.9, 1.5], s: 0.5 }, d_cloth3: { t: "fabric", c: [1.9, 1.2, 0.25], s: 0.5 },
     d_clay: { c: [0.36, 0.16, 0.085], r: 0.85, m: 0 }, d_dark: { c: [0.012, 0.011, 0.01], r: 0.9, m: 0 }, d_palm: { c: [0.1, 0.17, 0.05], r: 0.7, m: 0 }, d_trunk: { c: [0.27, 0.2, 0.13], r: 0.9, m: 0 },
+    // rooftop at night
+    r_floor: { t: "bitumen", c: [1.5, 1.5, 1.6], s: 8, r: 0.5 }, r_pad: { t: "asphalt2", c: [0.75, 0.76, 0.8], s: 4, r: 0.75 }, r_gravel: { t: "gravel", c: [1.2, 1.2, 1.25], s: 2.4 }, r_pave: { t: "concfloor", c: [1.5, 1.5, 1.55], r: 0.7 },
+    r_parapet: { t: "concrete", c: [0.85, 0.85, 0.88] }, r_brick: { t: "brick", s: 2.2 }, r_tank: { t: "planks", c: [0.8, 0.62, 0.5], s: 1.5 }, r_unit: { t: "hangar", c: [2.6, 2.7, 2.9], m: 0.5, r: 0.8 },
+    // race circuits
+    rc_road: { t: "pitlane", c: [1.9, 1.95, 2.1], s: 4, r: 0.8 }, rc_roadWet: { t: "pitlane", c: [1.5, 1.55, 1.7], s: 4, r: 0.32 }, rc_runoff: { t: "asphalt2", c: [0.75, 0.75, 0.78], s: 6 }, rc_verge: { t: "asphalt3", c: [0.5, 0.5, 0.52], s: 6 },
+    rc_walk: { t: "pavement", c: [0.8, 0.82, 0.86], s: 3.6 }, rc_grass: { t: "grass", c: [0.9, 1.2, 1.5], s: 5 }, rc_barrier: { t: "concrete", c: [1.05, 1.08, 1.15], s: 2.7 }, rc_fence: { t: "fence", s: 1.9 },
+    rc_kerbR: { c: [0.55, 0.045, 0.05], r: 0.55, m: 0, po: 1 }, rc_kerbW: { c: [0.72, 0.72, 0.7], r: 0.55, m: 0, po: 1 }, rc_white: { c: [0.7, 0.7, 0.68], r: 0.6, m: 0, po: 2 }, rc_yellow: { c: [0.7, 0.48, 0.04], r: 0.6, m: 0, po: 2 }, rc_blue: { c: [0.04, 0.16, 0.5], r: 0.5, m: 0 },
+    rc_leaf: { t: "grass", c: [0.42, 0.85, 0.75], s: 2.5 }, rc_trunk: { c: [0.16, 0.11, 0.07], r: 0.9, m: 0 }, rc_boxG: { t: "container", s: 3.9 }, rc_boxR: { t: "boxprofile", s: 4 }, rc_boxB: { t: "bluemetal", s: 5 },
     // generic
     trimBlack: { c: [0.03, 0.032, 0.036], r: 0.42, m: 0.85 }, trimSteel: { t: "brushed", c: [0.6, 0.61, 0.63], r: 1.1, m: 1 }, trimWhite: { c: [0.8, 0.8, 0.78], r: 0.5, m: 0 },
     darkMetal: { t: "darkmetal", c: [1, 1, 1], m: 1 }, plasticBlack: { c: [0.025, 0.026, 0.03], r: 0.45, m: 0 }, plasticGrey: { t: "plastic", c: [0.35, 0.36, 0.38] }, plasticWhite: { t: "plastic", c: [0.9, 0.9, 0.9] },
@@ -60,7 +68,7 @@ const NXW = (() => {
 
   function build(id, M, env) {
     env = env || {};
-    const TEX = env.tex || {}, rows = M.rows, G = rows.length, size = G * CS, theme = M.nx || M.theme;
+    const TEX = env.tex || {}, rows = M.rows, G = rows.length, FP = M.fp || FP0, size = G * CS, theme = M.nx || M.theme;
     // a theme is a function with optional settings on it: outdoor (open sky), H (wall height), blockH(x, z, ctx) = height of a solid cell
     const TH = NXW.themes[theme] || NXW.themes.office, outdoor = !!TH.outdoor;
     const H = M.wallH || TH.H || 3.2;
@@ -122,6 +130,18 @@ const NXW = (() => {
       for (let j = 0; j < sv; j++) for (let i = 0; i < su; i++) { const a = base + j * (su + 1) + i, c = a + su + 1; b.ix.push3(a, a + 1, c + 1); b.ix.push3(a, c + 1, c); }
       b.nv += (su + 1) * (sv + 1);
       return o.lm ? -1 : vlG.n - (su + 1) * (sv + 1);
+    }
+    // free-form mesh (roads, kerbs, barriers). V = flat [x, y, z, nx, ny, nz, u, v] per vertex, I = triangle indices.
+    // o.floor: lit by the floor lightmap through its position on the ground plan; otherwise each vertex gets a baked
+    // light sample, o.gs vertices to a repair group
+    function mesh(key, V, I, o) {
+      o = o || {}; const b = batch(key), base = b.nv, n = V.length / 8, gs = o.gs || 4; let grp = -1;
+      for (let i = 0; i < n; i++) { const q = i * 8, x = V[q], y = V[q + 1], z = V[q + 2], n0 = V[q + 3], n1 = V[q + 4], n2 = V[q + 5];
+        b.p.push3(x, y, z); b.n.push3(n0, n1, n2); b.uv.push2(V[q + 6], V[q + 7]);
+        if (o.floor) { b.lm.push2(Math.min(G * FP - 0.5, Math.max(0.5, x / CS * FP)), Math.min(G * FP - 0.5, Math.max(0.5, z / CS * FP))); b.lc.push1(1); b.vi.push1(-1); }
+        else { if (i % gs === 0) grp = vlGroups++; b.lm.push2(0, 0); b.lc.push1(-1); b.vi.push1(vlG.n); vlP.push3(x + n0 * 0.03, y + n1 * 0.03, z + n2 * 0.03); vlN.push3(n0, n1, n2); vlG.push1(grp); } }
+      for (let i = 0; i < I.length; i++) b.ix.push1(base + I[i]);
+      b.nv += n;
     }
     // axis-aligned box. o.f = faces to draw (bit mask), o.occ = false to keep it out of the baker, o.em = emissive
     // radiance, o.seg = subdivision length for the baked vertex light, o.a = colour override for bounced light
@@ -223,7 +243,7 @@ const NXW = (() => {
     // decal atlas (2048 x 2048 canvas the browser paints), shelf packed
     const DA = { w: 2048, h: 2048, pad: 4, used: 0, scale: 1 }, DC = {}, DU = []; W.dAtlas = DA;
     // lightmapped building blocks
-    const B = { W, A, G, H, CS, MATS, quad, box, cyl, tube, occ, rectLight, lightMat, matAlb, floorLm, ceilLm, hsh, PX, NX: NX_, PY, NY, PZ, NZ, ALL,
+    const B = { W, A, G, H, CS, FP, M, env, MATS, quad, box, cyl, tube, mesh, occ, rectLight, lightMat, matAlb, floorLm, ceilLm, hsh, PX, NX: NX_, PY, NY, PZ, NZ, ALL,
       floorY, ceilY, floorOn, ceilOn,
       occB: (k, i) => oB.a[k * 6 + i],
       // point one face of a baker solid (0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z) at a lightmap chart and give it a colour
@@ -290,7 +310,7 @@ const NXW = (() => {
     const bx = (charts[0].x + 2) / W.atlas.w, by = (charts[0].y + 2) / W.atlas.h;
     for (const k in W.bat) { const b = W.bat[k], lm = b.lm.a, lc = b.lc.a; for (let i = 0, v = 0; i < b.lm.n; i += 2, v++) { const c = lc[v] < 0 ? null : charts[lc[v]]; if (!c) { lm[i] = bx; lm[i + 1] = by; } else { lm[i] = (c.x + lm[i]) / W.atlas.w; lm[i + 1] = (c.y + lm[i + 1]) / W.atlas.h; } }
       W.bat[k] = { p: b.p.done(), n: b.n.done(), uv: b.uv.done(), lm: b.lm.done(), vi: b.vi.done(), ix: b.ix.done(), nv: b.nv }; }
-    W.charts = charts; W.runs = runs; W.faces = faces; W.CS = CS; W.FP = FP; W.CP = CP; W.WP = WP;
+    W.charts = charts; W.runs = runs; W.faces = faces; W.CS = CS; W.FP = FP; W.CP = CP; W.WP = WP; W.ps = M.ps || 2; W.noRefl = !!M.noRefl;
     W.vl = { p: vlP.done(), n: vlN.done(), g: vlG.done(), groups: vlGroups };
     W.occ = { n: oN, b: oB.done(), alb: oAlb.done(), chart: oChart.done(), vs: oVs.done(), em: oEm.done() };
     W.alb = alb; W.cell = { floorY, ceilY, floorOn, ceilOn, floorAlb, ceilAlb };
@@ -301,5 +321,5 @@ const NXW = (() => {
     W.sig = sg >>> 0;
     return W;
   }
-  return { build, CS, FP, CP, WP, AW, VER, MATS, lightMat, hash, rng, strSeed, DIRS, themes: {} };
+  return { build, CS, FP: FP0, CP, WP, AW, VER, MATS, lightMat, hash, rng, strSeed, DIRS, themes: {} };
 })();

@@ -10,7 +10,7 @@ const LM_SCALE = 16, PI = Math.PI;
 
 // ---------------------------------------------------------------- scene set-up shared by the main thread and the workers
 function setup(id) {
-  const { W, sky, g } = require("./world.js").build(id), mapRows = g.OPS_MAPS[id].rows;
+  const { W, sky, g, M } = require("./world.js").build(id), mapRows = M.rows;
   const G = W.G, CS = W.CS, AWd = W.atlas.w, AHd = W.atlas.h, NA = AWd * AHd, NV = W.vl.g.length, N = NA + NV;
   const { floorY, ceilY, floorOn, ceilOn, floorAlb, ceilAlb } = W.cell, O = W.occ, ob = O.b;
   // bin the solids into grid cells
@@ -187,10 +187,10 @@ function runSlice(C, job, sh) {
 
 // light probes for moving objects: L1 spherical harmonics of everything but the sun, plus how much of the sun reaches the spot
 function bakeProbes(C, E, Sv, fast) {
-  const { W, G, CS, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, ceilY, floorY, inside, sf } = C, PN = G * 2, out = new Float32Array(PN * PN * 13), tmp = [0, 0, 0], al = [0, 0, 0];
+  const { W, G, CS, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, ceilY, floorY, inside, sf } = C, PS = W.ps || 2, PN = Math.ceil(G * CS / PS), out = new Float32Array(PN * PN * 13), tmp = [0, 0, 0], al = [0, 0, 0];
   const sun = W.sun, sd = sun ? sun.dir : [0, 1, 0], sE = sun ? sun.E : [0, 0, 0], K = fast ? 64 : 320, GA = PI * (3 - Math.sqrt(5));
   for (let pz = 0; pz < PN; pz++) for (let px = 0; px < PN; px++) {
-    const x = (px + 0.5) * 2, z = (pz + 0.5) * 2, cell = Math.floor(z / CS) * G + Math.floor(x / CS), y = floorY[cell] + 1.25, o = (pz * PN + px) * 13;
+    const x = Math.min(G * CS - 0.01, (px + 0.5) * PS), z = Math.min(G * CS - 0.01, (pz + 0.5) * PS), cell = Math.floor(z / CS) * G + Math.floor(x / CS), y = floorY[cell] + 1.25, o = (pz * PN + px) * 13;
     if (inside(x, y, z)) { out[o + 12] = -1; continue; }
     const sh = new Float64Array(12), open = ceilY[cell] > 1e8;
     for (let k = 0; k < K; k++) { // even directions on the sphere
@@ -227,7 +227,7 @@ if (!isMainThread) {
 async function main() {
   const args = process.argv.slice(2), ids = args.filter(a => !a.startsWith("--")), fast = args.includes("--fast");
   const dbg = (args.find(a => a.startsWith("--debug=")) || "").slice(8), threads = +(args.find(a => a.startsWith("--threads=")) || "").slice(10) || Math.max(1, os.cpus().length);
-  const maps = ids[0] === "all" || !ids.length ? Object.keys(require("./world.js").load().OPS_MAPS) : ids;
+  const L0 = require("./world.js").load(), maps = ids[0] === "all" || !ids.length ? Object.keys(L0.OPS_MAPS).concat(Object.keys(L0.RC_TRACKS).map(k => "rc-" + k)) : ids;
   for (const id of maps) await bakeMap(id, fast, dbg, threads);
 }
 async function bakeMap(id, fast, dbg, threads) {
@@ -299,7 +299,7 @@ async function bakeMap(id, fast, dbg, threads) {
   await sharp(Buffer.from(a8.buffer), { raw: { width: AWd, height: AHd, channels: 4 } }).png({ compressionLevel: 9 }).toFile(path.join(out, `lm-${id}-a.png`));
   await sharp(Buffer.from(b8.buffer), { raw: { width: AWd, height: AHd, channels: 4 } }).resize(AWd >> 1, AHd >> 1, { kernel: "linear" }).png({ compressionLevel: 9 }).toFile(path.join(out, `lm-${id}-b.png`));
   const v8 = new Uint8Array(NV * 4); for (let v = 0; v < NV; v++) { const i = NA + v; v8[v * 4] = enc(E[i * 3]); v8[v * 4 + 1] = enc(E[i * 3 + 1]); v8[v * 4 + 2] = enc(E[i * 3 + 2]); v8[v * 4 + 3] = Math.round(Math.max(0, Math.min(1, Sv[i])) * 255); }
-  const head = Buffer.from(JSON.stringify({ sig: W.sig, ver: W.ver, aw: AWd, ah: AHd, nv: NV, scale: LM_SCALE, pn: W.G * 2, ps: 2, fast: fast ? 1 : 0 })), pad = (4 - head.length % 4) % 4, hb = Buffer.alloc(8);
+  const head = Buffer.from(JSON.stringify({ sig: W.sig, ver: W.ver, aw: AWd, ah: AHd, nv: NV, scale: LM_SCALE, pn: Math.ceil(W.G * W.CS / (W.ps || 2)), ps: W.ps || 2, fast: fast ? 1 : 0 })), pad = (4 - head.length % 4) % 4, hb = Buffer.alloc(8);
   hb.write("NXLM", 0, "ascii"); hb.writeUInt32LE(head.length + pad, 4);
   fs.writeFileSync(path.join(out, `lm-${id}.bin`), Buffer.concat([hb, head, Buffer.alloc(pad, 32), Buffer.from(v8.buffer), Buffer.from(probes.buffer)]));
   const sz = (f) => (fs.statSync(path.join(out, f)).size / 1024).toFixed(0) + " KB";
