@@ -149,7 +149,7 @@ NXW.themes.office = (B, M, env) => {
     // beside a stair: a dark wall clad in oak battens, the feature wall of the atrium
     if (B.stair && B.stair[ci(f.ox, f.oz)]) { B.wall(f, "o_wallDark", 0, 0, CS, H); f.kind = "plain"; f.alb = matAlb("o_wallDark"); for (let k = 0; k < 32; k++) { const u = 0.035 + k * 0.125; B.fbox(f, "o_oak", u, 0, 0, u + 0.055, H - 0.02, 0.028, { f: (ALL & ~NY & ~PY), occ: false, rot: 1, seg: 1.6 }); } continue; }
     if (noFloor(f.ox, f.oz)) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; continue; }
-    if (deskWall[ci(f.ox, f.oz) * 4 + f.d]) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; baseboard(f, 0, CS); if (h2 < 0.5) poster(f, 2); else if (h2 < 0.75) wallTV(f, 2); continue; }
+    if (deskWall[ci(f.ox, f.oz) * 4 + f.d]) { const dk = key === "o_wallDark" ? "o_wall" : key; B.wall(f, dk, 0, 0, CS, H); f.kind = "plain"; f.alb = matAlb(dk); baseboard(f, 0, CS); if (h2 < 0.5) poster(f, 2); else if (h2 < 0.75) wallTV(f, 2); continue; }
     // glazed rooms
     const wantNiche = st === "server" ? ((f.zone === "siteA" || f.zone === "siteB") && h1 < 0.75) : st === "glass" ? h1 < 0.8 : st === "plaster" ? h1 < 0.16 : st === "noc" ? h1 < 0.3 : false;
     if (wantNiche && canNiche(f)) { niche(f, key, st === "server" || st === "noc" ? "racks" : st === "glass" ? "meeting" : "office"); continue; }
