@@ -267,6 +267,7 @@ vec3 nxRoom( vec3 wp, vec3 v, vec3 n, float rough, float localE ) {
         .replace("#include <lights_fragment_maps>", `
   vec3 nxNw = inverseTransformDirection( geometryNormal, viewMatrix );
   vec2 nxPu = clamp( vNxW.xz * nxProbeP.x, vec2( nxProbeP.y ), vec2( 1.0 - nxProbeP.y ) ); nxPu.x *= 0.25;
+  if ( nxProbeP.w > 1.5 ) nxPu.y = ( nxPu.y + step( nxProbeP.z, vNxW.y ) ) / nxProbeP.w;
   vec4 nxP0 = texture2D( nxProbe, nxPu );
   vec3 nxE = nxP0.rgb + texture2D( nxProbe, nxPu + vec2( 0.25, 0.0 ) ).rgb * nxNw.x + texture2D( nxProbe, nxPu + vec2( 0.5, 0.0 ) ).rgb * nxNw.y + texture2D( nxProbe, nxPu + vec2( 0.75, 0.0 ) ).rgb * nxNw.z;
   nxE = max( nxE, nxP0.rgb * 0.15 );

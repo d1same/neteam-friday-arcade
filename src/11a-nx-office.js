@@ -39,14 +39,16 @@ NXW.themes.office = (B, M, env) => {
   const WALLKEY = { plaster: "o_wall", oak: "o_wallDark", brick: "o_brick", conc: "o_conc", glass: "o_wall", server: "o_wallDark", lobby: "o_marble", noc: "o_wallDark" };
 
   // ---- floors and ceilings
-  const FLOOR = { hall: "o_floor", red: "o_lobby", blue: "o_carpet", siteA: "o_raised", siteB: "o_raised" }, CEIL = { hall: "o_ceil", red: "o_oak", blue: "o_ceil", siteA: "o_ceil", siteB: "o_ceil" };
+  // storeys: a cell can be open to the storey above (atrium, stairwell: no ceiling) or below (no floor); upstairs is oak
+  const noCeil = (x, z) => !!(B.noCeil && B.noCeil[ci(x, z)]) || !!(B.skylight && B.skylight[ci(x, z)]), noFloor = (x, z) => !!(B.noFloor && B.noFloor[ci(x, z)]), above = B.li === 0 && !!M.up;
+  const FLOOR = { hall: B.li ? "o_oak" : "o_floor", red: "o_lobby", blue: "o_carpet", siteA: "o_raised", siteB: "o_raised" }, CEIL = { hall: "o_ceil", red: "o_oak", blue: "o_ceil", siteA: "o_ceil", siteB: "o_ceil" };
   B.floorAlbOf = (x, z) => terrace[ci(x, z)] ? matAlb("o_tile") : matAlb(FLOOR[zoneOf(x, z)] || "o_floor");
   B.ceilAlbOf = (x, z) => matAlb(CEIL[zoneOf(x, z)] || "o_ceil");
   for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
     const c = ci(x, z), x0 = x * CS, z0 = z * CS;
-    if (terrace[c]) { B.floorOn[c] = 1; B.ceilY[c] = Infinity; B.floor("o_tile", x0, z0, x0 + CS, z0 + CS, 0); continue; }
+    if (terrace[c]) { B.floorOn[c] = 1; B.floor("o_tile", x0, z0, x0 + CS, z0 + CS, 0); if (above) { B.ceilOn[c] = 1; B.ceil("o_ceil", x0, z0, x0 + CS, z0 + CS, H); } else B.ceilY[c] = Infinity; continue; }
     if (solid(x, z)) continue;
-    const zn = zoneOf(x, z); B.floor(FLOOR[zn], x0, z0, x0 + CS, z0 + CS, 0); B.ceil(CEIL[zn], x0, z0, x0 + CS, z0 + CS, H);
+    const zn = zoneOf(x, z); if (!noFloor(x, z)) B.floor(FLOOR[zn], x0, z0, x0 + CS, z0 + CS, 0); if (!noCeil(x, z)) B.ceil(CEIL[zn], x0, z0, x0 + CS, z0 + CS, H);
   }
   // terrace edge: glass balustrade with a steel rail, and the city beyond (drawn by the renderer, not baked)
   for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
@@ -57,7 +59,7 @@ NXW.themes.office = (B, M, env) => {
       else { quad("glass", x0, 0.05, e, CS, 0, 0, 0, 1.05, 0, { seg: 4 }); box("trimSteel", x0, 1.1, e - 0.03, x0 + CS, 1.14, e + 0.03, { occ: false, seg: 4 }); box("trimBlack", x0, 0, e - 0.05, x0 + CS, 0.06, e + 0.05, { occ: false, seg: 4 }); }
     }
   }
-  W.dress.push({ kind: "city", sides: sides.slice(), floor: 38 });
+  if (!B.li) W.dress.push({ kind: "city", sides: sides.slice(), floor: 38 });
 
   // ---- wall faces
   const usedNiche = new Uint8Array(G * G * 4);
@@ -140,6 +142,8 @@ NXW.themes.office = (B, M, env) => {
     const c = ci(f.cx, f.cz), st = styleOf(f), key = WALLKEY[st], h1 = hsh(f.cx, f.cz, f.d), h2 = hsh(f.cx, f.cz, f.d + 4);
     f.style = st; f.alb = matAlb(key);
     if (terrace[c]) { windowFace(f); continue; }
+    // walls along a stair or over a drop stay plain: nothing may stand in the stair or hang over the void
+    if ((B.stair && B.stair[ci(f.ox, f.oz)]) || noFloor(f.ox, f.oz)) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; continue; }
     // glazed rooms
     const wantNiche = st === "server" ? ((f.zone === "siteA" || f.zone === "siteB") && h1 < 0.75) : st === "glass" ? h1 < 0.8 : st === "plaster" ? h1 < 0.16 : st === "noc" ? h1 < 0.3 : false;
     if (wantNiche && canNiche(f)) { niche(f, key, st === "server" || st === "noc" ? "racks" : st === "glass" ? "meeting" : "office"); continue; }
@@ -199,7 +203,7 @@ NXW.themes.office = (B, M, env) => {
   };
   const spot = (x, z, L, y) => { cyl("trimBlack", x, (y || H) - 0.1, z, 0.075, 0.1, 10, { occ: false, cap: false }); box("lampWarm", x - 0.05, (y || H) - 0.102, z - 0.05, x + 0.05, (y || H) - 0.1, z + 0.05, { f: NY, occ: false }); rectLight([x, (y || H) - 0.11, z], [0.06, 0, 0], [0, 0, 0.06], [0, -1, 0], L, { range: 9, spot: 3 }); B.fixture(x, (y || H) - 0.1, z, L, 0.15, "spot"); };
   for (let z = 1; z < G - 1; z++) for (let x = 1; x < G - 1; x++) {
-    if (solid(x, z)) continue; const zn = zoneOf(x, z), cx = x * CS + CS / 2, cz = z * CS + CS / 2, wx = solid(x - 1, z) && solid(x + 1, z), wz = solid(x, z - 1) && solid(x, z + 1), h = hsh(x, z, 90);
+    if (solid(x, z) || noCeil(x, z)) continue; const zn = zoneOf(x, z), cx = x * CS + CS / 2, cz = z * CS + CS / 2, wx = solid(x - 1, z) && solid(x + 1, z), wz = solid(x, z - 1) && solid(x, z + 1), h = hsh(x, z, 90);
     if (zn === "hall") {
       // corridors: a pendant along the corridor in every other cell; open floor: a pendant per cell, alternating direction
       const corr = wx !== wz;
@@ -219,8 +223,8 @@ NXW.themes.office = (B, M, env) => {
     }
   }
   // ducts: follow long straight open runs, alternating sides, with hangers
-  for (let z = 1; z < G - 1; z++) { let x = 1; while (x < G - 1) { if (solid(x, z) || zoneOf(x, z) !== "hall") { x++; continue; } let e = x; while (e < G - 1 && !solid(e, z) && zoneOf(e, z) === "hall") e++; if (e - x >= 4 && hsh(x, z, 95) < 0.6) { const zc = z * CS + (hsh(x, z, 96) < 0.5 ? 0.75 : CS - 0.75); box("trimSteel", x * CS + 0.3, 2.78, zc - 0.3, e * CS - 0.3, 3.1, zc + 0.3, { f: ALL, seg: 2, uo: 0.3 }); for (let k = x * CS + 1; k < e * CS - 0.5; k += 2) box("trimBlack", k - 0.02, 2.76, zc - 0.33, k + 0.02, H, zc + 0.33, { f: ALL & ~PY, occ: false }); } x = e + 1; } }
-  for (let x = 1; x < G - 1; x++) { let z = 1; while (z < G - 1) { if (solid(x, z) || zoneOf(x, z) !== "hall") { z++; continue; } let e = z; while (e < G - 1 && !solid(x, e) && zoneOf(x, e) === "hall") e++; if (e - z >= 4 && hsh(x, z, 97) < 0.6) { const xc = x * CS + (hsh(x, z, 98) < 0.5 ? 0.7 : CS - 0.7); box("redPaint", xc - 0.035, 3.0, z * CS + 0.2, xc + 0.035, 3.07, e * CS - 0.2, { f: ALL & ~PY, occ: false, seg: 2 }); box("trimSteel", xc + 0.25, 2.93, z * CS + 0.2, xc + 0.6, 2.97, e * CS - 0.2, { f: ALL, occ: false, seg: 2 }); } z = e + 1; } }
+  for (let z = 1; z < G - 1; z++) { let x = 1; while (x < G - 1) { if (solid(x, z) || noCeil(x, z) || zoneOf(x, z) !== "hall") { x++; continue; } let e = x; while (e < G - 1 && !solid(e, z) && !noCeil(e, z) && zoneOf(e, z) === "hall") e++; if (e - x >= 4 && hsh(x, z, 95) < 0.6) { const zc = z * CS + (hsh(x, z, 96) < 0.5 ? 0.75 : CS - 0.75); box("trimSteel", x * CS + 0.3, 2.78, zc - 0.3, e * CS - 0.3, 3.1, zc + 0.3, { f: ALL, seg: 2, uo: 0.3 }); for (let k = x * CS + 1; k < e * CS - 0.5; k += 2) box("trimBlack", k - 0.02, 2.76, zc - 0.33, k + 0.02, H, zc + 0.33, { f: ALL & ~PY, occ: false }); } x = e + 1; } }
+  for (let x = 1; x < G - 1; x++) { let z = 1; while (z < G - 1) { if (solid(x, z) || noCeil(x, z) || zoneOf(x, z) !== "hall") { z++; continue; } let e = z; while (e < G - 1 && !solid(x, e) && !noCeil(x, e) && zoneOf(x, e) === "hall") e++; if (e - z >= 4 && hsh(x, z, 97) < 0.6) { const xc = x * CS + (hsh(x, z, 98) < 0.5 ? 0.7 : CS - 0.7); box("redPaint", xc - 0.035, 3.0, z * CS + 0.2, xc + 0.035, 3.07, e * CS - 0.2, { f: ALL & ~PY, occ: false, seg: 2 }); box("trimSteel", xc + 0.25, 2.93, z * CS + 0.2, xc + 0.6, 2.97, e * CS - 0.2, { f: ALL, occ: false, seg: 2 }); } z = e + 1; } }
 
   // ---- floor markings and signs
   const siteCells = (k) => { const out = []; for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (ch(x, z) === k) out.push([x, z]); return out; };

@@ -13,6 +13,8 @@ function setup(id) {
   const { W, sky, g, M } = require("./world.js").build(id), mapRows = M.rows;
   const G = W.G, CS = W.CS, AWd = W.atlas.w, AHd = W.atlas.h, NA = AWd * AHd, NV = W.vl.g.length, N = NA + NV;
   const { floorY, ceilY, floorOn, ceilOn, floorAlb, ceilAlb } = W.cell, O = W.occ, ob = O.b;
+  // storeys: each has its own floor and ceiling planes and charts (NaN = open to the storey above / below)
+  const LVS = W.levels || [{ y0: 0, floorY, ceilY, floorOn, ceilOn, floorAlb, ceilAlb, fc: 1, cc: 2 }], NL = LVS.length;
   // bin the solids into grid cells
   const cnt = new Int32Array(G * G + 1), cl = (v) => Math.max(0, Math.min(G - 1, Math.floor(v / CS)));
   for (let k = 0; k < O.n; k++) for (let z = cl(ob[k * 6 + 2] + 1e-4); z <= cl(ob[k * 6 + 5] - 1e-4); z++) for (let x = cl(ob[k * 6] + 1e-4); x <= cl(ob[k * 6 + 3] - 1e-4); x++) cnt[z * G + x + 1]++;
@@ -22,7 +24,7 @@ function setup(id) {
   let maxY = 0; for (let k = 0; k < O.n; k++) maxY = Math.max(maxY, ob[k * 6 + 4]); maxY = Math.max(maxY, W.H) + 0.5;
 
   // ---- ray caster: 2D walk over the cells, floor / ceiling planes and the boxes binned in each cell
-  const hit = { t: 0, kind: 0, idx: 0, face: 0, cell: 0 };   // kind: 0 miss (sky), 1 floor, 2 ceiling, 3 box
+  const hit = { t: 0, kind: 0, idx: 0, face: 0, cell: 0, lv: 0 };   // kind: 0 miss (sky), 1 floor, 2 ceiling, 3 box
   function trace(ox, oy, oz, dx, dy, dz, tmax, any) {
     let cx = Math.floor(ox / CS), cz = Math.floor(oz / CS); hit.kind = 0; hit.t = tmax;
     if (cx < 0 || cz < 0 || cx >= G || cz >= G) return tmax;
@@ -33,8 +35,9 @@ function setup(id) {
     let t0 = 0, best = tmax;
     for (let step = 0; step < 256; step++) {
       const t1 = tmx < tmz ? tmx : tmz, c = cz * G + cx;
-      if (dy < 0) { const tf = (floorY[c] - oy) * iy; if (tf > 1e-5 && tf >= t0 - 1e-4 && tf <= t1 + 1e-4 && tf < best) { best = tf; hit.kind = 1; hit.cell = c; } }
-      else if (dy > 0) { const cy = ceilY[c]; if (cy < 1e8) { const tc = (cy - oy) * iy; if (tc > 1e-5 && tc >= t0 - 1e-4 && tc <= t1 + 1e-4 && tc < best) { best = tc; hit.kind = 2; hit.cell = c; } } else if (oy + dy * t0 > maxY) { hit.t = tmax; hit.kind = best < tmax ? hit.kind : 0; return best; } }
+      for (let l = 0; l < NL; l++) { const Lv = LVS[l];
+        if (dy < 0) { const tf = (Lv.floorY[c] - oy) * iy; if (tf > 1e-5 && tf >= t0 - 1e-4 && tf <= t1 + 1e-4 && tf < best) { best = tf; hit.kind = 1; hit.cell = c; hit.lv = l; } }
+        else if (dy > 0) { const cy = Lv.ceilY[c]; if (cy !== cy) continue; if (cy < 1e8) { const tc = (cy - oy) * iy; if (tc > 1e-5 && tc >= t0 - 1e-4 && tc <= t1 + 1e-4 && tc < best) { best = tc; hit.kind = 2; hit.cell = c; hit.lv = l; } } else if (oy + dy * t0 > maxY) { hit.t = tmax; hit.kind = best < tmax ? hit.kind : 0; return best; } } }
       for (let q = binS[c], qe = binS[c + 1]; q < qe; q++) {
         const k = binL[q], b = k * 6; let tn = -Infinity, tf = Infinity, face = -1, a, e;
         if (ix !== 0) { a = (ob[b] - ox) * ix; e = (ob[b + 3] - ox) * ix; if (a > e) { const w = a; a = e; e = w; } if (a > tn) { tn = a; face = dx > 0 ? 1 : 0; } if (e < tf) tf = e; } else if (ox < ob[b] || ox > ob[b + 3]) continue;
@@ -51,24 +54,29 @@ function setup(id) {
     }
     hit.kind = best < tmax ? hit.kind : 0; hit.t = best; return best;
   }
+  // the air interval (floor .. ceiling) of a cell that contains height y, or null
+  const air = [0, 0];
+  const airAt = (c, y) => { let lo = NaN; for (let l = 0; l < NL; l++) { const Lv = LVS[l], f = Lv.floorY[c], cy = Lv.ceilY[c]; if (f === f) lo = f; if (cy === cy) { if (y >= lo - 1e-3 && y <= cy + 1e-3) { air[0] = lo; air[1] = cy; return air; } lo = NaN; } } return null; };
+  // rays that escape from here count as sky (the cell is open above the point)
+  const openAt = (c, y) => { const a = airAt(c, y); return !!a && a[1] > 1e8; };
   const blocked = (ox, oy, oz, dx, dy, dz, tmax) => trace(ox, oy, oz, dx, dy, dz, tmax, true) < tmax - 1e-3;
-  const inside = (x, y, z) => { const cx = Math.floor(x / CS), cz = Math.floor(z / CS); if (cx < 0 || cz < 0 || cx >= G || cz >= G) return false; const c = cz * G + cx; if (y < floorY[c] - 1e-3 || y > ceilY[c] + 1e-3) return true; for (let q = binS[c]; q < binS[c + 1]; q++) { const b = binL[q] * 6; if (x > ob[b] + 1e-3 && x < ob[b + 3] - 1e-3 && y > ob[b + 1] + 1e-3 && y < ob[b + 4] - 1e-3 && z > ob[b + 2] + 1e-3 && z < ob[b + 5] - 1e-3) return true; } return false; };
+  const inside = (x, y, z) => { const cx = Math.floor(x / CS), cz = Math.floor(z / CS); if (cx < 0 || cz < 0 || cx >= G || cz >= G) return false; const c = cz * G + cx; if (!airAt(c, y)) return true; for (let q = binS[c]; q < binS[c + 1]; q++) { const b = binL[q] * 6; if (x > ob[b] + 1e-3 && x < ob[b + 3] - 1e-3 && y > ob[b + 1] + 1e-3 && y < ob[b + 4] - 1e-3 && z > ob[b + 2] + 1e-3 && z < ob[b + 5] - 1e-3) return true; } return false; };
 
   // ---- chart lookups: world hit -> index of the light sample that covers it
-  const ch = W.charts, FC = ch[1], CC = ch[2], FP = W.FP, CP = W.CP, WP = W.WP;
-  const runInfo = W.runs.map(r => { const f = r.faces[0], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][f.d], rx = d[1], rz = -d[0], mx = f.cx * CS + CS / 2 + d[0] * CS / 2, mz = f.cz * CS + CS / 2 + d[1] * CS / 2; return { ox: mx - rx * CS / 2, oz: mz - rz * CS / 2, rx, rz, nx: d[0], nz: d[1], c: ch[r.chart] }; });
+  const ch = W.charts, FP = W.FP, CP = W.CP, WP = W.WP;
+  const runInfo = W.runs.map(r => { const f = r.faces[0], d = [[1, 0], [-1, 0], [0, 1], [0, -1]][f.d], rx = d[1], rz = -d[0], mx = f.cx * CS + CS / 2 + d[0] * CS / 2, mz = f.cz * CS + CS / 2 + d[1] * CS / 2; return { ox: mx - rx * CS / 2, oz: mz - rz * CS / 2, rx, rz, nx: d[0], nz: d[1], c: ch[r.chart], y0: r.y0 || 0 }; });
   const runOfChart = new Int32Array(ch.length).fill(-1); W.runs.forEach((r, i) => runOfChart[r.chart] = i);
   const vsCount = (v) => { let n = 1; const g = W.vl.g[v]; while (v + n < NV && W.vl.g[v + n] === g) n++; return n; };
   function sampleAt(x, y, z) { // for the current hit: sample index, or -1
     const c = hit.cell;
-    if (hit.kind === 1) return floorOn[c] ? (FC.y + Math.min(FC.h - 1, Math.floor(z / CS * FP))) * AWd + FC.x + Math.min(FC.w - 1, Math.floor(x / CS * FP)) : -1;
-    if (hit.kind === 2) return ceilOn[c] ? (CC.y + Math.min(CC.h - 1, Math.floor(z / CS * CP))) * AWd + CC.x + Math.min(CC.w - 1, Math.floor(x / CS * CP)) : -1;
+    if (hit.kind === 1) { const Lv = LVS[hit.lv], FC = ch[Lv.fc]; return Lv.floorOn[c] ? (FC.y + Math.min(FC.h - 1, Math.floor(z / CS * FP))) * AWd + FC.x + Math.min(FC.w - 1, Math.floor(x / CS * FP)) : -1; }
+    if (hit.kind === 2) { const Lv = LVS[hit.lv], CC = ch[Lv.cc]; return Lv.ceilOn[c] ? (CC.y + Math.min(CC.h - 1, Math.floor(z / CS * CP))) * AWd + CC.x + Math.min(CC.w - 1, Math.floor(x / CS * CP)) : -1; }
     const k = hit.idx * 6 + hit.face, ci = O.chart[k];
-    if (ci >= 0) { const R = runInfo[runOfChart[ci]], cc = R.c, u = (x - R.ox) * R.rx + (z - R.oz) * R.rz, px = Math.max(0, Math.min(cc.w - 1, Math.floor(u * WP))), py = Math.max(0, Math.min(cc.h - 1, Math.floor(y * cc.h / cc.hm))); return (cc.y + py) * AWd + cc.x + px; }
+    if (ci >= 0) { const R = runInfo[runOfChart[ci]], cc = R.c, u = (x - R.ox) * R.rx + (z - R.oz) * R.rz, px = Math.max(0, Math.min(cc.w - 1, Math.floor(u * WP))), py = Math.max(0, Math.min(cc.h - 1, Math.floor((y - R.y0) * cc.h / cc.hm))); return (cc.y + py) * AWd + cc.x + px; }
     const v = O.vs[k]; if (v >= 0) { const n = vsCount(v); return NA + v + ((n >> 1) | 0); }
     return -1;
   }
-  const albOfHit = (out) => { let a; if (hit.kind === 1) a = W.alb[floorAlb[hit.cell]]; else if (hit.kind === 2) a = W.alb[ceilAlb[hit.cell]]; else a = W.alb[O.alb[hit.idx * 6 + hit.face]]; out[0] = a[0]; out[1] = a[1]; out[2] = a[2]; };
+  const albOfHit = (out) => { let a; if (hit.kind === 1) a = W.alb[LVS[hit.lv].floorAlb[hit.cell]]; else if (hit.kind === 2) a = W.alb[LVS[hit.lv].ceilAlb[hit.cell]]; else a = W.alb[O.alb[hit.idx * 6 + hit.face]]; out[0] = a[0]; out[1] = a[1]; out[2] = a[2]; };
 
   // ---- sky: coarse radiance table, rotated so its sun sits where the map's sun is
   const S = W.sky ? sky(W.sky.name) : null; let skyK = 0, skyOff = 0;
@@ -84,7 +92,7 @@ function setup(id) {
   // ---- lights, and for every cell the lights that can reach it (walls between them cull most)
   const L = W.lights.map(l => { const a = 4 * Math.hypot(l.u[0], l.u[1], l.u[2]) * Math.hypot(l.v[0], l.v[1], l.v[2]); return Object.assign({ area: a, ext: Math.hypot(l.u[0], l.u[1], l.u[2]) + Math.hypot(l.v[0], l.v[1], l.v[2]) }, l); });
   const rows = (cx, cz) => cx < 0 || cz < 0 || cx >= G || cz >= G;
-  const blockCell = new Uint8Array(G * G); for (let k = 0; k < O.n; k++) { const b = k * 6; if (ob[b + 3] - ob[b] > CS - 0.01 && ob[b + 5] - ob[b + 2] > CS - 0.01 && ob[b + 1] < 0.01 && ob[b + 4] >= W.H - 0.01) blockCell[cl(ob[b + 2] + 0.1) * G + cl(ob[b] + 0.1)] = 1; }
+  const blockCell = W.blockAll ? W.blockAll.slice() : new Uint8Array(G * G); if (!W.blockAll) for (let k = 0; k < O.n; k++) { const b = k * 6; if (ob[b + 3] - ob[b] > CS - 0.01 && ob[b + 5] - ob[b + 2] > CS - 0.01 && ob[b + 1] < 0.01 && ob[b + 4] >= W.H - 0.01) blockCell[cl(ob[b + 2] + 0.1) * G + cl(ob[b] + 0.1)] = 1; }
   const los2 = (ax, az, bx, bz) => { const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz); if (d < 0.01) return true; const n = Math.ceil(d / 0.5); for (let i = 1; i < n; i++) { const x = ax + dx * i / n, z = az + dz * i / n, cx = Math.floor(x / CS), cz = Math.floor(z / CS); if (rows(cx, cz)) return true; if (blockCell[cz * G + cx]) return false; } return true; };
   const cellL = []; let pairs = 0;
   for (let cz = 0; cz < G; cz++) for (let cx = 0; cx < G; cx++) {
@@ -98,19 +106,19 @@ function setup(id) {
   // ---- samples: every lightmap texel in use, then the vertex-light samples
   const sp = new Float32Array(N * 3), sn = new Float32Array(N * 3), sf = new Uint8Array(N);   // sf: 0 unused, 1 valid, 2 inside geometry; +4 gather point; +8 open sky above
   const put = (i, x, y, z, nx, ny, nz, g) => { sp[i * 3] = x; sp[i * 3 + 1] = y; sp[i * 3 + 2] = z; sn[i * 3] = nx; sn[i * 3 + 1] = ny; sn[i * 3 + 2] = nz; sf[i] = (inside(x, y, z) ? 2 : 1) | (g ? 4 : 0); };
-  for (let cz = 0; cz < G; cz++) for (let cx = 0; cx < G; cx++) { const c = cz * G + cx;
-    if (floorOn[c]) for (let j = 0; j < FP; j++) for (let i = 0; i < FP; i++) { const px = cx * FP + i, py = cz * FP + j; put((FC.y + py) * AWd + FC.x + px, (px + 0.5) / FP * CS, floorY[c] + 0.015, (py + 0.5) / FP * CS, 0, 1, 0, !(px & 1) && !(py & 1)); }
-    if (ceilOn[c]) for (let j = 0; j < CP; j++) for (let i = 0; i < CP; i++) { const px = cx * CP + i, py = cz * CP + j; put((CC.y + py) * AWd + CC.x + px, (px + 0.5) / CP * CS, ceilY[c] - 0.015, (py + 0.5) / CP * CS, 0, -1, 0, !(px & 1) && !(py & 1)); } }
+  for (const Lv of LVS) { const FC = ch[Lv.fc], CC = ch[Lv.cc]; for (let cz = 0; cz < G; cz++) for (let cx = 0; cx < G; cx++) { const c = cz * G + cx;
+    if (Lv.floorOn[c]) for (let j = 0; j < FP; j++) for (let i = 0; i < FP; i++) { const px = cx * FP + i, py = cz * FP + j; put((FC.y + py) * AWd + FC.x + px, (px + 0.5) / FP * CS, Lv.floorY[c] + 0.015, (py + 0.5) / FP * CS, 0, 1, 0, !(px & 1) && !(py & 1)); }
+    if (Lv.ceilOn[c]) for (let j = 0; j < CP; j++) for (let i = 0; i < CP; i++) { const px = cx * CP + i, py = cz * CP + j; put((CC.y + py) * AWd + CC.x + px, (px + 0.5) / CP * CS, Lv.ceilY[c] - 0.015, (py + 0.5) / CP * CS, 0, -1, 0, !(px & 1) && !(py & 1)); } } }
   W.runs.forEach((r, ri) => { const R = runInfo[ri], cc = R.c;
     for (let px = 0; px < cc.w; px++) { const u = (px + 0.5) / WP, f = r.faces[Math.min(r.faces.length - 1, Math.floor(u / CS))]; if (f.kind === "window") continue;
-      for (let py = 0; py < cc.h; py++) put((cc.y + py) * AWd + cc.x + px, R.ox + R.rx * u + R.nx * 0.015, (py + 0.5) * cc.hm / cc.h, R.oz + R.rz * u + R.nz * 0.015, R.nx, 0, R.nz, !(px & 1) && !(py & 1)); } });
+      for (let py = 0; py < cc.h; py++) put((cc.y + py) * AWd + cc.x + px, R.ox + R.rx * u + R.nx * 0.015, R.y0 + (py + 0.5) * cc.hm / cc.h, R.oz + R.rz * u + R.nz * 0.015, R.nx, 0, R.nz, !(px & 1) && !(py & 1)); } });
   for (let v = 0; v < NV; v++) put(NA + v, W.vl.p[v * 3], W.vl.p[v * 3 + 1], W.vl.p[v * 3 + 2], W.vl.n[v * 3], W.vl.n[v * 3 + 1], W.vl.n[v * 3 + 2], true);
-  return { W, G, CS, N, NA, NV, AWd, AHd, sp, sn, sf, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, pairs, ceilY, floorY, inside, S, rows: mapRows };
+  return { W, G, CS, N, NA, NV, AWd, AHd, sp, sn, sf, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, pairs, ceilY, floorY, inside, openAt, LVS, S, rows: mapRows };
 }
 
 // ---------------------------------------------------------------- the work a thread does for a slice of samples
 function runSlice(C, job, sh) {
-  const { W, G, CS, sp, sn, sf, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, ceilY } = C, fast = job.fast;
+  const { W, G, CS, sp, sn, sf, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, openAt } = C, fast = job.fast;
   const Ed = new Float32Array(sh.Ed), Ei = new Float32Array(sh.Ei), En = new Float32Array(sh.En), Sv = new Float32Array(sh.Sv), Dm = new Float32Array(sh.Dm);
   const sun = W.sun, sE = sun ? sun.E : [0, 0, 0], sd = sun ? sun.dir : [0, 1, 0], tmp = [0, 0, 0], al = [0, 0, 0];
   let seed = (job.a * 2654435761 + job.pass * 97) >>> 0; const rnd = () => { seed ^= seed << 13; seed >>>= 0; seed ^= seed >>> 17; seed ^= seed << 5; seed >>>= 0; return seed / 4294967296; };
@@ -156,7 +164,7 @@ function runSlice(C, job, sh) {
     } else {
       // ---- one bounce of indirect light: cosine-weighted rays, read the light already stored where they land
       if (!(sf[i] & 4)) continue;
-      const K = job.k, KK = K * K, open = ceilY[cell] > 1e8;
+      const K = job.k, KK = K * K, open = openAt(cell, py);
       const hx = Math.abs(nx) < 0.9 ? 1 : 0, hy = hx ? 0 : 1; let ux = hy * nz - 0 * ny, uy = 0 * nx - hx * nz, uz = hx * ny - hy * nx; const ul = Math.hypot(ux, uy, uz); ux /= ul; uy /= ul; uz /= ul;
       const vx = ny * uz - nz * uy, vy = nz * ux - nx * uz, vz = nx * uy - ny * ux, rot = rnd() * 2 * PI, cr = Math.cos(rot), sr = Math.sin(rot);
       let er = 0, eg = 0, eb = 0, mx = 0, my = 0, mz = 0, ml = 0;
@@ -187,12 +195,13 @@ function runSlice(C, job, sh) {
 
 // light probes for moving objects: L1 spherical harmonics of everything but the sun, plus how much of the sun reaches the spot
 function bakeProbes(C, E, Sv, fast) {
-  const { W, G, CS, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, ceilY, floorY, inside, sf } = C, PS = W.ps || 2, PN = Math.ceil(G * CS / PS), out = new Float32Array(PN * PN * 13), tmp = [0, 0, 0], al = [0, 0, 0];
+  const { W, G, CS, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, inside, openAt, LVS, sf } = C, PS = W.ps || 2, PN = Math.ceil(G * CS / PS), NL = LVS.length, out = new Float32Array(PN * PN * 13 * NL), tmp = [0, 0, 0], al = [0, 0, 0];
   const sun = W.sun, sd = sun ? sun.dir : [0, 1, 0], sE = sun ? sun.E : [0, 0, 0], K = fast ? 64 : 320, GA = PI * (3 - Math.sqrt(5));
-  for (let pz = 0; pz < PN; pz++) for (let px = 0; px < PN; px++) {
-    const x = Math.min(G * CS - 0.01, (px + 0.5) * PS), z = Math.min(G * CS - 0.01, (pz + 0.5) * PS), cell = Math.floor(z / CS) * G + Math.floor(x / CS), y = Math.max(0, floorY[cell]) + 1.25, o = (pz * PN + px) * 13;
+  // one grid per storey, stacked: probes stand 1.25 m over that storey's floor
+  for (let lv = 0; lv < NL; lv++) for (let pz = 0; pz < PN; pz++) for (let px = 0; px < PN; px++) {
+    const x = Math.min(G * CS - 0.01, (px + 0.5) * PS), z = Math.min(G * CS - 0.01, (pz + 0.5) * PS), cell = Math.floor(z / CS) * G + Math.floor(x / CS), fy = LVS[lv].floorY[cell], y = (lv ? (fy === fy ? fy : LVS[lv].y0) : Math.max(0, fy)) + 1.25, o = ((lv * PN + pz) * PN + px) * 13;
     if (inside(x, y, z)) { out[o + 12] = -1; continue; }
-    const sh = new Float64Array(12), open = ceilY[cell] > 1e8;
+    const sh = new Float64Array(12), open = openAt(cell, y);
     for (let k = 0; k < K; k++) { // even directions on the sphere
       const dy = 1 - 2 * (k + 0.5) / K, r = Math.sqrt(1 - dy * dy), a = k * GA, dx = Math.cos(a) * r, dz = Math.sin(a) * r, t = trace(x, y, z, dx, dy, dz, 300, false); let Lr = 0, Lg = 0, Lb = 0;
       if (hit.kind === 0) { if (open || W.outdoor) { skyL(dx, dy, dz, tmp); Lr = tmp[0]; Lg = tmp[1]; Lb = tmp[2]; } }
@@ -299,7 +308,7 @@ async function bakeMap(id, fast, dbg, threads) {
   await sharp(Buffer.from(a8.buffer), { raw: { width: AWd, height: AHd, channels: 4 } }).png({ compressionLevel: 9 }).toFile(path.join(out, `lm-${id}-a.png`));
   await sharp(Buffer.from(b8.buffer), { raw: { width: AWd, height: AHd, channels: 4 } }).resize(AWd >> 1, AHd >> 1, { kernel: "linear" }).png({ compressionLevel: 9 }).toFile(path.join(out, `lm-${id}-b.png`));
   const v8 = new Uint8Array(NV * 4); for (let v = 0; v < NV; v++) { const i = NA + v; v8[v * 4] = enc(E[i * 3]); v8[v * 4 + 1] = enc(E[i * 3 + 1]); v8[v * 4 + 2] = enc(E[i * 3 + 2]); v8[v * 4 + 3] = Math.round(Math.max(0, Math.min(1, Sv[i])) * 255); }
-  const head = Buffer.from(JSON.stringify({ sig: W.sig, ver: W.ver, aw: AWd, ah: AHd, nv: NV, scale: LM_SCALE, pn: Math.ceil(W.G * W.CS / (W.ps || 2)), ps: W.ps || 2, fast: fast ? 1 : 0 })), pad = (4 - head.length % 4) % 4, hb = Buffer.alloc(8);
+  const head = Buffer.from(JSON.stringify({ sig: W.sig, ver: W.ver, aw: AWd, ah: AHd, nv: NV, scale: LM_SCALE, pn: Math.ceil(W.G * W.CS / (W.ps || 2)), ps: W.ps || 2, nl: W.levels ? W.levels.length : 1, split: W.levels ? W.levels[1].y0 - 0.2 : 0, fast: fast ? 1 : 0 })), pad = (4 - head.length % 4) % 4, hb = Buffer.alloc(8);
   hb.write("NXLM", 0, "ascii"); hb.writeUInt32LE(head.length + pad, 4);
   fs.writeFileSync(path.join(out, `lm-${id}.bin`), Buffer.concat([hb, head, Buffer.alloc(pad, 32), Buffer.from(v8.buffer), Buffer.from(probes.buffer)]));
   const sz = (f) => (fs.statSync(path.join(out, f)).size / 1024).toFixed(0) + " KB";

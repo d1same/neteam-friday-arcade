@@ -58,7 +58,8 @@ const SFX = {
   noiseBuf(a) { if (this._nb && this._nb.sampleRate === a.sampleRate) return this._nb; const n = a.sampleRate * 1.5, b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; return (this._nb = b); },
   // ---- the mix: everything goes through one master bus (a limiter keeps bursts of gunfire from clipping) and a shared
   // reverb whose size follows the place you are in (SFX.space). `wet` scales how much of a sound reaches the reverb.
-  vol: 0.9, _bus: null, _space: "room",
+  vol: typeof store("nfa-vol") === "number" ? store("nfa-vol") : 0.9, _bus: null, _space: "room",
+  setVol(v) { this.vol = Math.max(0, Math.min(1, v)); store("nfa-vol", this.vol); const B = this._bus; if (B && this.on) B.master.gain.setTargetAtTime(this.vol, B.a.currentTime, 0.05); },
   bus(a) {
     if (this._bus && this._bus.a === a) return this._bus;
     const master = a.createGain(); master.gain.value = this.vol;
@@ -474,22 +475,4 @@ const SFX = {
   // steam letting go (an overheated gun), a shield coming up, something powering down
   steam(vol = 0.5) { this.samp("steam1", vol * 0.6, 0, 1, 0, 0, 0.3) || this.hiss(vol * 0.5, 0); },
   shield(vol = 0.5) { this.samp("shield1", vol * 0.7, 0, 1, 0, 0, 0.4) || this.whoosh(vol * 0.6, 0, 1); },
-  // names for the sound test (Settings): what each one is and how to play it
-  LIST() {
-    const s = this, p = (n) => () => s.play(n);
-    return [["Menu tick", p("blip")], ["Menu confirm / ready", p("right")], ["Menu back / not ready", p("pop")], ["Denied / warning", p("wrong")], ["Someone joined", p("join")],
-      ["Countdown beat", p("count")], ["Go", p("go")], ["Game starting", p("start")], ["Victory", p("win")], ["Defeat", p("lose")], ["Payload planted", p("alarm")], ["Pickup", p("pickup")],
-      ["Hit marker", () => s.hit(0)], ["Headshot marker", () => s.hit(1)], ["Kill", () => s.kill(0)], ["Headshot kill", () => s.kill(1)], ["You are hit", () => s.hurt(30)], ["Heartbeat", () => s.heart(0.8)],
-      ["Pistol", () => s.shot("pistol")], ["SMG", () => s.shot("smg")], ["Rifle", () => s.shot("rifle")], ["Carbine", () => s.shot("carbine")], ["Heavy pistol", () => s.shot("heavy")], ["Shotgun", () => s.shot("shotgun")], ["LMG", () => s.shot("lmg")], ["Sniper", () => s.shot("sniper")], ["Scout", () => s.shot("scout")],
-      ["Rifle outdoors (rooftop)", () => { s.space("open"); s.shot("rifle"); }], ["Sniper outdoors (rooftop)", () => { s.space("open"); s.shot("sniper"); }], ["Rifle in a big hall", () => { s.space("hall"); s.shot("rifle"); }], ["Rifle in an office", () => { s.space("room"); s.shot("rifle"); }],
-      ["Battle in the distance (12 s)", () => { const prev = s._ambWant; s.amb(null); s.amb("desert"); setTimeout(() => { s.amb(null); if (prev) s.amb(prev); }, 12000); }], ["Distant artillery and tanks", () => [1, 3, 5].forEach((k, n) => setTimeout(() => s.samp("war-far" + k, 0.5, n - 1, 1, 0, 0, 0.3), n * 2500))], ["Big explosion", () => s.blast(1, 0, 1, 0)], ["Grenade", () => s.blast(0.9, 0, 0, 0)], ["Explosion 40 m away", () => s.blast(0.7, 0.4, 0, 0.6)], ["Enemy rifle 15 m away", () => s.shot("rifle", 0.75, 0.4, 0.3)], ["Bullet cracks past you", () => s.whiz(0.5)], ["Close explosion (ears ring)", () => { s.blast(1, 0, 0, 0); if (!s.legacy) s.ring(1); }],
-      ["Rifle far away", () => s.shot("rifle", 0.6, 0, 0.8)], ["Sniper far away", () => s.shot("sniper", 0.6, 0, 0.8)], ["SMG far away", () => s.shot("smg", 0.6, 0, 0.8)], ["Laser shot", () => s.shot("laser")], ["Jump", () => s.jump(0.6)], ["Landing (short drop)", () => s.land(0.3)], ["Landing (big drop)", () => s.land(1)], ["Distant shot", () => s.shot("rifle", 0.7, 0.4, 0.9)],
-      ["Reload pistol", () => s.reload("pistol", 1.5)], ["Reload magnum", () => s.reload("deagle", 2.2)], ["Reload SMG", () => s.reload("smg", 2.0)], ["Reload rifle", () => s.reload("rifle", 2.4)], ["Reload carbine", () => s.reload("carbine", 2.2)],
-      ["Reload LMG", () => s.reload("lmg", 5.0)], ["Reload sniper", () => s.reload("sniper", 3.4)], ["Reload scout", () => s.reload("scout", 2.8)], ["Reload shotgun", () => s.reload("shotgun", 3)], ["Sniper bolt", () => s.bolt(0.8)], ["Empty click / pickup clank", () => s.clank(0.5)], ["Shell case", () => s.casing(1)],
-      ["Footstep", () => s.step(0.9, 0, 0)], ["Bullet on wall", () => s.impact(0, 0.8, 0)], ["Bullet on metal", () => s.impact(1, 0.8, 0)], ["Bullet on metal x5", () => [0, 1, 2, 3, 4].forEach(k => setTimeout(() => { s._it = 0; s.impact(1, 0.8, (k - 2) * 0.3); }, k * 260))], ["Every gun in a row", () => ["pistol", "heavy", "smg", "rifle", "carbine", "lmg", "scout", "sniper", "shotgun"].forEach((g, k) => setTimeout(() => s.shot(g, 1, 0, 0), k * 900))], ["Bullet passing", () => s.whiz(0.3)], ["Knife swing", () => s.swish(0.6)],
-      ["Grenade", () => s.blast(0.9, 0, 0, 0)], ["Big explosion", () => s.blast(1, 0, 1, 0)], ["Far explosion", () => s.blast(0.7, 0.3, 0, 0.8)], ["Smoke grenade", () => s.hiss(0.7, 0)], ["Crate breaks", () => s.crash(0, 0.7)], ["Glass breaks", () => s.crash(1, 0.7)],
-      ["Jump pad", () => s.pad(0.7)], ["Hook misses", () => s.clack(0.4, 0, 1.3)], ["Fall / you died", p("fall")], ["Body bump", p("bump")],
-      ["Car scrape", () => s.scrape(0.7, 0)], ["Nitro", () => s.whoosh(0.9, 0, 1)], ["EMP / bolt lands", () => s.zap(0.7, 0, 1)], ["Spark", () => s.zap(0.5)], ["Gun overheats", () => s.steam(0.7)], ["Shield", () => s.shield(0.7)], ["Crowd", () => s.cheer(0.8)],
-      ["Engine: idle to full and back (3 s)", () => { const e = s.engine(1); if (!e) return; const t0 = performance.now(), iv = setInterval(() => { const k = (performance.now() - t0) / 3000; if (k >= 1) { clearInterval(iv); e.stop(); return; } const r = k < 0.6 ? k / 0.6 : 1 - (k - 0.6) / 0.4; e.set(0.1 + r * 0.9, k < 0.6 ? 1 : 0.1, 0.5, 0, 1); }, 30); }]];
-  },
 };

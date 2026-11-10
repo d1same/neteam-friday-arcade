@@ -68,24 +68,22 @@ const NXW = (() => {
 
   function build(id, M, env) {
     env = env || {};
-    const TEX = env.tex || {}, rows = M.rows, G = rows.length, FP = M.fp || FP0, size = G * CS, theme = M.nx || M.theme;
+    const TEX = env.tex || {}, G = M.rows.length, FP = M.fp || FP0, size = G * CS, theme = M.nx || M.theme;
     // a theme is a function with optional settings on it: outdoor (open sky), H (wall height), blockH(x, z, ctx) = height of a solid cell
     const TH = NXW.themes[theme] || NXW.themes.office, outdoor = !!TH.outdoor;
-    const H = M.wallH || TH.H || 3.2;
+    // a map with an upper storey (M.up = { h: height of the upper floor, ceil: its room height, rows }) is built one storey at a time;
+    // the ground storey's rooms end under the slab
+    const UP = M.up || null, SLAB = 0.35, H = UP ? UP.h - SLAB : (M.wallH || TH.H || 3.2);
+    const LV = [{ rows: M.rows, y0: 0, H }]; if (UP) LV.push({ rows: UP.rows.map(r => r.padEnd(G, "#")), y0: UP.h, H: UP.ceil || 3.6 });
     const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [], panes: [] };
-    const ch = (x, z) => (x < 0 || z < 0 || x >= G || z >= G) ? "#" : rows[z][x];
-    const solid = (x, z) => ch(x, z) === "#";
     const inb = (x, z) => x >= 0 && z >= 0 && x < G && z < G;
     const border = (x, z) => x === 0 || z === 0 || x === G - 1 || z === G - 1;
     const ci = (x, z) => z * G + x;
     const seed = strSeed(id + ":" + VER);
     const hsh = (x, z, k) => hash(x + seed % 977, z + (seed >>> 10) % 991, k | 0);
 
-    // ---- per-cell tables the baker reads: floor height, ceiling height (Infinity = open sky), surface colours
-    const floorY = new Float32Array(G * G), ceilY = new Float32Array(G * G).fill(outdoor ? Infinity : H), floorOn = new Uint8Array(G * G), ceilOn = new Uint8Array(G * G);
     const alb = [[0, 0, 0]], albKey = { "0,0,0": 0 };
     const albIdx = (c) => { const k = c.map(v => Math.round(v * 500) / 500).join(","); if (albKey[k] == null) { albKey[k] = alb.length; alb.push(k.split(",").map(Number)); } return albKey[k]; };
-    const floorAlb = new Uint16Array(G * G), ceilAlb = new Uint16Array(G * G);
     const matDef = (key) => { const m = MATS[key]; if (!m) throw new Error("NXW: unknown material " + key); if (!W.mats[key]) W.mats[key] = m; return m; };
     const matAlb = (key) => { const m = matDef(key), t = m.t && TEX[m.t], a = t ? t.a : [1, 1, 1], c = m.c || [1, 1, 1]; return [Math.min(0.9, a[0] * c[0]), Math.min(0.9, a[1] * c[1]), Math.min(0.9, a[2] * c[2])]; };
     const matScale = (key) => { const m = matDef(key), t = m.t && TEX[m.t]; return [m.s || (t ? t.s : 1), m.s ? m.s * (t ? t.sy / t.s : 1) : (t ? t.sy : 1)]; };
@@ -100,7 +98,7 @@ const NXW = (() => {
     const charts = [];
 
     function occ(x0, y0, z0, x1, y1, z1, a, em) {
-      oB.push3(x0, y0, z0); oB.push3(x1, y1, z1); const ai = albIdx(a || [0.5, 0.5, 0.5]);
+      oB.push3(x0, y0 + YO, z0); oB.push3(x1, y1 + YO, z1); const ai = albIdx(a || [0.5, 0.5, 0.5]);
       for (let k = 0; k < 6; k++) { oAlb.push1(ai); oChart.push1(-1); oVs.push1(-1); }
       oEm.push3(em ? em[0] : 0, em ? em[1] : 0, em ? em[2] : 0); return oN++;
     }
@@ -108,7 +106,7 @@ const NXW = (() => {
     // one planar quad. P = corner, U and V edge vectors (U x V = normal). Lit by the lightmap (lm = [chart, u0, v0, u1, v1] in
     // chart pixels) or by baked vertex light (subdivided so gradients survive).
     function quad(key, px, py, pz, ux, uy, uz, vx, vy, vz, o) {
-      o = o || {}; const b = batch(key), nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1, n0 = nx / nl, n1 = ny / nl, n2 = nz / nl;
+      o = o || {}; py += YO; const b = batch(key), nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1, n0 = nx / nl, n1 = ny / nl, n2 = nz / nl;
       const lu = Math.hypot(ux, uy, uz), lv = Math.hypot(vx, vy, vz), sc = o.fit ? null : matScale(key);
       const su = o.lm ? 1 : Math.max(1, Math.min(8, Math.ceil(lu / (o.seg || 1.1)))), sv = o.lm ? 1 : Math.max(1, Math.min(8, Math.ceil(lv / (o.seg || 1.1))));
       const base = b.nv, grp = o.lm ? -1 : vlGroups++;
@@ -138,7 +136,7 @@ const NXW = (() => {
     // light sample, o.gs vertices to a repair group
     function mesh(key, V, I, o) {
       o = o || {}; const b = batch(key), base = b.nv, n = V.length / 8, gs = o.gs || 4; let grp = -1;
-      for (let i = 0; i < n; i++) { const q = i * 8, x = V[q], y = V[q + 1], z = V[q + 2], n0 = V[q + 3], n1 = V[q + 4], n2 = V[q + 5];
+      for (let i = 0; i < n; i++) { const q = i * 8, x = V[q], y = V[q + 1] + YO, z = V[q + 2], n0 = V[q + 3], n1 = V[q + 4], n2 = V[q + 5];
         b.p.push3(x, y, z); b.n.push3(n0, n1, n2); b.uv.push2(V[q + 6], V[q + 7]);
         if (o.floor) { b.lm.push2(Math.min(G * FP - 0.5, Math.max(0.5, x / CS * FP)), Math.min(G * FP - 0.5, Math.max(0.5, z / CS * FP))); b.lc.push1(1); b.vi.push1(-1); }
         else { if (i % gs === 0) grp = vlGroups++; b.lm.push2(0, 0); b.lc.push1(-1); b.vi.push1(vlG.n); vlP.push3(x + n0 * 0.03, y + n1 * 0.03, z + n2 * 0.03); vlN.push3(n0, n1, n2); vlG.push1(grp); } }
@@ -167,7 +165,7 @@ const NXW = (() => {
     }
     // cylinder along Y (columns, pipes, bins, pots): n-sided prism, vertex lit
     function cyl(key, cx, y0, cz, r, h, n, o) {
-      o = o || {}; n = n || 10; const b = batch(key), sc = matScale(key), sv = Math.max(1, Math.min(6, Math.ceil(h / (o.seg || 1.1)))), r1 = o.r1 == null ? r : o.r1;
+      o = o || {}; n = n || 10; y0 += YO; const b = batch(key), sc = matScale(key), sv = Math.max(1, Math.min(6, Math.ceil(h / (o.seg || 1.1)))), r1 = o.r1 == null ? r : o.r1;
       const base = b.nv, grp = vlGroups++;
       for (let j = 0; j <= sv; j++) for (let i = 0; i <= n; i++) {
         const a = i / n * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a), rr = r + (r1 - r) * j / sv, x = cx + ca * rr, y = y0 + h * j / sv, z = cz + sa * rr;
@@ -182,11 +180,11 @@ const NXW = (() => {
         for (let i = 0; i < n; i++) b.ix.push3(cb, cb + 1 + (i + 1) % n, cb + 1 + i);
         b.nv += n + 1;
       }
-      if (o.occ !== false && r >= 0.12 && h >= 0.5) occ(cx - r * 0.8, y0, cz - r * 0.8, cx + r * 0.8, y0 + h, cz + r * 0.8, o.a || matAlb(key));
+      if (o.occ !== false && r >= 0.12 && h >= 0.5) occ(cx - r * 0.8, y0 - YO, cz - r * 0.8, cx + r * 0.8, y0 - YO + h, cz + r * 0.8, o.a || matAlb(key));
     }
     // round bar between two points (pipes, cables, rails, poles at any angle): n-sided prism without caps, vertex lit
     function tube(key, ax, ay, az, bx, by, bz, r, n, o) {
-      o = o || {}; n = n || 6; const b = batch(key), sc = matScale(key), dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz) || 1e-6, wx = dx / len, wy = dy / len, wz = dz / len;
+      o = o || {}; n = n || 6; ay += YO; by += YO; const b = batch(key), sc = matScale(key), dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz) || 1e-6, wx = dx / len, wy = dy / len, wz = dz / len;
       let ux = Math.abs(wy) > 0.9 ? 1 : 0, uy = Math.abs(wy) > 0.9 ? 0 : 1, uz = 0; let vx = wy * uz - wz * uy, vy = wz * ux - wx * uz, vz = wx * uy - wy * ux; const vl = Math.hypot(vx, vy, vz); vx /= vl; vy /= vl; vz /= vl; ux = vy * wz - vz * wy; uy = vz * wx - vx * wz; uz = vx * wy - vy * wx;
       const sv = Math.max(1, Math.min(10, Math.ceil(len / (o.seg || 1.6)))), base = b.nv, grp = vlGroups++;
       for (let j = 0; j <= sv; j++) for (let i = 0; i <= n; i++) {
@@ -199,8 +197,28 @@ const NXW = (() => {
     }
     // light sources the baker integrates. Rectangle: centre c, half edges u and v, emits along n (two = both sides).
     // L = radiance. vis = what the player sees is handled by emissive geometry, this is only the lighting.
-    function rectLight(c, u, v, n, L, o) { o = o || {}; W.lights.push({ c, u, v, n, L, two: !!o.two, portal: !!o.portal, range: o.range || 0, spot: o.spot || 0 }); }
+    function rectLight(c, u, v, n, L, o) { o = o || {}; c = [c[0], c[1] + YO, c[2]]; W.lights.push({ c, u, v, n, L, two: !!o.two, portal: !!o.portal, range: o.range || 0, spot: o.spot || 0 }); }
 
+    // the storey being built: every primitive lifts its geometry by this much
+    let YO = 0;
+    charts.push({ kind: "black", w: 4, h: 4 });
+    // decal atlas (2048 x 2048 canvas the browser paints), shelf packed
+    const DA = { w: 2048, h: 2048, pad: 4, used: 0, scale: 1 }, DC = {}, DU = []; W.dAtlas = DA;
+    // stair cells (ground storey) and the skylight over the atrium (upper storey cells open below that are not stairs)
+    const STAIRS = UP ? (M.stairs || []).map(([cx, cz, dx, dz, n]) => ({ cx, cz, dx, dz, n })) : [], stairM = new Uint8Array(G * G), skyM = new Uint8Array(G * G);
+    STAIRS.forEach(s => { for (let k = 0; k < s.n; k++) stairM[(s.cz + s.dz * k) * G + s.cx + s.dx * k] = 1; });
+    if (UP) for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (LV[1].rows[z][x] === " " && !stairM[z * G + x]) skyM[z * G + x] = 1;
+    const LVS = [], allRuns = [], allFaces = [];
+    for (let li = 0; li < LV.length; li++) {
+    const lv = LV[li], rows = lv.rows, H = lv.H; YO = lv.y0;
+    const ch = (x, z) => (x < 0 || z < 0 || x >= G || z >= G) ? "#" : rows[z][x];
+    const solid = (x, z) => ch(x, z) === "#";
+    // ---- per-cell tables the baker reads: floor height, ceiling height (Infinity = open sky), surface colours
+    const floorY = new Float32Array(G * G), ceilY = new Float32Array(G * G).fill(outdoor ? Infinity : H), floorOn = new Uint8Array(G * G), ceilOn = new Uint8Array(G * G);
+    const floorAlb = new Uint16Array(G * G), ceilAlb = new Uint16Array(G * G);
+    const upRow = (x, z) => LV[li + 1] ? (LV[li + 1].rows[z] || "")[x] || "#" : "#";
+    const noCeil = new Uint8Array(G * G), noFloor = new Uint8Array(G * G);
+    for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) { if (LV[li + 1] && rows[z][x] !== "#" && upRow(x, z) === " ") noCeil[z * G + x] = 1; if (li > 0 && rows[z][x] === " ") noFloor[z * G + x] = 1; }
     // ---- map analysis: exposed wall faces, straight runs of them, zones
     const zoneOf = (x, z) => { const c = ch(x, z); return c === "a" ? "siteA" : c === "b" ? "siteB" : c === "r" ? "red" : c === "u" ? "blue" : c === "#" ? "" : "hall"; };
     // connected blocks of solid cells that are not the outer ring ("pods": cores, columns, rooms you cannot enter)
@@ -234,18 +252,14 @@ const NXW = (() => {
     const openN = (x, z) => DIRS.reduce((n, [dx, dz]) => n + (solid(x + dx, z + dz) ? 0 : 1), 0);
     const A = { ch, solid, inb, border, ci, hsh, faces, runs, pods, podOf, frame, faceAt, zoneOf, openN, cellH };
 
-    // ---- lightmap charts. Chart 0 = a few black texels every vertex-lit vertex points at, 1 = floor, 2 = ceiling, then wall runs.
-    charts.push({ kind: "black", w: 4, h: 4 });
-    charts.push({ kind: "floor", w: G * FP, h: G * FP });
-    charts.push({ kind: "ceil", w: outdoor ? 0 : G * CP, h: outdoor ? 0 : G * CP });
-    const floorLm = (x0, z0, x1, z1) => [1, x0 / CS * FP, z0 / CS * FP, x1 / CS * FP, z1 / CS * FP];
-    const ceilLm = (x0, z0, x1, z1) => [2, x0 / CS * CP, z0 / CS * CP, x1 / CS * CP, z1 / CS * CP];
-    for (const r of runs) { r.chart = charts.length; charts.push({ kind: "wall", w: r.faces.length * CS * WP, h: Math.ceil(r.h * WP), run: r.id, hm: r.h }); }
-
-    // decal atlas (2048 x 2048 canvas the browser paints), shelf packed
-    const DA = { w: 2048, h: 2048, pad: 4, used: 0, scale: 1 }, DC = {}, DU = []; W.dAtlas = DA;
+    const FCI = charts.length, CCI = FCI + 1;
+    charts.push({ kind: "floor", lv: li, w: G * FP, h: G * FP });
+    charts.push({ kind: "ceil", lv: li, w: outdoor ? 0 : G * CP, h: outdoor ? 0 : G * CP });
+    const floorLm = (x0, z0, x1, z1) => [FCI, x0 / CS * FP, z0 / CS * FP, x1 / CS * FP, z1 / CS * FP];
+    const ceilLm = (x0, z0, x1, z1) => [CCI, x0 / CS * CP, z0 / CS * CP, x1 / CS * CP, z1 / CS * CP];
+    for (const r of runs) { r.chart = charts.length; charts.push({ kind: "wall", w: r.faces.length * CS * WP, h: Math.ceil(r.h * WP), run: allRuns.length + r.id, hm: r.h, y0: lv.y0 }); }
     // lightmapped building blocks
-    const B = { W, A, G, H, CS, FP, M, env, MATS, quad, box, cyl, tube, mesh, occ, rectLight, lightMat, matAlb, floorLm, ceilLm, hsh, PX, NX: NX_, PY, NY, PZ, NZ, ALL,
+    const B = { W, A, G, H, li, y0: lv.y0, noCeil, noFloor, stair: li ? null : stairM, skylight: li ? skyM : null, CS, FP, M, env, MATS, quad, box, cyl, tube, mesh, occ, rectLight, lightMat, matAlb, floorLm, ceilLm, hsh, PX, NX: NX_, PY, NY, PZ, NZ, ALL,
       floorY, ceilY, floorOn, ceilOn,
       occB: (k, i) => oB.a[k * 6 + i],
       // point one face of a baker solid (0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z) at a lightmap chart and give it a colour
@@ -266,7 +280,7 @@ const NXW = (() => {
       fpos(f, u, v, w) { const fr = frame(f); return [fr.ox + fr.rx * u + fr.nx * w, v, fr.oz + fr.rz * u + fr.nz * w]; },
       fdir(f, u, v, w) { const fr = frame(f); return [fr.rx * u + fr.nx * w, v, fr.rz * u + fr.nz * w]; },
       // light fixture seen by the player: glow sprite / flare anchors for the renderer
-      fixture(x, y, z, col, k, kind) { W.fixtures.push({ x, y, z, col, k, kind: kind || "lamp" }); },
+      fixture(x, y, z, col, k, kind) { W.fixtures.push({ x, y: y + YO, z, col, k, kind: kind || "lamp" }); },
       // decal: a quad whose picture the browser draws into the decal atlas from a small spec ({k: kind, ...}); px = pixels per metre.
       // Equal pictures are drawn once; the atlas is packed after the theme has run, so the quad's uvs are filled in later.
       decal(key, P, U, V, px, spec) {
@@ -278,7 +292,7 @@ const NXW = (() => {
     };
 
     // ---- theme
-    TH(B, M, env);
+    TH(B, li ? Object.assign({}, M, { rows }) : M, env);
 
     // every solid cell that the theme did not replace by its own geometry is one solid block for the baker
     for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
@@ -286,6 +300,81 @@ const NXW = (() => {
       if (!solid(x, z) || (B.hollow && B.hollow[c])) continue;
       const k = occ(x * CS, 0, z * CS, x * CS + CS, cellH[c], z * CS + CS, [0.4, 0.4, 0.4]);
       for (let d = 0; d < 4; d++) { const fi = faceAt[c * 4 + d]; if (fi < 0) continue; const f = faces[fi], fa = d === 0 ? 0 : d === 1 ? 1 : d === 2 ? 4 : 5; oChart.a[k * 6 + fa] = runs[f.run].chart; oAlb.a[k * 6 + fa] = albIdx(f.alb || [0.4, 0.4, 0.4]); }
+    }
+    // the storey's own heights become world heights
+    for (let c = 0; c < G * G; c++) { if (noFloor[c]) { floorOn[c] = 0; floorY[c] = NaN; } else floorY[c] += lv.y0; if (noCeil[c]) { ceilOn[c] = 0; ceilY[c] = NaN; } else ceilY[c] += lv.y0; }
+    runs.forEach(r => { r.y0 = lv.y0; r.lv = li; }); faces.forEach(f => f.lv = li);
+    const blk = new Uint8Array(G * G); for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) blk[ci(x, z)] = solid(x, z) && !(B.hollow && B.hollow[ci(x, z)]) ? 1 : 0;
+    LVS.push({ y0: lv.y0, H, floorY, ceilY, floorOn, ceilOn, floorAlb, ceilAlb, fc: FCI, cc: CCI, rows, blk });
+    allRuns.push(...runs); allFaces.push(...faces);
+    }
+    YO = 0;
+
+    // ---- between the storeys: slab edges round every opening, glass balustrades, the stairs, a skylight over the atrium
+    if (UP) {
+      const U0 = UP.h, TOP = UP.h + (UP.ceil || 3.6), L1 = LVS[1], up = (x, z) => inb(x, z) ? L1.rows[z][x] : "#", gr = (x, z) => inb(x, z) ? M.rows[z][x] : "#", voidAt = (x, z) => up(x, z) === " ";
+      const runOf = (x, z) => STAIRS.find(s => { for (let k = 0; k < s.n; k++) if (s.cx + s.dx * k === x && s.cz + s.dz * k === z) return true; return false; });
+      // the edge where a stair arrives on its landing stays open
+      const arrival = (x, z, nx, nz) => { const s = runOf(x, z); return !!s && s.cx + s.dx * s.n === nx && s.cz + s.dz * s.n === nz; };
+      const concA = matAlb("o_conc");
+      // a straight balustrade from a to b (world x, z) standing on y0..y1 at each end: glass, steel top rail, black base channel
+      const balustrade = (ax, az, bx, bz, ya, yb) => {
+        quad("glass", ax, ya + 0.06, az, bx - ax, yb - ya, bz - az, 0, 0.94, 0, { seg: 4 });
+        tube("trimSteel", ax, ya + 1.03, az, bx, yb + 1.03, bz, 0.028, 8, { seg: 2 });
+        tube("trimBlack", ax, ya + 0.03, az, bx, yb + 0.03, bz, 0.035, 4, { seg: 2 });
+        const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / 1.35));
+        for (let k = 0; k <= n; k++) { const t = k / n, x = ax + (bx - ax) * t, z = az + (bz - az) * t, y = ya + (yb - ya) * t; tube("trimSteel", x, y + 0.06, z, x, y + 1.0, z, 0.016, 6); }
+      };
+      for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
+        if (!voidAt(x, z)) continue;
+        for (let d = 0; d < 4; d++) {
+          const [dx, dz] = DIRS[d], nx = x + dx, nz = z + dz; if (!inb(nx, nz) || voidAt(nx, nz) || arrival(x, z, nx, nz)) continue;
+          // edge midpoint, a vector along the edge (so that the face looks into the opening), and the edge's two ends
+          const mx = x * CS + CS / 2 + dx * CS / 2, mz = z * CS + CS / 2 + dz * CS / 2, ux = -dz * CS, uz = dx * CS, px = mx - ux / 2, pz = mz - uz / 2;
+          // slab edge: a painted concrete band from the ceiling below up to the floor above, and a solid for the baker
+          quad("o_conc", px, H, pz, ux, 0, uz, 0, U0 - H, 0, { seg: 2 });
+          const e0x = Math.min(mx, mx + dx * 0.1), e1x = Math.max(mx, mx + dx * 0.1), e0z = Math.min(mz, mz + dz * 0.1), e1z = Math.max(mz, mz + dz * 0.1);
+          // a black shadow gap where the slab edge meets the ceiling below
+          box("trimBlack", dx ? Math.min(mx - dx * 0.01, mx + dx * 0.03) : Math.min(px, px + ux), H - 0.04, dz ? Math.min(mz - dz * 0.01, mz + dz * 0.03) : Math.min(pz, pz + uz), dx ? Math.max(mx - dx * 0.01, mx + dx * 0.03) : Math.max(px, px + ux), H, dz ? Math.max(mz - dz * 0.01, mz + dz * 0.03) : Math.max(pz, pz + uz), { f: NY | (dx > 0 ? NX_ : dx < 0 ? PX : dz > 0 ? NZ : PZ), occ: false, seg: 2 });
+          occ(dx ? e0x : Math.min(px, px + ux), H, dz ? e0z : Math.min(pz, pz + uz), dx ? e1x : Math.max(px, px + ux), U0 - 0.002, dz ? e1z : Math.max(pz, pz + uz), concA);
+          // a floor upstairs ends at a glass balustrade
+          if (up(nx, nz) === ".") { const ox = dx * 0.07, oz = dz * 0.07; balustrade(px + ox, pz + oz, px + ux + ox, pz + uz + oz, U0, U0); }
+        }
+      }
+      // stairs: solid concrete flights with oak treads and a steel nosing; glass balustrades on the open sides
+      for (const s of STAIRS) {
+        const NS = Math.max(4, Math.round(U0 / 0.18)), rise = U0 / NS, len = s.n * CS, tr = len / NS, along = s.dx !== 0, dir = s.dx || s.dz;
+        const e0 = along ? (s.dx > 0 ? s.cx * CS : (s.cx + 1) * CS) : (s.dz > 0 ? s.cz * CS : (s.cz + 1) * CS), w0 = (along ? s.cz : s.cx) * CS, w1 = w0 + CS;
+        const back = along ? (dir > 0 ? PX : NX_) : (dir > 0 ? PZ : NZ);
+        const at = (d, w0_, w1_, y0_, y1_, key, o) => { const a = e0 + dir * d[0], b = e0 + dir * d[1]; return along ? box(key, Math.min(a, b), y0_, w0_, Math.max(a, b), y1_, w1_, o) : box(key, w0_, y0_, Math.min(a, b), w1_, y1_, Math.max(a, b), o); };
+        for (let i = 0; i < NS; i++) {
+          const top = (i + 0.5) * rise;
+          at([i * tr, (i + 1) * tr], w0, w1, 0, top - 0.035, "o_conc", { f: ALL & ~NY & ~back, seg: 1.4 });
+          at([i * tr - 0.025, (i + 1) * tr], w0 + 0.01, w1 - 0.01, top - 0.035, top, "o_oak", { f: ALL & ~NY & ~back, occ: false, seg: 2, rot: along ? 0 : 1 });
+          at([i * tr - 0.03, i * tr + 0.03], w0 + 0.05, w1 - 0.05, top - 0.012, top + 0.002, "trimSteel", { f: PY, occ: false, seg: 2 });
+        }
+        // open sides: the cell beside the flight is open on the ground floor
+        for (const sg of [-1, 1]) {
+          const side = along ? [0, sg] : [sg, 0]; let k0 = -1;
+          for (let k = 0; k <= s.n; k++) {
+            const x = s.cx + s.dx * k, z = s.cz + s.dz * k, open = k < s.n && gr(x + side[0], z + side[1]) !== "#" && !runOf(x + side[0], z + side[1]);
+            if (open && k0 < 0) k0 = k;
+            if (!open && k0 >= 0) { const wl = sg > 0 ? w1 - 0.07 : w0 + 0.07, da = k0 * CS, db = k * CS, ya = da / len * U0, yb = db / len * U0, a = e0 + dir * da, b = e0 + dir * db;
+              if (along) balustrade(a, wl, b, wl, ya, yb); else balustrade(wl, a, wl, b, ya, yb); k0 = -1; }
+          }
+        }
+      }
+      // skylight: glass in a black steel grid with a deep roof edge round it; the sky lights the atrium through it
+      for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
+        const c = z * G + x; if (!skyM[c]) continue; const x0 = x * CS, z0 = z * CS;
+        L1.ceilY[c] = Infinity; L1.ceilOn[c] = 0;
+        quad("glass", x0, TOP + 0.4, z0 + CS, CS, 0, 0, 0, 0, -CS, { seg: 4 });
+        for (const k of [0, 1, 2, 3]) { box("trimBlack", x0 + k, TOP + 0.28, z0, x0 + k + 0.06, TOP + 0.4, z0 + CS, { occ: false, seg: 2 }); box("trimBlack", x0, TOP + 0.28, z0 + k, x0 + CS, TOP + 0.4, z0 + k + 0.06, { occ: false, seg: 2 }); }
+        rectLight([x0 + CS / 2, TOP + 0.38, z0 + CS / 2], [CS / 2, 0, 0], [0, 0, CS / 2], [0, -1, 0], null, { portal: true });
+        for (let d = 0; d < 4; d++) { const [dx, dz] = DIRS[d], nx = x + dx, nz = z + dz; if (inb(nx, nz) && skyM[nz * G + nx]) continue;
+          const mx = x0 + CS / 2 + dx * CS / 2, mz = z0 + CS / 2 + dz * CS / 2, ux = -dz * CS, uz = dx * CS;
+          quad("o_ceil", mx - ux / 2, TOP, mz - uz / 2, ux, 0, uz, 0, 0.42, 0, { seg: 2 }); }
+      }
     }
 
     // ---- pack the decal pictures (tallest first; everything shrinks a little if the atlas would overflow) and point the quads at them
@@ -312,10 +401,11 @@ const NXW = (() => {
     const bx = (charts[0].x + 2) / W.atlas.w, by = (charts[0].y + 2) / W.atlas.h;
     for (const k in W.bat) { const b = W.bat[k], lm = b.lm.a, lc = b.lc.a; for (let i = 0, v = 0; i < b.lm.n; i += 2, v++) { const c = lc[v] < 0 ? null : charts[lc[v]]; if (!c) { lm[i] = bx; lm[i + 1] = by; } else { lm[i] = (c.x + lm[i]) / W.atlas.w; lm[i + 1] = (c.y + lm[i + 1]) / W.atlas.h; } }
       W.bat[k] = { p: b.p.done(), n: b.n.done(), uv: b.uv.done(), lm: b.lm.done(), vi: b.vi.done(), ix: b.ix.done(), nv: b.nv }; }
-    W.charts = charts; W.runs = runs; W.faces = faces; W.CS = CS; W.FP = FP; W.CP = CP; W.WP = WP; W.ps = M.ps || 2; W.noRefl = !!M.noRefl;
+    W.charts = charts; W.runs = allRuns; W.faces = allFaces; W.CS = CS; W.FP = FP; W.CP = CP; W.WP = WP; W.ps = M.ps || 2; W.noRefl = !!M.noRefl;
     W.vl = { p: vlP.done(), n: vlN.done(), g: vlG.done(), groups: vlGroups };
     W.occ = { n: oN, b: oB.done(), alb: oAlb.done(), chart: oChart.done(), vs: oVs.done(), em: oEm.done() };
-    W.alb = alb; W.cell = { floorY, ceilY, floorOn, ceilOn, floorAlb, ceilAlb };
+    W.alb = alb; { const L0 = LVS[0]; W.cell = { floorY: L0.floorY, ceilY: L0.ceilY, floorOn: L0.floorOn, ceilOn: L0.ceilOn, floorAlb: L0.floorAlb, ceilAlb: L0.ceilAlb }; }
+    if (UP) { W.levels = LVS.map(l => ({ y0: l.y0, H: l.H, floorY: l.floorY, ceilY: l.ceilY, floorOn: l.floorOn, ceilOn: l.ceilOn, floorAlb: l.floorAlb, ceilAlb: l.ceilAlb, fc: l.fc, cc: l.cc })); W.top = UP.h + (UP.ceil || 3.6); W.blockAll = LVS[0].blk.map((v, c) => LVS.every(l => l.blk[c]) ? 1 : 0); }
     // signature: the baked files only fit a world with exactly this layout
     let sg = 2166136261; const mix = (v) => { sg = Math.imul(sg ^ (v | 0), 16777619); };
     mix(VER); mix(G); mix(W.atlas.w); mix(W.atlas.h); mix(W.vl.g.length); mix(oN); mix(W.lights.length); charts.forEach(c => { mix(c.x); mix(c.y); mix(c.w); mix(c.h); });
