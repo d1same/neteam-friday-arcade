@@ -1,0 +1,16 @@
+{
+  "name": "neteam-arcade-tools",
+  "private": true,
+  "description": "Build-time tools: asset download/processing, vendor bundle, lightmap baker. Not shipped in the Docker image.",
+  "type": "commonjs",
+  "devDependencies": {
+    "@gltf-transform/core": "^4.1.0",
+    "@gltf-transform/extensions": "^4.1.0",
+    "@gltf-transform/functions": "^4.1.0",
+    "esbuild": "^0.24.0",
+    "meshoptimizer": "^0.22.0",
+    "pngjs": "^7.0.0",
+    "sharp": "^0.33.5",
+    "three": "0.159.0"
+  }
+}

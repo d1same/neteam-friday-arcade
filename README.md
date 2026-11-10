@@ -87,3 +87,23 @@ cd server && npm install && node server.js   # run locally on :4802 (scores in s
 ```
 
 Rebuild the image after changes: `docker compose up -d --build`.
+
+## Graphics engine
+
+The 3D games draw with the arcade's own renderer (the `src/1*-nx-*.js` files) on each player's graphics card:
+
+- Every map is generated from its grid in `src/08-ops.js` by `src/11-nx-world.js` and a theme file (`src/11a-nx-office.js` for Neteam HQ). The same code runs in the browser and in the bake tool, so the picture and the lighting always match.
+- Soft shadows and bounced light are computed ahead of time by `tools/bake.js` and shipped as `server/public/models/lm-<map>-a.png`, `lm-<map>-b.png` and `lm-<map>.bin`. The sun, the shadows of players and props, reflections and all film effects (exposure, bloom, ambient occlusion, colour grade) run live.
+- Materials are photo-scanned texture sets (`t-<name>-c/n/m.jpg`) and the skies are real HDR photos (`sky-<name>.jpg`, `sky-<name>-env.png`), all CC0 from Poly Haven and ambientCG. Sources are listed in `server/public/models/CREDITS.txt`.
+- The Graphics setting picks a quality level: Auto reads the graphics card's name and chooses for you, and the picture resolution adapts while you play to keep the frame rate. Performance is meant for office laptops, Ultra for gaming cards.
+
+After changing a map's layout or a theme, bake its lighting again, then rebuild the page:
+
+```bash
+cd tools && npm install          # one time
+node tools/world.js hq           # optional: print what the generator makes for a map
+node tools/bake.js hq            # about 12 seconds on 4 cores; use "all" for every map
+./build.sh
+```
+
+A map whose baked files are missing or out of date still runs, with flat lighting, and the browser console says so. `node tools/assets.js` downloads and prepares the texture sets and skies again (they are already in the repo).
