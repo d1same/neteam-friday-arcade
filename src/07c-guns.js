@@ -167,8 +167,8 @@ const GUNS = {
     }
     g.traverse(o => { if (o.isMesh) o.castShadow = false; });
     U.proc = g.children.slice();
-    const sk = id === "pistol" || id === "deagle" ? "pistol" : id === "sniper" || id === "scout" ? "sniper" : null;
-    if (sk) this.scan(sk).then(sc => { if (sc) this.fit(g, sc, sk, id, T); });
+    const sk = { pistol: "pistol", sniper: "sniper", scout: "sniper", deagle: "1911", rifle: "ak", lmg: "ak", carbine: "m4", smg: "mp5", shotgun: "shotgun" }[id];
+    if (sk) this.scan(sk).then(sc => { try { if (sc) (sk === "pistol" || sk === "sniper" ? this.fit(g, sc, sk, id, T) : this.fit2(g, sc, GUNS.REAL[id], T)); } catch (e) { console.warn("gun model", id, e); } });
     if (opt.arms !== false) {
       const R = this.arm(T, opt.hex), L = this.arm(T, opt.hex); g.add(R, L); U.armR = R; U.armL = L;
       U.rElbow = [0.13, -0.3, 0.52]; U.lElbow = [-0.3, -0.3, 0.42];
@@ -196,6 +196,41 @@ const GUNS = {
       part("rifle_7_62"); part("_trigger"); part("_scope"); if (id === "sniper") part("_wrap");
       U.bolt = GUNS.proxy(T, g, part("bolt_a"), C.s, 0); U.mag = null;
     }
+  },
+  // textured CC0 models (see models/CREDITS.txt). They come in different orientations and units, so each is measured:
+  // the long axis is the barrel, the end farther from the trigger is the muzzle, and the trigger is seated where the hand-built gun had its own
+  fit2(g, src, C, T) {
+    const U = g.userData; U.proc.forEach(c => { c.visible = false; });
+    const m = THREE_EXTRAS.SkeletonUtils.clone(src), V = (x, y, z) => new T.Vector3(x, y, z);
+    m.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
+    const find = (n) => { let f = null; m.traverse(o => { if (!f && o.name === n) f = o; }); return f; };
+    (C.hide || []).forEach(n => { const o = find(n); if (o) o.visible = false; });
+    const turn = new T.Group(), hold = new T.Group(); turn.add(m); hold.add(turn); hold.scale.setScalar(C.s);
+    hold.updateWorldMatrix(false, true);
+    const bb = new T.Box3(), tp = V(0, 0, 0), tr = find(C.trig);
+    m.traverse(o => { if (o.isMesh && o.visible) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox(); bb.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld)); } });
+    if (tr) tr.getWorldPosition(tp); else bb.getCenter(tp);
+    const front = Math.abs(bb.min.z - tp.z) > Math.abs(bb.max.z - tp.z) ? -1 : 1;
+    if ((front > 0) !== !!C.flip) turn.rotation.y = Math.PI;
+    hold.updateWorldMatrix(false, true); if (tr) tr.getWorldPosition(tp); else { tp.z = -tp.z; tp.x = -tp.x; }
+    hold.position.set(-tp.x, C.y - tp.y, C.z - tp.z); g.add(hold); g.updateWorldMatrix(true, true);
+    const P = C.parts || {}, px = (n) => { const q = n && find(n); return q ? GUNS.proxy2(T, g, q) : null; };
+    U.mag = px(P.mag); U.slide = px(P.slide); U.bolt = px(P.bolt); U.pump = px(P.pump);
+  },
+  // stand-in the pose code moves in gun space; the offset is converted into the real part's own parent space (bones included)
+  proxy2(T, g, q) {
+    const p = new T.Group(); g.add(p);
+    const rel = new T.Matrix4().copy(g.matrixWorld).invert().multiply(q.parent.matrixWorld).invert(), o0 = new T.Vector3().applyMatrix4(rel), base = q.position.clone(), v = new T.Vector3();
+    p.updateMatrix = function () { v.copy(p.position).applyMatrix4(rel).sub(o0); q.position.copy(base).add(v); q.visible = p.visible; T.Object3D.prototype.updateMatrix.call(this); };
+    return p;
+  },
+  REAL: {
+    rifle: { s: 1.15, y: -0.03, z: -0.02, trig: "TRIGGER", parts: { mag: "MAGAZINE", bolt: "SLIDE" } },
+    lmg: { s: 1.3, y: -0.035, z: -0.02, trig: "TRIGGER", parts: { mag: "MAGAZINE", bolt: "SLIDE" } },
+    smg: { s: 1.15, y: -0.03, z: -0.02, flip: 1, trig: "TRIGGER", parts: { mag: "MAGASINE", bolt: "BOLT" } },
+    deagle: { s: 1.6, y: -0.035, z: -0.03, trig: "TRIGGER", parts: { mag: "MAGAZINE", slide: "SLIDE" } },
+    carbine: { s: 1.15, y: -0.03, z: -0.02, trig: "Trigger", parts: { mag: "Magazine", bolt: "Charging_Handle" } },
+    shotgun: { s: 1.1, y: -0.03, z: -0.02, trig: "Trigger", parts: { pump: "Fore_Stock" } },
   },
   // stand-in object the pose code moves (z = back along the barrel, y = down for a magazine); it forwards that to the scanned part
   proxy(T, g, q, s, isMag) {
