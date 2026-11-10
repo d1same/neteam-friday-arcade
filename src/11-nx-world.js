@@ -31,10 +31,14 @@ const NXW = (() => {
     o_wall: { t: "paintwall", c: [0.93, 0.92, 0.9] }, o_wall2: { t: "paintwall", c: [0.48, 0.53, 0.58] }, o_wallDark: { t: "paintwall", c: [0.2, 0.22, 0.25] },
     o_brick: { t: "brick2", s: 2.4 }, o_conc: { t: "concrete", c: [0.9, 0.9, 0.92] }, o_oak: { t: "oak", s: 1.6 }, o_walnut: { t: "wood", c: [1.6, 1.5, 1.4], s: 1.5 },
     o_floor: { t: "concfloor", c: [1.7, 1.7, 1.73], r: 0.7 }, o_carpet: { t: "carpet", c: [2.2, 2.2, 2.3], s: 1.5 }, o_lobby: { t: "granite", c: [1.25, 1.4, 1.6], s: 2.4, r: 0.17 },
-    o_tile: { t: "bigtiles", c: [1.1, 1.12, 1.15], s: 2.4, r: 0.6 }, o_raised: { t: "tiles", c: [0.2, 0.21, 0.23], s: 4.8, r: 3.6 },
+    o_tile: { t: "bigtiles", c: [1.1, 1.12, 1.15], s: 2.4, r: 0.6 }, o_raised: { t: "tiles", c: [0.2, 0.21, 0.23], s: 4.8, r: 5 },
     o_ceil: { t: "paintconc", c: [1.5, 1.5, 1.55] }, o_ceilTile: { t: "ceiltile", c: [1.7, 1.8, 1.9], s: 2.4 },
     o_felt: { t: "fabric", c: [2.6, 2.6, 2.5], s: 0.5 }, o_feltDark: { t: "fabric", c: [0.5, 0.55, 0.65], s: 0.5 }, o_leather: { t: "leather", c: [0.9, 0.9, 0.9], s: 0.6 },
     o_marble: { t: "marble", c: [0.9, 0.9, 0.9], r: 0.6 },
+    // data centre
+    f_floor: { t: "tiles", c: [0.22, 0.23, 0.25], s: 4.8, r: 4.2 }, f_dock: { t: "concfloor", c: [1.9, 1.9, 1.93], r: 0.62 }, f_wallLo: { t: "concrete2", c: [0.82, 0.84, 0.88] }, f_wallHi: { t: "corrugated", c: [0.5, 0.53, 0.58], r: 0.9 },
+    f_ceil: { t: "corrugated", c: [0.42, 0.44, 0.47] }, f_pod: { t: "darkmetal", c: [0.75, 0.78, 0.84], m: 1 }, f_blue: { t: "bluemetal", c: [0.9, 1, 1.15], m: 0.8 }, f_shutter: { t: "shutter", c: [0.92, 0.94, 0.97], m: 0.9 },
+    f_yellow: { c: [0.72, 0.5, 0.04], r: 0.5, m: 0 }, f_pipeBlue: { c: [0.05, 0.16, 0.42], r: 0.4, m: 0.2 }, f_pipeRed: { c: [0.5, 0.05, 0.04], r: 0.4, m: 0.2 }, f_grey: { c: [0.42, 0.44, 0.47], r: 0.55, m: 0.1 },
     // generic
     trimBlack: { c: [0.03, 0.032, 0.036], r: 0.42, m: 0.85 }, trimSteel: { t: "brushed", c: [0.6, 0.61, 0.63], r: 1.1, m: 1 }, trimWhite: { c: [0.8, 0.8, 0.78], r: 0.5, m: 0 },
     darkMetal: { t: "darkmetal", c: [1, 1, 1], m: 1 }, plasticBlack: { c: [0.025, 0.026, 0.03], r: 0.45, m: 0 }, plasticGrey: { t: "plastic", c: [0.35, 0.36, 0.38] }, plasticWhite: { t: "plastic", c: [0.9, 0.9, 0.9] },
@@ -47,8 +51,10 @@ const NXW = (() => {
 
   function build(id, M, env) {
     env = env || {};
-    const TEX = env.tex || {}, rows = M.rows, G = rows.length, size = G * CS, theme = M.theme, outdoor = theme === "desert" || theme === "roof";
-    const H = M.wallH || 3.2;
+    const TEX = env.tex || {}, rows = M.rows, G = rows.length, size = G * CS, theme = M.nx || M.theme;
+    // a theme is a function with optional settings on it: outdoor (open sky), H (wall height), blockH(x, z, ctx) = height of a solid cell
+    const TH = NXW.themes[theme] || NXW.themes.office, outdoor = !!TH.outdoor;
+    const H = M.wallH || TH.H || 3.2;
     const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [] };
     const ch = (x, z) => (x < 0 || z < 0 || x >= G || z >= G) ? "#" : rows[z][x];
     const solid = (x, z) => ch(x, z) === "#";
@@ -147,29 +153,25 @@ const NXW = (() => {
       }
       if (o.occ !== false && r >= 0.12 && h >= 0.5) occ(cx - r * 0.8, y0, cz - r * 0.8, cx + r * 0.8, y0 + h, cz + r * 0.8, o.a || matAlb(key));
     }
+    // round bar between two points (pipes, cables, rails, poles at any angle): n-sided prism without caps, vertex lit
+    function tube(key, ax, ay, az, bx, by, bz, r, n, o) {
+      o = o || {}; n = n || 6; const b = batch(key), sc = matScale(key), dx = bx - ax, dy = by - ay, dz = bz - az, len = Math.hypot(dx, dy, dz) || 1e-6, wx = dx / len, wy = dy / len, wz = dz / len;
+      let ux = Math.abs(wy) > 0.9 ? 1 : 0, uy = Math.abs(wy) > 0.9 ? 0 : 1, uz = 0; let vx = wy * uz - wz * uy, vy = wz * ux - wx * uz, vz = wx * uy - wy * ux; const vl = Math.hypot(vx, vy, vz); vx /= vl; vy /= vl; vz /= vl; ux = vy * wz - vz * wy; uy = vz * wx - vx * wz; uz = vx * wy - vy * wx;
+      const sv = Math.max(1, Math.min(10, Math.ceil(len / (o.seg || 1.6)))), base = b.nv, grp = vlGroups++;
+      for (let j = 0; j <= sv; j++) for (let i = 0; i <= n; i++) {
+        const a = i / n * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a), nx = ux * ca + vx * sa, ny = uy * ca + vy * sa, nz = uz * ca + vz * sa, t = j / sv, x = ax + dx * t + nx * r, y = ay + dy * t + ny * r, z = az + dz * t + nz * r;
+        b.p.push3(x, y, z); b.n.push3(nx, ny, nz); b.uv.push2(i / n * 2 * Math.PI * r / sc[0], len * t / sc[1]); b.lm.push2(0, 0); b.lc.push1(-1); b.vi.push1(vlG.n);
+        vlP.push3(x + nx * 0.03, y + ny * 0.03, z + nz * 0.03); vlN.push3(nx, ny, nz); vlG.push1(grp);
+      }
+      for (let j = 0; j < sv; j++) for (let i = 0; i < n; i++) { const a = base + j * (n + 1) + i, c = a + n + 1; b.ix.push3(a, a + 1, c + 1); b.ix.push3(a, c + 1, c); }
+      b.nv += (sv + 1) * (n + 1);
+    }
     // light sources the baker integrates. Rectangle: centre c, half edges u and v, emits along n (two = both sides).
     // L = radiance. vis = what the player sees is handled by emissive geometry, this is only the lighting.
     function rectLight(c, u, v, n, L, o) { o = o || {}; W.lights.push({ c, u, v, n, L, two: !!o.two, portal: !!o.portal, range: o.range || 0, spot: o.spot || 0 }); }
 
     // ---- map analysis: exposed wall faces, straight runs of them, zones
     const zoneOf = (x, z) => { const c = ch(x, z); return c === "a" ? "siteA" : c === "b" ? "siteB" : c === "r" ? "red" : c === "u" ? "blue" : c === "#" ? "" : "hall"; };
-    const faces = [];   // {cx, cz (solid cell), d, ox, oz (open cell), h}
-    const faceAt = new Int32Array(G * G * 4).fill(-1);
-    for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
-      if (!solid(x, z)) { floorOn[ci(x, z)] = 1; if (!outdoor) ceilOn[ci(x, z)] = 1; continue; }
-      for (let d = 0; d < 4; d++) { const ox = x + DIRS[d][0], oz = z + DIRS[d][1]; if (!inb(ox, oz) || solid(ox, oz)) continue; faceAt[ci(x, z) * 4 + d] = faces.length; faces.push({ cx: x, cz: z, d, ox, oz, h: H, zone: zoneOf(ox, oz), kind: "", run: -1, ru: 0 }); }
-    }
-    // face-local frame: u runs to the viewer's right along the wall, v is up, w points out of the wall into the room
-    const frame = (f) => { const [dx, dz] = DIRS[f.d], rx = dz, rz = -dx, mx = f.cx * CS + CS / 2 + dx * CS / 2, mz = f.cz * CS + CS / 2 + dz * CS / 2; return { ox: mx - rx * CS / 2, oz: mz - rz * CS / 2, rx, rz, nx: dx, nz: dz }; };
-    // straight runs: faces on one wall line that continue each other share a lightmap chart
-    const runs = [];
-    for (const f of faces) {
-      if (f.run >= 0) continue; const [dx, dz] = DIRS[f.d], rx = dz, rz = -dx;
-      let sx = f.cx, sz = f.cz; while (faceAt[ci(sx - rx, sz - rz) * 4 + f.d] >= 0 && inb(sx - rx, sz - rz) && solid(sx - rx, sz - rz)) { sx -= rx; sz -= rz; }
-      const run = { id: runs.length, faces: [], d: f.d, h: f.h }; let x = sx, z = sz;
-      while (inb(x, z) && solid(x, z) && faceAt[ci(x, z) * 4 + f.d] >= 0) { const g = faces[faceAt[ci(x, z) * 4 + f.d]]; g.run = run.id; g.ru = run.faces.length; run.faces.push(g); x += rx; z += rz; }
-      runs.push(run);
-    }
     // connected blocks of solid cells that are not the outer ring ("pods": cores, columns, rooms you cannot enter)
     const podOf = new Int32Array(G * G).fill(-1), pods = [];
     for (let z = 1; z < G - 1; z++) for (let x = 1; x < G - 1; x++) {
@@ -177,9 +179,29 @@ const NXW = (() => {
       while (st.length) { const [a, b] = st.pop(); pod.cells.push([a, b]); for (const [dx, dz] of DIRS) { const nx = a + dx, nz = b + dz; if (border(nx, nz) || !solid(nx, nz) || podOf[ci(nx, nz)] >= 0) continue; podOf[ci(nx, nz)] = pod.id; st.push([nx, nz]); } }
       pods.push(pod);
     }
+    const cellH = new Float32Array(G * G).fill(H), hctx = { G, H, rows, ch, solid, border, ci, hsh, podOf, pods, zoneOf, M };
+    if (TH.blockH) for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (solid(x, z)) cellH[ci(x, z)] = Math.max(H, TH.blockH(x, z, hctx));
+    const faces = [];   // {cx, cz (solid cell), d, ox, oz (open cell), h}
+    const faceAt = new Int32Array(G * G * 4).fill(-1);
+    for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
+      if (!solid(x, z)) { floorOn[ci(x, z)] = 1; if (!outdoor) ceilOn[ci(x, z)] = 1; continue; }
+      for (let d = 0; d < 4; d++) { const ox = x + DIRS[d][0], oz = z + DIRS[d][1]; if (!inb(ox, oz) || solid(ox, oz)) continue; faceAt[ci(x, z) * 4 + d] = faces.length; faces.push({ cx: x, cz: z, d, ox, oz, h: cellH[ci(x, z)], zone: zoneOf(ox, oz), kind: "", run: -1, ru: 0 }); }
+    }
+    // face-local frame: u runs to the viewer's right along the wall, v is up, w points out of the wall into the room
+    const frame = (f) => { const [dx, dz] = DIRS[f.d], rx = dz, rz = -dx, mx = f.cx * CS + CS / 2 + dx * CS / 2, mz = f.cz * CS + CS / 2 + dz * CS / 2; return { ox: mx - rx * CS / 2, oz: mz - rz * CS / 2, rx, rz, nx: dx, nz: dz }; };
+    // straight runs: faces on one wall line that continue each other share a lightmap chart
+    const runs = [];
+    for (const f of faces) {
+      if (f.run >= 0) continue; const [dx, dz] = DIRS[f.d], rx = dz, rz = -dx;
+      const same = (x, z) => inb(x, z) && solid(x, z) && faceAt[ci(x, z) * 4 + f.d] >= 0 && faces[faceAt[ci(x, z) * 4 + f.d]].h === f.h;
+      let sx = f.cx, sz = f.cz; while (same(sx - rx, sz - rz)) { sx -= rx; sz -= rz; }
+      const run = { id: runs.length, faces: [], d: f.d, h: f.h }; let x = sx, z = sz;
+      while (same(x, z)) { const g = faces[faceAt[ci(x, z) * 4 + f.d]]; g.run = run.id; g.ru = run.faces.length; run.faces.push(g); x += rx; z += rz; }
+      runs.push(run);
+    }
     faces.forEach(f => { f.pod = podOf[ci(f.cx, f.cz)]; if (f.pod >= 0) pods[f.pod].faces++; });
     const openN = (x, z) => DIRS.reduce((n, [dx, dz]) => n + (solid(x + dx, z + dz) ? 0 : 1), 0);
-    const A = { ch, solid, inb, border, ci, hsh, faces, runs, pods, podOf, frame, faceAt, zoneOf, openN };
+    const A = { ch, solid, inb, border, ci, hsh, faces, runs, pods, podOf, frame, faceAt, zoneOf, openN, cellH };
 
     // ---- lightmap charts. Chart 0 = a few black texels every vertex-lit vertex points at, 1 = floor, 2 = ceiling, then wall runs.
     charts.push({ kind: "black", w: 4, h: 4 });
@@ -192,7 +214,7 @@ const NXW = (() => {
     // decal atlas (2048 x 2048 canvas the browser paints), shelf packed
     const DA = { w: 2048, h: 2048, pad: 4, used: 0, scale: 1 }, DC = {}, DU = []; W.dAtlas = DA;
     // lightmapped building blocks
-    const B = { W, A, G, H, CS, MATS, quad, box, cyl, occ, rectLight, lightMat, matAlb, floorLm, ceilLm, hsh, PX, NX: NX_, PY, NY, PZ, NZ, ALL,
+    const B = { W, A, G, H, CS, MATS, quad, box, cyl, tube, occ, rectLight, lightMat, matAlb, floorLm, ceilLm, hsh, PX, NX: NX_, PY, NY, PZ, NZ, ALL,
       floorY, ceilY, floorOn, ceilOn,
       occB: (k, i) => oB.a[k * 6 + i],
       // point one face of a baker solid (0 +x, 1 -x, 2 +y, 3 -y, 4 +z, 5 -z) at a lightmap chart and give it a colour
@@ -225,14 +247,13 @@ const NXW = (() => {
     };
 
     // ---- theme
-    const TH = NXW.themes[theme] || NXW.themes.office;
     TH(B, M, env);
 
     // every solid cell that the theme did not replace by its own geometry is one solid block for the baker
     for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
       const c = ci(x, z); floorAlb[c] = B.floorAlbOf ? albIdx(B.floorAlbOf(x, z)) : albIdx([0.3, 0.3, 0.3]); ceilAlb[c] = B.ceilAlbOf ? albIdx(B.ceilAlbOf(x, z)) : albIdx([0.3, 0.3, 0.3]);
       if (!solid(x, z) || (B.hollow && B.hollow[c])) continue;
-      const hh = B.blockH ? B.blockH(x, z) : H, k = occ(x * CS, 0, z * CS, x * CS + CS, hh, z * CS + CS, [0.4, 0.4, 0.4]);
+      const k = occ(x * CS, 0, z * CS, x * CS + CS, cellH[c], z * CS + CS, [0.4, 0.4, 0.4]);
       for (let d = 0; d < 4; d++) { const fi = faceAt[c * 4 + d]; if (fi < 0) continue; const f = faces[fi], fa = d === 0 ? 0 : d === 1 ? 1 : d === 2 ? 4 : 5; oChart.a[k * 6 + fa] = runs[f.run].chart; oAlb.a[k * 6 + fa] = albIdx(f.alb || [0.4, 0.4, 0.4]); }
     }
 

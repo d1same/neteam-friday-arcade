@@ -75,7 +75,7 @@ const OPS_MAPS = {
   ] },
   // jump arena for Golden Router: 1 = 1.2 m deck, 2 = 2.6 m deck, ^ = jump pad, T = trophy home. Open sky.
   // enclosed indoor arena: a tall vault with rooms, a walled core and a roof (decks, pads and rockets still work in 3D)
-  arena: { n: "Data Vault", theme: "farm", open: true, wallH: 8, only: "golden", sites: ["", ""], spawns: ["", ""],
+  arena: { n: "Data Vault", theme: "farm", nx: "vault", open: true, wallH: 8, only: "golden", sites: ["", ""], spawns: ["", ""],
     // pickups [cell x, cell z, item]: weapon index, "H" health, "A" armor
     picks: [[6, 3, 10], [15, 18, 10], [1, 10, 5], [20, 11, 5], [10, 3, 8], [11, 18, 1], [3, 7, 9], [18, 14, 9], [6, 10, "H"], [15, 11, "H"], [8, 1, "H"], [13, 20, "H"], [1, 1, "A"], [20, 20, "A"]],
     rows: [
@@ -1144,7 +1144,7 @@ function makeOps(md) {
       Object.assign(cv.style, { position: "absolute", borderRadius: "10px", pointerEvents: "none" });
       $("#stagebox").insertBefore(cv, $("#gameCanvas")); F.cv = cv;
       // maps whose look has been rebuilt on the NX renderer (baked light, scanned materials, HDR camera); the rest still use the older one below
-      const nxMap = !!(NXW.themes[OPS_M.theme] && !OPS_M.only && (store("nfa-gfx") || {}).nx !== 0);
+      const nxMap = !!(NXW.themes[OPS_M.nx || OPS_M.theme] && (store("nfa-gfx") || {}).nx !== 0);
       let renderer;
       try { renderer = new T.WebGLRenderer(nxMap ? { canvas: cv, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" } : { canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
       F.renderer = renderer;

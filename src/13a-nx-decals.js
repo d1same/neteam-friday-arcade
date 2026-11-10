@@ -26,7 +26,7 @@ const NXD = {
 
   // ---- server rack front, 42 units of switches, servers and storage with their status lights
   k_rack(x, w, h, d, r) {
-    const led = d.col ? ["#3ddc97", "#8dffc6"] : ["#35c3f2", "#a6ecff"], U = h / 43;
+    const led = d.col === 2 ? ["#ff9a2e", "#ffd9a0"] : d.col ? ["#3ddc97", "#8dffc6"] : ["#35c3f2", "#a6ecff"], U = h / 43;
     x.fillStyle = "#050607"; x.fillRect(0, 0, w, h); x.fillStyle = "#0e1013"; x.fillRect(0, 0, w * 0.07, h); x.fillRect(w * 0.93, 0, w * 0.07, h);
     const dot = (px, py, s, c, glow) => { if (glow) { x.fillStyle = c[0]; x.globalAlpha = 0.35; x.fillRect(px - s, py - s, s * 3, s * 3); x.globalAlpha = 1; } x.fillStyle = c[1]; x.fillRect(px, py, s, s); };
     let y = U * 0.5; const x0 = w * 0.09, bw = w * 0.82, s = Math.max(1, w / 54);
@@ -131,6 +131,34 @@ const NXD = {
     const t = d.t || "", sm = /SITE (\w)/.exec(t), badge = sm ? sm[1] : t[0]; x.fillText(badge, bx + bs / 2, by + bs * 0.54);
     const tx = bx + bs + h * 0.2, tw = w - tx - h * 0.2; x.textAlign = "left"; x.fillStyle = "#f4fbff"; const px = NXD.fit(x, t, tw, h * 0.44, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(t, tx, h * 0.4);
     const sub = String(d.sub || "").toUpperCase(); x.fillStyle = P[2]; const p2 = NXD.fit(x, sub, tw, h * 0.2, 600, 2); x.font = NXD.FONT(600, Math.round(p2), 2); x.globalAlpha = 0.9; x.fillText(sub, tx, h * 0.73); x.globalAlpha = 1;
+  },
+  // ---- stencilled paint (floor words, dock numbers, wall codes). col: 0 white, 1 yellow, 2 orange, 3 cyan, 4 red, 5 black
+  PAINT: ["rgba(232,234,230,.92)", "rgba(236,186,34,.94)", "rgba(255,138,61,.95)", "rgba(120,220,255,.92)", "rgba(214,52,44,.94)", "rgba(18,19,22,.94)"],
+  k_text(x, w, h, d, r) {
+    const t = String(d.t || ""); x.fillStyle = NXD.PAINT[(d.col | 0) % 6]; x.textAlign = "center"; x.textBaseline = "middle";
+    const px = NXD.fit(x, t, w * 0.96, h * 0.92, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(t, w / 2, h * 0.54);
+    // stencil bridges: thin gaps through the letters
+    x.save(); x.globalCompositeOperation = "destination-out"; const n = Math.max(2, Math.round(w / (px * 0.55))); for (let i = 0; i < n; i++) x.fillRect((i + 0.5) / n * w + (r() - 0.5) * px * 0.1, 0, Math.max(1, px * 0.035), h); x.restore();
+    if (!d.clean) NXD.wear(x, w, h, r, Math.round(w * h / 900));
+  },
+  k_line(x, w, h, d, r) { x.fillStyle = NXD.PAINT[(d.col | 0) % 6]; x.fillRect(0, 0, w, h); NXD.wear(x, w, h, r, Math.round(Math.max(w, h) / 6)); },
+  // ---- equipment label: white or yellow plate with a code, as stuck on every rack row
+  k_label(x, w, h, d, r) {
+    x.fillStyle = d.col ? "#e9b824" : "#e8eaec"; x.fillRect(0, 0, w, h); x.strokeStyle = "rgba(0,0,0,.5)"; x.lineWidth = Math.max(1, h * 0.05); x.strokeRect(1, 1, w - 2, h - 2);
+    x.fillStyle = "#101216"; x.textAlign = "center"; x.textBaseline = "middle"; const px = NXD.fit(x, d.t || "", w * 0.86, h * 0.7, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(d.t || "", w / 2, h * 0.55);
+  },
+  // ---- warning sign: yellow triangle with a bolt, text under it
+  k_warn(x, w, h, d, r) {
+    x.fillStyle = "#e9b824"; x.fillRect(0, 0, w, h); x.strokeStyle = "#101216"; x.lineWidth = Math.max(2, w * 0.03); x.strokeRect(x.lineWidth, x.lineWidth, w - 2 * x.lineWidth, h - 2 * x.lineWidth);
+    const cx = w / 2, ty = h * 0.12, s = Math.min(w * 0.6, h * 0.5); x.fillStyle = "#101216"; x.beginPath(); x.moveTo(cx, ty); x.lineTo(cx + s / 2, ty + s * 0.87); x.lineTo(cx - s / 2, ty + s * 0.87); x.closePath(); x.fill();
+    x.fillStyle = "#e9b824"; x.beginPath(); x.moveTo(cx + s * 0.06, ty + s * 0.26); x.lineTo(cx - s * 0.12, ty + s * 0.56); x.lineTo(cx, ty + s * 0.56); x.lineTo(cx - s * 0.07, ty + s * 0.8); x.lineTo(cx + s * 0.13, ty + s * 0.47); x.lineTo(cx + s * 0.01, ty + s * 0.47); x.closePath(); x.fill();
+    x.fillStyle = "#101216"; x.textAlign = "center"; x.textBaseline = "middle"; const L = String(d.t || "DANGER").split("|"); L.forEach((ln, i) => { const px = NXD.fit(x, ln, w * 0.84, h * 0.13, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(ln, cx, h * (0.72 + i * 0.14)); });
+  },
+  // ---- in-row cooling unit: perforated door, a small display and a blue light bar
+  k_cooler(x, w, h, d, r) {
+    x.fillStyle = "#0b0d10"; x.fillRect(0, 0, w, h); x.fillStyle = "#15181d"; for (let yy = h * 0.2; yy < h * 0.97; yy += Math.max(2, h * 0.012)) x.fillRect(w * 0.1, yy, w * 0.8, Math.max(1, h * 0.005));
+    x.fillStyle = "#06223a"; x.fillRect(w * 0.2, h * 0.05, w * 0.6, h * 0.085); x.fillStyle = "#7fe0ff"; x.textAlign = "center"; x.textBaseline = "middle"; x.font = NXD.FONT(700, Math.round(h * 0.05)); x.fillText((17 + Math.floor(r() * 5)) + ".0°", w / 2, h * 0.095);
+    x.fillStyle = "#35c3f2"; x.shadowColor = "#35c3f2"; x.shadowBlur = w * 0.2; x.fillRect(w * 0.46, h * 0.2, w * 0.08, h * 0.74); x.shadowBlur = 0;
   },
   // ---- the company name in light
   k_logo(x, w, h, d, r) {
