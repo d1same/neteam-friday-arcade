@@ -43,8 +43,12 @@ const SFX = {
   // play a sample: far 0..1 muffles it; returns false when it is not loaded so the caller can synthesise instead
   // how loud something is at d metres: about -6 dB per doubling of distance past R metres (R = 0 m gives 1)
   fall(d, R = 8) { return Math.pow(R / (R + Math.max(0, d)), 1.3); },
+  // handling foley (reloads, bolts, clicks) was recorded and saved far hotter than the gunshots: up to 10 dB louder in the
+  // loudest 50 ms. Each file's own trim brings it to about -24 dB at volume 1, so a reload sits about 11 dB under a shot
+  TRIM: { "rl-rifle": 0.18, "rl-ar": 0.3, "rl-pistol": 0.09, "rl-shell": 0.11, "rl-pump": 0.09, "bolt-up": 0.43, "bolt-back": 0.3, "bolt-fwd": 0.27, "bolt-down": 0.56,
+    clip1: 0.23, clip2: 0.64, bullet1: 0.86, click1: 0.18, click2: 0.57 },
   samp(name, vol = 1, pan = 0, rate = 1, far = 0, delay = 0, wet = 1) {
-    const a = this.ensure(); if (!a) return true; this.load(); const b = this.S[name]; if (!b) return false; if (vol < 0.01) return true;
+    const a = this.ensure(); if (!a) return true; this.load(); const b = this.S[name]; if (!b) return false; vol *= this.TRIM[name] || 1; if (vol < 0.003) return true;
     const s = a.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; let n = s;
     if (far > 0.05) { const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 14000 * Math.pow(1 - Math.min(far, 0.95), 2) + 500; n = s.connect(f); }
     n.connect(this.out(a, vol, pan, wet)); s.start(a.currentTime + delay); return true;
@@ -63,7 +67,7 @@ const SFX = {
   bus(a) {
     if (this._bus && this._bus.a === a) return this._bus;
     const master = a.createGain(); master.gain.value = this.vol;
-    const comp = a.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.003; comp.release.value = 0.2;
+    const comp = a.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.01; comp.release.value = 0.2;
     const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 20000; lp.Q.value = 0.3;
     master.connect(lp).connect(comp).connect(a.destination);
     const send = a.createGain(), rev = a.createConvolver(), wet = a.createGain(); send.connect(rev).connect(wet).connect(master);
@@ -421,12 +425,12 @@ const SFX = {
     if (id === "lmg") { // cover up, belt box out and in, cover slammed shut, charging handle
       const ok = this.samp("bolt-back", 0.8, 0, 0.85, 0, 0.25, W); this.samp("bolt-up", 0.7, 0, 0.8, 0, 0.2, W);
       this.samp("rl-rifle", 0.85, 0, 0.92, 0, 1.0, W); this.samp("bullet1", 0.5, 0, 0.8, 0, 2.9, W); this.samp("clip1", 0.5, 0, 0.75, 0, 3.15, W);
-      this.samp("bolt-fwd", 0.9, 0, 0.8, 0, dur - 1.25, W); this.samp("thud1", 0.35, 0, 1.6, 0, dur - 1.1, W); this.samp("rl-ar", 0.6, 0, 1, 0, dur - 0.2 - 0.7, W);
+      this.samp("bolt-fwd", 0.9, 0, 0.8, 0, dur - 1.25, W); this.samp("thud1", 0.08, 0, 1.6, 0, dur - 1.1, W); this.samp("rl-ar", 0.6, 0, 1, 0, dur - 0.2 - 0.7, W);
       return ok;
     }
     return this.samp("rl-rifle", 0.85, 0, r(), 0, end(1.59), W);
   },
-  clank(vol = 0.3, pan = 0) { const a = this.ensure(); if (!a) return; if (this.samp(Math.random() < 0.5 ? "click1" : "click2", vol * 1.6, pan, 0.9 + Math.random() * 0.2)) return; const t = a.currentTime, o = this.out(a, vol * 0.3, pan); [1200, 1850, 2600].forEach((fq, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = fq * (0.97 + Math.random() * 0.06); g.gain.setValueAtTime(0.5 / (k + 1), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12 + k * 0.03); os.connect(g).connect(o); os.start(t); os.stop(t + 0.25); }); },
+  clank(vol = 0.3, pan = 0) { const a = this.ensure(); if (!a) return; if (this.samp(Math.random() < 0.5 ? "click1" : "click2", vol * 2.2, pan, 0.9 + Math.random() * 0.2)) return; const t = a.currentTime, o = this.out(a, vol * 0.3, pan); [1200, 1850, 2600].forEach((fq, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = fq * (0.97 + Math.random() * 0.06); g.gain.setValueAtTime(0.5 / (k + 1), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12 + k * 0.03); os.connect(g).connect(o); os.start(t); os.stop(t + 0.25); }); },
   // ---- named event sounds. Menus are real switches and clicks, announcements are war drums and a crowd: no beeps or
   // jingles. Until a recording has loaded (the first second) a soft tap of noise stands in.
   play(name) {
