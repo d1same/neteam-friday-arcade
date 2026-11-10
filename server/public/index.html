@@ -6558,6 +6558,9 @@ const OPS_MAPS = {
 function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq", "sand", "roof"] : ["sand", "roof"]; return pool[Math.floor(Math.random() * pool.length)]; }
 // feet height of whoever is moving, and how high a step they can take onto a box (more with legs tucked mid-air)
 let OPS_FEET = 0, OPS_STEP = 0.35;
+// multi-level maps (see opsBuildLevels): per-cell solid spans, stair runs, upper floor height
+let OPS_ML = false, OPS_SP = null, OPS_RAMP = null, OPS_UPH = 0;
+const ML_SLAB = 0.35, ML_TOP = 99;
 let OPS_JUMP = {}, OPS_ID = "", OPS_M = null, OPS_MAP = [], OG = 0, OPS_CELLS = null, OPS_SITE = null, OPS_PROPS = [], OPS_PALIVE = new Uint8Array(0);
 // breakable props: 0 hardware crate, 1 old monitor on a cart, 2 Li-ion UPS battery (explodes)
 const OPROP = [{ n: "crate", hp: 100, hx: 0.48, hz: 0.48, h: 0.96 }, { n: "monitor", hp: 55, hx: 0.42, hz: 0.34, h: 1.25 }, { n: "battery", hp: 60, hx: 0.38, hz: 0.38, h: 1.05 }];
@@ -6591,6 +6594,7 @@ function opsSetMap(id) {
   OPS_ID = id; OPS_M = OPS_MAPS[id]; OPS_MAP = OPS_M.rows; OG = OPS_MAP.length;
   OPS_CELLS = { r: [], u: [], a: [], b: [], open: [], spawn: [], T: [] };
   OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (ch !== "#" && ch !== "v") OPS_CELLS.open.push([x, z]); if (".rubaT".includes(ch)) OPS_CELLS.spawn.push([x, z]); if (OPS_CELLS[ch]) OPS_CELLS[ch].push([x, z]); }));
+  opsBuildLevels();
   OPS_PROPS = opsPlaceProps(id); OPS_PALIVE = new Uint8Array(OPS_PROPS.length).fill(1);
   // boosters that throw you across open air: pad cell -> landing point (world metres)
   OPS_JUMP = {}; (OPS_M.jumps || []).forEach(([px, pz, tx, tz]) => { OPS_JUMP[pz * OG + px] = [tx * CS + CS / 2, tz * CS + CS / 2, tx, tz]; });
@@ -6601,8 +6605,8 @@ opsSetMap("hq");
 const cellC = ([x, z]) => [x * CS + CS / 2, z * CS + CS / 2];
 function oWall(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return true; return OPS_MAP[cz][cx] === "#"; }
 function oCh(x, z) { const cx = Math.floor(x / CS), cz = Math.floor(z / CS); return oWall(cx, cz) ? "#" : OPS_MAP[cz][cx]; }
-function oSolid(x, z) { return oWall(Math.floor(x / CS), Math.floor(z / CS)); }
-function oBlocked(x, z, r = PR) { return oSolid(x - r, z - r) || oSolid(x + r, z - r) || oSolid(x - r, z + r) || oSolid(x + r, z + r) || oPropBlock(x, z, r) >= 0 || oDeckBlocks(x, z, r, OPS_FEET); }
+function oSolid(x, z, y) { if (OPS_ML) { const yy = y == null ? OPS_FEET + 1 : y; return mlHit(x, z, yy - 0.02, yy + 0.02); } return oWall(Math.floor(x / CS), Math.floor(z / CS)); }
+function oBlocked(x, z, r = PR) { if (OPS_ML) { const lo = OPS_FEET + 0.55, hi = OPS_FEET + 1.7; return mlHit(x - r, z - r, lo, hi) || mlHit(x + r, z - r, lo, hi) || mlHit(x - r, z + r, lo, hi) || mlHit(x + r, z + r, lo, hi) || oPropBlock(x, z, r) >= 0; } return oSolid(x - r, z - r) || oSolid(x + r, z - r) || oSolid(x - r, z + r) || oSolid(x + r, z + r) || oPropBlock(x, z, r) >= 0 || oDeckBlocks(x, z, r, OPS_FEET); }
 // raised decks in the jump arena: height of a cell, what you'd stand on, and whether a deck is a wall at your height
 const DECK_H = { "1": 1.2, "2": 2.6 };
 function oCellH(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return 0; return DECK_H[OPS_MAP[cz][cx]] || 0; }
@@ -6618,7 +6622,7 @@ function opsRouterHomes() {
 function oVoid(x, z) { return !!(OPS_M && OPS_M.sky) && oCh(x, z) === "v"; }
 function oFloorAt(x, z) { return oVoid(x, z) ? OPS_DEEP : oHAt(x, z); }
 function oDeckBlocks(x, z, r, feet) { if (!OPS_M || !OPS_M.open) return false; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) if (oFloorAt(x + a, z + b) > feet + 0.55) return true; return false; }
-function oGround(x, z, r, feet) { let g = oPropTop(x, z, r, feet); if (!g && OPS_M && OPS_M.sky) g = OPS_DEEP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) { const h = oFloorAt(x + a, z + b); if (h <= feet + 0.55 && h > g) g = h; } return g; }
+function oGround(x, z, r, feet) { let g = oPropTop(x, z, r, feet); if (OPS_ML) { for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r], [0, 0]]) g = Math.max(g, mlTop(x + a, z + b, feet)); return g; } if (!g && OPS_M && OPS_M.sky) g = OPS_DEEP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) { const h = oFloorAt(x + a, z + b); if (h <= feet + 0.55 && h > g) g = h; } return g; }
 // bots keep clear of the edge: a step that would put them near open air is not taken
 function oMoveSafe(p, dx, dz) { if (!OPS_M || !OPS_M.sky) return oMove(p, dx, dz); const ox = p.x, oz = p.z; oMove(p, dx, dz); const m = 0.7; if (oVoid(p.x - m, p.z - m) || oVoid(p.x + m, p.z - m) || oVoid(p.x - m, p.z + m) || oVoid(p.x + m, p.z + m)) { p.x = ox; p.z = oz; } }
 // 3D ray vs decks (slab test per deck cell along the way)
@@ -6632,7 +6636,81 @@ function oRayDecks(o, d, maxT) {
   }
   return best;
 }
+// ---------------- multi-level maps (real floors, stairs, ceilings) ----------------
+// A map with `up: { h, rows, ceil }` has a second storey: h = its floor height, rows = its own grid
+// ("#" wall, "." floor slab, " " open air / atrium), ceil = its room height. `stairs: [[cx, cz, dx, dz, n]]` are
+// runs of n cells from (cx, cz) heading (dx, dz) that climb from the ground to the upper floor; the cell after
+// the run is the landing. Every cell then holds solid spans [bottom, top] in metres, and moving, standing,
+// jumping, shooting and seeing are all tested against those spans. Maps without these keys use the old 2D rules.
+function opsBuildLevels() {
+  const U = OPS_M.up; OPS_ML = !!(U || OPS_M.stairs); OPS_SP = null; OPS_RAMP = null; OPS_UPH = U ? U.h : 0; if (!OPS_ML) return;
+  const H = OPS_UPH, roof = U ? H + (U.ceil || 3.6) : ML_TOP;
+  OPS_SP = new Array(OG * OG); OPS_RAMP = new Array(OG * OG).fill(null);
+  for (let cz = 0; cz < OG; cz++) for (let cx = 0; cx < OG; cx++) {
+    const ch = OPS_MAP[cz][cx], u = U ? (U.rows[cz] || "")[cx] || " " : " ", sp = [];
+    if (ch === "#") sp.push([-1, U ? H : ML_TOP]); else if (ch !== "v") sp.push([-1, DECK_H[ch] || 0]);
+    if (U) { if (u === "#") sp.push([H - ML_SLAB, roof + 0.5]); else { if (u !== " ") sp.push([H - ML_SLAB, H]); sp.push([roof, roof + 0.5]); } }
+    OPS_SP[cz * OG + cx] = sp;
+  }
+  (OPS_M.stairs || []).forEach(([cx, cz, dx, dz, n]) => {
+    // where the run starts (its low edge) along its axis, and which way is up
+    const ax = dx ? 0 : 2, dir = dx || dz, edge = dx ? (dx > 0 ? cx * CS : (cx + 1) * CS) : (dz > 0 ? cz * CS : (cz + 1) * CS);
+    for (let k = 0; k < n; k++) { const x = cx + dx * k, z = cz + dz * k; OPS_RAMP[z * OG + x] = { ax, dir, edge, len: n * CS, h: H }; }
+  });
+}
+// height of the stair surface at a point (-1 if there are no stairs there)
+function mlRampH(x, z) {
+  const cx = Math.floor(x / CS), cz = Math.floor(z / CS); if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return -1; const r = OPS_RAMP[cz * OG + cx]; if (!r) return -1;
+  const d = ((r.ax ? z : x) - r.edge) * r.dir; return clamp(d / r.len, 0, 1) * r.h;
+}
+function mlSpans(x, z) { const cx = Math.floor(x / CS), cz = Math.floor(z / CS); if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return null; return OPS_SP[cz * OG + cx]; }
+// the highest surface at a point that someone with their feet at `feet` can stand on (step included)
+function mlTop(x, z, feet) {
+  const sp = mlSpans(x, z); if (!sp) return ML_TOP; let g = OPS_DEEP;
+  for (const [a, b] of sp) if (b <= feet + 0.55 && b > g) g = b;
+  const rh = mlRampH(x, z); if (rh >= 0 && rh <= feet + 0.55 && rh > g) g = rh; return g;
+}
+// is anything solid between heights lo and hi at this point
+function mlHit(x, z, lo, hi) {
+  const sp = mlSpans(x, z); if (!sp) return true;
+  for (const [a, b] of sp) if (a < hi && b > lo) return true;
+  return mlRampH(x, z) > lo;
+}
+// the lowest ceiling above someone standing at `feet`
+function mlCeil(x, z, feet) { const sp = mlSpans(x, z); if (!sp) return feet; let c = ML_TOP; for (const [a] of sp) if (a > feet + 0.55 && a < c) c = a; return c; }
+function mlCeilR(x, z, r, feet) { let c = ML_TOP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) c = Math.min(c, mlCeil(x + a, z + b, feet)); return c; }
+// a straight 3D ray against floors, walls, slabs and stairs: distance to the first hit (maxT if none)
+function mlRay(o, d, maxT) {
+  const h = Math.hypot(d[0], d[2]); let cx = Math.floor(o[0] / CS), cz = Math.floor(o[2] / CS);
+  const sx = d[0] > 0 ? 1 : -1, sz = d[2] > 0 ? 1 : -1;
+  const tdx = Math.abs(d[0]) > 1e-9 ? Math.abs(CS / d[0]) : Infinity, tdz = Math.abs(d[2]) > 1e-9 ? Math.abs(CS / d[2]) : Infinity;
+  let tmx = Math.abs(d[0]) > 1e-9 ? (d[0] > 0 ? (cx + 1) * CS - o[0] : o[0] - cx * CS) / Math.abs(d[0]) : Infinity;
+  let tmz = Math.abs(d[2]) > 1e-9 ? (d[2] > 0 ? (cz + 1) * CS - o[2] : o[2] - cz * CS) / Math.abs(d[2]) : Infinity;
+  let t0 = 0;
+  for (let k = 0; k < 260 && t0 < maxT; k++) {
+    const t1 = Math.min(tmx, tmz, maxT);
+    if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return t0;
+    const sp = OPS_SP[cz * OG + cx], y0 = o[1] + d[1] * t0; let hitT = Infinity;
+    for (const [a, b] of sp) {
+      // the part of [t0, t1] where the ray's height is inside [a, b]; the nearest such entry wins
+      let ta = t0, tb = t1;
+      if (Math.abs(d[1]) < 1e-9) { if (y0 < a || y0 > b) continue; }
+      else { let u = (a - o[1]) / d[1], v = (b - o[1]) / d[1]; if (u > v) { const q = u; u = v; v = q; } ta = Math.max(ta, u); tb = Math.min(tb, v); if (ta > tb) continue; }
+      if (ta < hitT) hitT = ta;
+    }
+    if (hitT < Infinity) return Math.max(0, hitT);
+    const r = OPS_RAMP[cz * OG + cx];
+    if (r) { // stairs: the ray's height minus the stair height is linear across the cell, so solve for where it crosses
+      const f = (t) => o[1] + d[1] * t - mlRampH(o[0] + d[0] * t, o[2] + d[2] * t), f0 = f(t0), f1 = f(t1);
+      if (f0 <= 0) return t0; if (f1 <= 0) return t0 + (t1 - t0) * f0 / (f0 - f1);
+    }
+    if (t1 >= maxT) return maxT;
+    if (tmx < tmz) { cx += sx; t0 = tmx; tmx += tdx; } else { cz += sz; t0 = tmz; tmz += tdz; }
+  }
+  return maxT;
+}
 function oSee(ax, ay, az, bx, by, bz) {
+  if (OPS_ML) { const d = [bx - ax, by - ay, bz - az], L = Math.hypot(d[0], d[1], d[2]) || 1e-6; return mlRay([ax, ay, az], [d[0] / L, d[1] / L, d[2] / L], L) >= L - 0.3; }
   if (!oLOS(ax, az, bx, bz)) return false; if (!OPS_M || !OPS_M.open) return true;
   const d = [bx - ax, by - ay, bz - az], L = Math.hypot(d[0], d[1], d[2]) || 1e-6; return oRayDecks([ax, ay, az], [d[0] / L, d[1] / L, d[2] / L], L) >= L - 0.3;
 }
@@ -6709,7 +6787,37 @@ function oRay(ox, oz, dx, dz, maxT) {
 // line of sight to the centre of someone or to either shoulder (a peek round a corner)
 function oLOSw(ax, az, bx, bz) { if (oLOS(ax, az, bx, bz)) return true; const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz) || 1, px = -dz / d * 0.3, pz = dx / d * 0.3; return oLOS(ax, az, bx + px, bz + pz) || oLOS(ax, az, bx - px, bz - pz); }
 function oLOS(ax, az, bx, bz) { const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz); if (d < 0.01) return true; return oRay(ax, az, dx / d, dz / d, d) >= d - 0.05; }
-function oPath(sx, sz, tx, tz) {
+// which floor someone is on (0 ground, 1 upper); stairs count as the ground floor's
+function mlLevel(x, z, jh) { if (!OPS_ML || !OPS_UPH) return 0; const c = Math.floor(z / CS) * OG + Math.floor(x / CS); return !OPS_RAMP[c] && (jh || 0) > OPS_UPH * 0.6 ? 1 : 0; }
+// breadth-first search over (cell, floor) nodes: ground cells, upper slab cells, and stair runs joining them
+function mlPath(sx, sz, sl, tx, tz, tl) {
+  const N = OG * OG, U = OPS_M.up, start = sl * N + sz * OG + sx, goal = tl * N + tz * OG + tx; if (start === goal) return [];
+  const walk = (l, x, z) => { if (x < 0 || z < 0 || x >= OG || z >= OG) return false; if (l) return !!U && U.rows[z][x] === "."; return !oWall(x, z) && !oCellH(x, z) && OPS_MAP[z][x] !== "v"; };
+  const prev = new Int32Array(2 * N).fill(-1); prev[start] = start; const q = [start];
+  for (let h = 0; h < q.length; h++) {
+    const c = q[h]; if (c === goal) break; const l = c >= N ? 1 : 0, cc = c - l * N, x = cc % OG, z = (cc / OG) | 0, r = OPS_RAMP[cc];
+    const add = (n) => { if (prev[n] === -1) { prev[n] = c; q.push(n); } };
+    if (r) { // on a stair run: only up or down it (the top step leads onto the landing upstairs)
+      const st = (OPS_M.stairs || []).find(([ax, az, dx, dz, n]) => { for (let k = 0; k < n; k++) if (ax + dx * k === x && az + dz * k === z) return true; return false; });
+      if (st) { const [ax, az, dx, dz, n] = st, k = dx ? (x - ax) / dx : (z - az) / dz;
+        if (k + 1 < n) add((z + dz) * OG + x + dx); else if (walk(1, x + dx, z + dz)) add(N + (z + dz) * OG + x + dx);
+        if (k > 0) add((z - dz) * OG + x - dx); else if (walk(0, x - dx, z - dz)) add((z - dz) * OG + x - dx); }
+      continue;
+    }
+    for (const [ax, az] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + ax, nz = z + az; if (nx < 0 || nz < 0 || nx >= OG || nz >= OG) continue; const nr = OPS_RAMP[nz * OG + nx];
+      if (nr) { // step onto a stair run only at its ends
+        const st = (OPS_M.stairs || []).find(([bx, bz, dx, dz, n]) => (!l && bx - dx === x && bz - dz === z && bx === nx && bz === nz) || (l && bx + dx * n === x && bz + dz * n === z && bx + dx * (n - 1) === nx && bz + dz * (n - 1) === nz));
+        if (st) add(nz * OG + nx); continue;
+      }
+      if (walk(l, nx, nz)) add(l * N + nz * OG + nx);
+    }
+  }
+  if (prev[goal] === -1) return [];
+  const out = []; for (let c = goal; c !== start; c = prev[c]) { const cc = c % N; out.push([cc % OG, (cc / OG) | 0]); } return out.reverse();
+}
+function oPath(sx, sz, tx, tz, sl, tl) {
+  if (OPS_ML) return mlPath(sx, sz, sl || 0, tx, tz, tl || 0);
   const start = sz * OG + sx, goal = tz * OG + tx; if (start === goal) return [];
   const prev = new Int16Array(OG * OG).fill(-1); prev[start] = start; const q = [start];
   for (let h = 0; h < q.length; h++) {
@@ -6808,14 +6916,14 @@ function makeOps(md) {
       // rocket: 3D splash, self damage at 35%, and a shove that makes rocket jumps work
       if (kind === 4) g.P.forEach((q, j) => {
         if (!q.alive) return; const cy = (q.jh || 0) + 1.0, dx = q.x - x, dy = cy - y, dz = q.z - z, d = Math.hypot(dx, dy, dz);
-        if (d >= R && j !== direct) return; if (j !== direct && !oLOS(x, z, q.x, q.z)) return;
+        if (d >= R && j !== direct) return; if (j !== direct && !(OPS_ML ? oSee(x, y + 0.3, z, q.x, cy, q.z) : oLOS(x, z, q.x, q.z))) return;
         const k = Math.max(0, 1 - d / R); let raw = j === direct ? 100 : 12 + 78 * k; if (j === by) raw *= 0.35;
         const L = d || 1, imp = (j === by ? 11 : 7) * k + 2.5, vx = dx / L * imp, vy = Math.max(dy / L, 0.35) * imp, vz = dz / L * imp;
         if (q.bot) oMove(q, vx * 0.2, vz * 0.2); else { q.kbs++; q.kb = [q.kbs, +vx.toFixed(2), +vy.toFixed(2), +vz.toFixed(2)]; }
         this.damage(S, j, j === by ? j : by, -4, false, raw);
       });
       else if (kind !== 1) g.P.forEach((q, j) => {
-        if (!q.alive) return; const d = Math.hypot(q.x - x, q.z - z); if (d >= R || !oLOS(x, z, q.x, q.z)) return;
+        if (!q.alive) return; const d = OPS_ML ? Math.hypot(q.x - x, (q.jh || 0) + 0.8 - y, q.z - z) : Math.hypot(q.x - x, q.z - z); if (d >= R || !(OPS_ML ? oSee(x, y + 0.3, z, q.x, (q.jh || 0) + 1.0, q.z) : oLOS(x, z, q.x, q.z))) return;
         const f = g.P[by]; if (team && f && j !== by && f.tm === q.tm) return;   // no team damage from grenades (bullets have none either); your own still hurts you
         const credit = by === j ? j : f ? by : -1;
         this.damage(S, j, credit, kind === 2 ? -3 : -2, false, kind === 2 ? 6 + 104 * Math.pow(1 - d / R, 1.15) : 8 + 120 * Math.pow(1 - d / R, 1.1));
@@ -6826,9 +6934,9 @@ function makeOps(md) {
       g.pr.forEach((q, k) => { if (q.hp <= 0) return; const p = OPS_PROPS[k]; if (Math.hypot(p.x - x, p.z - z) >= R * 0.9 || !oLOS(x, z, p.x, p.z) || y > p.h + 1.5) return; if (p.t === 2) { if (!q.fu) { q.fu = 0.16 + Math.random() * 0.22; q.by = by; } } else this.hitProp(S, k, by, 999); });
     },
     hostThrow(S, i, k, a, pt, crouch) {
-      const g = S.g, p = g.P[i], sp = crouch ? 10 : 15.5, cp = Math.cos(pt), y = (crouch ? 1.0 : EYE) - 0.15; p.prot = 0;
+      const g = S.g, p = g.P[i], sp = crouch ? 10 : 15.5, cp = Math.cos(pt), y = (crouch ? 1.0 : EYE) - 0.15 + (OPS_ML ? p.jh || 0 : 0); p.prot = 0;
       const dx = -Math.sin(a) * cp, dz = -Math.cos(a) * cp;
-      let x = p.x + dx * 0.4, z = p.z + dz * 0.4; if (oSolid(x, z)) { x = p.x; z = p.z; }
+      let x = p.x + dx * 0.4, z = p.z + dz * 0.4; if (oSolid(x, z, y)) { x = p.x; z = p.z; }
       g.gn.push({ id: ++g.gns, k, x, y, z, vx: dx * sp, vy: Math.sin(pt) * sp + 2.2, vz: dz * sp, t: 0, by: i });
     },
     // grenades bounce off walls, props, floor (and the ceiling indoors); frags pop after a fuse, smokes once they settle
@@ -6840,15 +6948,17 @@ function makeOps(md) {
           const h = dt / 3; n.vy -= 15 * h;
           let nx = n.x + n.vx * h, nz = n.z + n.vz * h; const ny = n.y + n.vy * h;
           const pi = oPropAt(nx, nz, 0.06), hitProp = pi >= 0 && ny < OPS_PROPS[pi].h;
-          if (oSolid(nx, n.z) || (hitProp && oPropAt(nx, n.z, 0.06) >= 0)) { n.vx *= -0.45; n.vz *= 0.8; nx = n.x; }
-          if (oSolid(n.x, nz) || (hitProp && oPropAt(n.x, nz, 0.06) >= 0)) { n.vz *= -0.45; n.vx *= 0.8; nz = n.z; }
+          if (oSolid(nx, n.z, ny) || (hitProp && oPropAt(nx, n.z, 0.06) >= 0)) { n.vx *= -0.45; n.vz *= 0.8; nx = n.x; }
+          if (oSolid(n.x, nz, ny) || (hitProp && oPropAt(n.x, nz, 0.06) >= 0)) { n.vz *= -0.45; n.vx *= 0.8; nz = n.z; }
           n.x = nx; n.z = nz; n.y = ny;
           if (hitProp && ny < OPS_PROPS[pi].h + 0.06 && n.vy < 0 && oPropAt(n.x, n.z, 0.06) >= 0) { n.y = OPS_PROPS[pi].h + 0.06; n.vy *= -0.3; n.vx *= 0.7; n.vz *= 0.7; }
-          if (roofed && n.y > OWH - 0.1) { n.y = OWH - 0.1; n.vy = -Math.abs(n.vy) * 0.4; }
-          if (n.y < 0.07) { n.y = 0.07; n.vy = Math.abs(n.vy) < 1 ? 0 : -n.vy * 0.35; n.vx *= 0.62; n.vz *= 0.62; }
+          if (OPS_ML) { const c = mlCeil(n.x, n.z, n.y - 0.55); if (n.y > c - 0.1) { n.y = c - 0.1; n.vy = -Math.abs(n.vy) * 0.4; } }
+          else if (roofed && n.y > OWH - 0.1) { n.y = OWH - 0.1; n.vy = -Math.abs(n.vy) * 0.4; }
+          const fl = OPS_ML ? Math.max(0, mlTop(n.x, n.z, n.y - 0.5)) : 0;   // (floors and stairs on multi-level maps)
+          if (n.y < fl + 0.07) { n.y = fl + 0.07; n.vy = Math.abs(n.vy) < 1 ? 0 : -n.vy * 0.35; n.vx *= 0.62; n.vz *= 0.62; }
         }
-        if (n.k === 0 && n.t >= 1.7) { n.done = 1; this.blast(S, n.x, n.z, n.by, 2); }
-        if (n.k === 1 && (n.t >= 2.6 || (n.t > 0.9 && Math.hypot(n.vx, n.vz) < 0.6 && n.y < 0.1))) { n.done = 1; g.sm.push({ id: n.id, x: n.x, z: n.z, t: 16, age: 0 }); g.fx.push([++g.fxs, +n.x.toFixed(2), +n.z.toFixed(2), 3]); if (g.fx.length > 6) g.fx.shift(); }
+        if (n.k === 0 && n.t >= 1.7) { n.done = 1; this.blast(S, n.x, n.z, n.by, 2, OPS_ML ? n.y : 0); }
+        if (n.k === 1 && (n.t >= 2.6 || (n.t > 0.9 && Math.hypot(n.vx, n.vz) < 0.6 && (OPS_ML ? n.vy === 0 : n.y < 0.1)))) { n.done = 1; g.sm.push({ id: n.id, x: n.x, z: n.z, t: 16, age: 0 }); g.fx.push([++g.fxs, +n.x.toFixed(2), +n.z.toFixed(2), 3]); if (g.fx.length > 6) g.fx.shift(); }
       }
       g.gn = g.gn.filter(n => !n.done);
       g.sm.forEach(s => { s.t -= dt; s.age += dt; }); g.sm = g.sm.filter(s => s.t > 0); OPS_SMOKES = g.sm;
@@ -7041,7 +7151,7 @@ function makeOps(md) {
           p.budget = Math.min(per * 4, (p.budget || 0) + Math.max(0, g.t - p.lastHitT) / (W0.rate * 0.55) * per); p.lastHitT = g.t; }
         if (!(p.budget >= 1)) continue;
         const d = Math.hypot(q.x - p.x, q.z - p.z); if (d > (W0.melee ? 3.4 : W0.range + 6)) continue;
-        if (!oLOSw(p.x, p.z, q.x, q.z)) continue;
+        if (OPS_ML ? !(oSee(p.x, (p.jh || 0) + 1.5, p.z, q.x, (q.jh || 0) + 1.4, q.z) || oSee(p.x, (p.jh || 0) + 1.5, p.z, q.x, (q.jh || 0) + 0.8, q.z)) : !oLOSw(p.x, p.z, q.x, q.z)) continue;
         p.budget--;
         if (W0.melee) {
           const stab = !!c[4], fx = q.bot ? Math.sin(q.a) : -Math.sin(q.a), fz = q.bot ? Math.cos(q.a) : -Math.cos(q.a);
@@ -7065,7 +7175,7 @@ function makeOps(md) {
           if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) { if (p.bot && S.joinQ && S.joinQ.length) this.takeSeat(S, i); this.spawnFFA(S, i); } }
           return;
         }
-        if (p.bot) { this.botTick(S, i, dt); return; }
+        if (p.bot) { OPS_FEET = p.jh || 0; this.botTick(S, i, dt); if (OPS_ML && !p.bot.fly) p.jh = oGround(p.x, p.z, PR, p.jh || 0); OPS_FEET = 0; return; }
         const inp = inputs[i]; if (!inp) return;
         if (Number.isFinite(inp.x) && Number.isFinite(inp.z) && inp.q === p.rsq && !(team && g.ph === "buy" && Math.hypot(inp.x - p.rx, inp.z - p.rz) > 1.5)) { p.x = clamp(inp.x, 0, OG * CS); p.z = clamp(inp.z, 0, OG * CS); p.a = +inp.a || 0; }
         if (Number.isInteger(inp.w) && OW[inp.w] && this.owns(S, p, inp.w)) p.cur = inp.w;
@@ -7122,9 +7232,9 @@ function makeOps(md) {
       let tgt = -1, td = 1e9;
       // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
       const fa = Math.sin(p.a), fc = Math.cos(p.a), wide = (b.alertT = Math.max(0, (b.alertT || 0) - dt)) > 0;
-      g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > 0.3) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
+      g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > 0.3) && (arena ? oSee(p.x, (p.jh || 0) + 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
       // Golden Router: go after whoever holds it; the holder keeps running but shoots back at anyone who gets close
-      if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
+      if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, (p.jh || 0) + 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
       if (p.hasTr && td > 16) tgt = -1;
       if (troph && !p.hasTr && g.tr.by < 0 && td > 7) tgt = -1; // the free router matters more than a far-away fight
       if (tgt >= 0 && p.gr[0] > 0 && td > 7 && td < 20 && Math.random() < dt * 0.22) { const q = g.P[tgt]; p.gr[0]--; this.hostThrow(S, i, 0, Math.atan2(-(q.x - p.x), -(q.z - p.z)), clamp(0.06 + td / 55, 0.1, 0.45), 0); }
@@ -7142,7 +7252,7 @@ function makeOps(md) {
         // close the gap when the gun is out of its range, give ground when someone is in their face
         const adv = W0.melee ? 0 : td > Math.min(20, W0.range * 0.45) ? 0.5 : td < 3.2 && !W0.pel ? -0.45 : 0;
         if (moving) oMoveSafe(p, (sx * 0.6 + Math.sin(p.a) * adv) * speed * dt, (sz * 0.6 + Math.cos(p.a) * adv) * speed * dt);
-        b.ls = [q.x, q.z];
+        b.ls = [q.x, q.z, mlLevel(q.x, q.z, q.jh)];
         if (b.amW !== p.cur) { b.amW = p.cur; b.am = W0.mag; b.bn = 0; }
         if (W0.melee && td > 2.2) { const s2 = speed * dt, dx = q.x - p.x, dz = q.z - p.z; oMoveSafe(p, dx / td * s2, dz / td * s2); return; }
         if (W0.rocket && b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.2) {
@@ -7167,8 +7277,8 @@ function makeOps(md) {
           const roll = Math.random() < acc * (cb ? 0.45 : 1), hit = roll && !blocked && !(cb && W0.pel), head = hit && (!!cb || Math.random() < (b.boss ? 0.22 : 0.14));
           if (roll && blocked) this.hitProp(S, cb[1], i, W0.dmg);
           const ang = p.a + (hit || blocked ? 0 : (Math.random() - 0.5) * 0.2);
-          const dist = hit ? td : blocked ? Math.hypot(q.x - p.x, q.z - p.z) * cb[0] / Math.max(0.1, Math.hypot(q.x - p.x, (q.jh || 0) - 0.5 - (p.jh || 0), q.z - p.z)) : oRay(p.x, p.z, Math.sin(ang), Math.cos(ang), 60);
-          p.shot = [++p.bs, +(p.x + Math.sin(ang) * dist).toFixed(2), +(hit ? (head ? 1.45 : 1.0) : 0.8 + Math.random()).toFixed(2), +(p.z + Math.cos(ang) * dist).toFixed(2), p.cur];
+          const dist = hit ? td : blocked ? Math.hypot(q.x - p.x, q.z - p.z) * cb[0] / Math.max(0.1, Math.hypot(q.x - p.x, (q.jh || 0) - 0.5 - (p.jh || 0), q.z - p.z)) : OPS_ML ? mlRay([p.x, (p.jh || 0) + 1.5, p.z], [Math.sin(ang), 0, Math.cos(ang)], 60) : oRay(p.x, p.z, Math.sin(ang), Math.cos(ang), 60);
+          p.shot = [++p.bs, +(p.x + Math.sin(ang) * dist).toFixed(2), +((hit ? (head ? 1.45 : 1.0) : 0.8 + Math.random()) + (OPS_ML ? p.jh || 0 : 0)).toFixed(2), +(p.z + Math.cos(ang) * dist).toFixed(2), p.cur];
           if (hit) { if (W0.pel) { let n = 0; for (let k = 0; k < W0.pel; k++) if (Math.random() < clamp(1.2 - td / W0.range, 0.1, 1)) n++; if (n) this.damage(S, tgt, i, p.cur, false, W0.dmg * n); } else this.damage(S, tgt, i, p.cur, head); }
         }
         return;
@@ -7193,8 +7303,8 @@ function makeOps(md) {
         if (tr.by < 0 && !p.hasTr && Math.floor(p.x / CS) === Math.floor(tr.x / CS) && Math.floor(p.z / CS) === Math.floor(tr.z / CS)) { const dx = tr.x - p.x, dz = tr.z - p.z, d = Math.hypot(dx, dz) || 1; oMoveSafe(p, dx / d * speed * dt, dz / d * speed * dt); }
       } else if (!team) {
         // lost sight of someone: go and look where they were last seen
-        if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1)]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
-        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
+        if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1), b.ls[2] || 0]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
+        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS), mlLevel(o.x, o.z, o.jh)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
         goal = b.goal;
       } else if (p.tm === 0) {
         if (bm.st === 0) {
@@ -7211,7 +7321,7 @@ function makeOps(md) {
       b.gT -= dt;
       this.procAct(S, i, act, dt);
       if (act || !goal) return;
-      if ((!b.path.length || b.pT <= 0)) { b.path = oPath(Math.floor(p.x / CS), Math.floor(p.z / CS), goal[0], goal[1]); b.pT = 2.5; }
+      if ((!b.path.length || b.pT <= 0)) { b.path = oPath(Math.floor(p.x / CS), Math.floor(p.z / CS), goal[0], goal[1], mlLevel(p.x, p.z, p.jh), goal[2] || 0); b.pT = 2.5; }
       const nx = b.path[0];
       if (nx) {
         const tx = nx[0] * CS + CS / 2, tz = nx[1] * CS + CS / 2, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
@@ -7589,7 +7699,8 @@ function makeOps(md) {
         moving = spdNow > 1.2;
         // jump / fall / land (decks: stand on them, drop off their edges)
         const JV = arena ? 7.2 : 5.4, gNow = oGround(F.me.x, F.me.z, PR, F.jh || 0); OPS_STEP = 0.35;
-        const onG = (F.jh || 0) <= gNow + 0.01 && (F.vy || 0) <= 0;
+        // (on stairs going down you stay on your feet instead of falling a little every frame)
+        const onG = ((F.jh || 0) <= gNow + 0.01 || (OPS_ML && F.wasG && (F.jh || 0) - gNow < 0.45)) && (F.vy || 0) <= 0;
         if (onG) {
           F.jh = gNow; F.vy = 0;
           if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.jump(0.5); }
@@ -7601,13 +7712,13 @@ function makeOps(md) {
             F.padT = 0.4;
           }
         }
-        F.wantJump = false;
+        F.wantJump = false; F.wasG = onG && !(F.vy > 0);
         if (!onG || F.vy > 0) {
           const nj = (F.jh || 0) + (F.vy || 0) * dt - 8.5 * dt * dt; F.vy -= 17 * dt;   // exact arc: the same jump height at any frame rate
           if (nj <= gNow && F.vy <= 0) {
             const iv = -(F.vy || 0); F.jh = gNow; F.vy = 0; SFX.land(clamp((iv - 3) / 11, 0.15, 1));
             if (arena && KEYS.has("Space") && F.cr < 0.5 && !(!gNow && oCh(F.me.x, F.me.z) === "^")) F.vy = JV; else F.landT = 0.18; // bunny hop: keep the speed (but a pad you land on fires next frame)
-          } else { F.jh = nj; const top = (OPS_M.wallH || 99) - 1.95; if (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && F.jh > top) { F.jh = top; if (F.vy > 0) F.vy = 0; } }
+          } else { F.jh = nj; if (OPS_ML) { const c = mlCeilR(F.me.x, F.me.z, PR, F.jh) - 1.8; if (F.jh > c) { F.jh = c; if (F.vy > 0) F.vy = 0; } } const top = (OPS_M.wallH || 99) - 1.95; if (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && F.jh > top) { F.jh = top; if (F.vy > 0) F.vy = 0; } }
         }
         F.inAir = (F.jh || 0) > gNow + 0.01 || F.vy > 0;
         F.landT = Math.max(0, (F.landT || 0) - dt);
@@ -7656,7 +7767,8 @@ function makeOps(md) {
       const EY = F.eyeH || EYE, cp = Math.cos(me.p), dir = [-Math.sin(me.a) * cp, Math.sin(me.p), -Math.cos(me.a) * cp], h = Math.hypot(dir[0], dir[2]) || 1e-6, R = 34;
       let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, R) / h; const wallT = t, floorT = dir[1] < -1e-4 ? EY / -dir[1] : 1e9;
       t = oRayDecks([me.x, EY, me.z], dir, Math.min(t, floorT));
-      if (t >= floorT - 1e-3) { SFX.clack(0.3, 0, 1.3); return; }
+      if (OPS_ML) t = mlRay([me.x, EY, me.z], dir, R);   // (the hook is only in the arena modes, which have no multi-level maps yet)
+      else if (t >= floorT - 1e-3) { SFX.clack(0.3, 0, 1.3); return; }
       const y = EY + dir[1] * t, hitWall = t >= wallT - 1e-3 && t < R / h - 0.01;
       if (t >= R - 0.01 || (hitWall && y > (OPS_M.wallH || OWH)) || (dir[1] < -0.2 && t < 3)) { SFX.clack(0.3, 0, 1.3); return; }
       F.hk = [me.x + dir[0] * t, y, me.z + dir[2] * t]; F.hkT = 0; SFX.clank(0.8); SFX.swish(0.6);
@@ -7693,7 +7805,7 @@ function makeOps(md) {
         let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, W0.range) / h;
         if (dir[1] < -1e-4) t = Math.min(t, EY / -dir[1]);
         if (dir[1] > 1e-4 && OPS_M.theme !== "desert" && OPS_M.theme !== "roof") t = Math.min(t, ((OPS_M.ceilH || OPS_M.wallH || OWH) - EY) / dir[1]);
-        t = oRayDecks([me.x, EY, me.z], dir, t);
+        t = OPS_ML ? mlRay([me.x, EY, me.z], dir, W0.range) : oRayDecks([me.x, EY, me.z], dir, t);
         const prh = oRayProps([me.x, EY, me.z], dir, t); if (prh[1] >= 0) t = prh[0];
         // glass on the way (or just behind the wall face the shot stops at) shatters; the shot carries on through it
         const gph = OPS_PANES.length && OPS_PANES_ID === OPS_ID ? oRayPanes([me.x, EY, me.z], dir, t) : [0, -1];
