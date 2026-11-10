@@ -4925,7 +4925,7 @@ NXW.themes.office = (B, M, env) => {
     // beside a stair: a dark wall clad in oak battens, the feature wall of the atrium
     if (B.stair && B.stair[ci(f.ox, f.oz)]) { B.wall(f, "o_wallDark", 0, 0, CS, H); f.kind = "plain"; f.alb = matAlb("o_wallDark"); for (let k = 0; k < 32; k++) { const u = 0.035 + k * 0.125; B.fbox(f, "o_oak", u, 0, 0, u + 0.055, H - 0.02, 0.028, { f: (ALL & ~NY & ~PY), occ: false, rot: 1, seg: 1.6 }); } continue; }
     if (noFloor(f.ox, f.oz)) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; continue; }
-    if (deskWall[ci(f.ox, f.oz) * 4 + f.d]) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; baseboard(f, 0, CS); if (h2 < 0.5) poster(f, 2); else if (h2 < 0.75) wallTV(f, 2); continue; }
+    if (deskWall[ci(f.ox, f.oz) * 4 + f.d]) { const dk = key === "o_wallDark" ? "o_wall" : key; B.wall(f, dk, 0, 0, CS, H); f.kind = "plain"; f.alb = matAlb(dk); baseboard(f, 0, CS); if (h2 < 0.5) poster(f, 2); else if (h2 < 0.75) wallTV(f, 2); continue; }
     // glazed rooms
     const wantNiche = st === "server" ? ((f.zone === "siteA" || f.zone === "siteB") && h1 < 0.75) : st === "glass" ? h1 < 0.8 : st === "plaster" ? h1 < 0.16 : st === "noc" ? h1 < 0.3 : false;
     if (wantNiche && canNiche(f)) { niche(f, key, st === "server" || st === "noc" ? "racks" : st === "glass" ? "meeting" : "office"); continue; }
@@ -6500,32 +6500,8 @@ void main(){ vec2 inv = uP.xy; vec3 lw = vec3( 0.299, 0.587, 0.114 );
 // ======================= NETEAM OPS: 3D tactical shooter (Red vs Blue rounds + free-for-all) =======================
 // Maps. # wall, r red spawn, u blue spawn, a = site A, b = site B. The host picks one sized to the player count.
 const OPS_MAPS = {
-  hq: { n: "Neteam HQ", theme: "office", sites: ["SERVER ROOM", "NETWORK CLOSET"], spawns: ["LOBBY", "NOC"], rows: [
-  "######################",
-  "#aaaa...#.uuuu.#.bbbb#",
-  "#aaaa...#.uuuu.#.bbbb#",
-  "#aa##........#...##bb#",
-  "#......####..#.......#",
-  "###.##.#........###.##",
-  "#....#.#.##.###.#....#",
-  "#.##.....#.......###.#",
-  "#.#..###.#.###.#.....#",
-  "#...#.....#...#..#.#.#",
-  "##.##.##.....##..#...#",
-  "#.......#.###.......##",
-  "#.###.#.#.....#.###..#",
-  "#.#...#...#.#.#...#..#",
-  "#...#.###.#.#.##.#.#.#",
-  "#.#.#.....#......#...#",
-  "###.###.####.##.###.##",
-  "#.....#.........#....#",
-  "#.###...rrrrrr....##.#",
-  "#.....#.rrrrrr.#.....#",
-  "#...#...rrrrrr...#...#",
-  "######################",
-  ] },
   // two storeys: an atrium in the middle with a gallery around it, two feature stairs, offices upstairs
-  hq2: { n: "Neteam HQ 2F", dev: true, theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "NETWORK CLOSET"], spawns: ["LOBBY", "NOC"],
+  hq: { n: "Neteam HQ", theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "NETWORK CLOSET"], spawns: ["LOBBY", "NOC"],
   stairs: [[7, 12, 0, -1, 2], [14, 10, 0, 1, 2]],
   up: { h: 3.6, ceil: 3.2, rows: [
     "######################",
@@ -6756,7 +6732,6 @@ function opsSetMap(id) {
   if (!OPS_CELLS.a.length) { OPS_SITE = [[0, 0], [0, 0]]; return; }
   OPS_SITE = ["a", "b"].map(k => { const c = OPS_CELLS[k]; return [c.reduce((s, q) => s + q[0], 0) / c.length * CS + CS / 2, c.reduce((s, q) => s + q[1], 0) / c.length * CS + CS / 2]; });
 }
-opsSetMap("hq");
 const cellC = ([x, z]) => [x * CS + CS / 2, z * CS + CS / 2];
 function oWall(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return true; return OPS_MAP[cz][cx] === "#"; }
 function oCh(x, z) { const cx = Math.floor(x / CS), cz = Math.floor(z / CS); return oWall(cx, cz) ? "#" : OPS_MAP[cz][cx]; }
@@ -6809,6 +6784,7 @@ function oCellH(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return 0
 function oHAt(x, z) { return oCellH(Math.floor(x / CS), Math.floor(z / CS)); }
 // open air (Uplink): no floor at all. Below roof level the side of the tower is a wall
 const OPS_DEEP = -99;
+opsSetMap("hq");   // after DECK_H: the default map has storeys, so its collision is built now
 // where the router sits when nobody has it: the map's "homes" (it alternates between them), else the T cells, else the middle
 function opsRouterHomes() {
   if (OPS_M && OPS_M.homes) return OPS_M.homes.map(([cx, cz]) => [cx * CS + CS / 2, cz * CS + CS / 2]);
@@ -6839,7 +6815,7 @@ function oRayDecks(o, d, maxT) {
 // the run is the landing. Every cell then holds solid spans [bottom, top] in metres, and moving, standing,
 // jumping, shooting and seeing are all tested against those spans. Maps without these keys use the old 2D rules.
 function opsBuildLevels() {
-  const U = OPS_M.up; OPS_ML = !!(U || OPS_M.stairs); OPS_SP = null; OPS_RAMP = null; OPS_UPH = U ? U.h : 0; if (!OPS_ML) return;
+  const U = OPS_M.up; OPS_ML = !!(U || OPS_M.stairs); OPS_SP = null; OPS_RAMP = null; OPS_UPH = U ? U.h : 0; OPS_RAILS = []; OPS_FURN = []; if (!OPS_ML) return;
   const H = OPS_UPH, roof = U ? H + (U.ceil || 3.6) : ML_TOP;
   OPS_SP = new Array(OG * OG); OPS_RAMP = new Array(OG * OG).fill(null);
   for (let cz = 0; cz < OG; cz++) for (let cx = 0; cx < OG; cx++) {
@@ -7561,7 +7537,7 @@ function makeOps(md) {
       } else if (!team) {
         // lost sight of someone: go and look where they were last seen
         if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1), b.ls[2] || 0]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
-        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS), mlLevel(o.x, o.z, o.jh)] : OPS_CELLS.up.length && Math.random() < 0.35 ? OPS_CELLS.up[rint(0, OPS_CELLS.up.length - 1)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
+        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS), mlLevel(o.x, o.z, o.jh)] : OPS_CELLS.up.length && Math.random() < 0.45 ? OPS_CELLS.up[rint(0, OPS_CELLS.up.length - 1)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = b.goal[2] ? 14 : 6; b.path = []; }
         goal = b.goal;
       } else if (p.tm === 0) {
         if (bm.st === 0) {
