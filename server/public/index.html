@@ -6725,36 +6725,36 @@ const OPS_MAPS = {
   ] },
   farm: { n: "Server Farm", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
-    "#aaaa......uuuuuu#",
-    "#aaaa......uuuuuu#",
+    "#aaaa.....uuuuuu.#",
+    "#aaaa.....uuuuuu.#",
     "#..##..##.##..#..#",
     "#................#",
     "#................#",
     "#..##..##.##..#..#",
     "#.......##.......#",
     "#..##.#.##.......#",
-    "#.......##.#.##..#",
-    "#.......##.......#",
+    "#.......##.#b##b.#",
+    "#.......##..bbbb.#",
     "#..##..##.##..#..#",
     "#................#",
     "#................#",
     "#..##..##.##..#..#",
-    "#rrrrrr......bbbb#",
-    "#rrrrrr......bbbb#",
+    "#rrrrrr..........#",
+    "#rrrrrr..........#",
     "##################",
   ] },
   sand: { n: "Sandstorm District", theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
     "##########################",
-    "#aaaaaa###uuuuuu###bbbbbb#",
-    "#aa#aaa...uuuuuu...bb#bbb#",
-    "#aaaaaa...uuuuuu...bbbbbb#",
-    "#aaa#aa..###..#####bbb#bb#",
-    "#aaaaaa..###..#####bbbbbb#",
+    "#......###uuuuuu###......#",
+    "#..#......uuuuuu.....#...#",
+    "#.........uuuuuu.........#",
+    "#...#....###..#####...#..#",
+    "#........###..#####......#",
     "##....#..###..####....####",
-    "##....#..###..####..##..##",
-    "##..###..###....#...##..##",
-    "##..###.............##..##",
-    "##..###.......####..##..##",
+    "##....#..###..####bb##..##",
+    "##..###aa###....#bbb##..##",
+    "##..###aaaa.....bbbb##..##",
+    "##..###aaaa...####..##..##",
     "##..#########.####..##..##",
     "##..######....####......##",
     "##..######....####.....###",
@@ -6832,9 +6832,9 @@ const OPS_MAPS = {
   ] },
   roof: { n: "Rooftop", theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
     "########################",
+    "#aaaaa.................#",
     "#aaaaa...........uuuuuu#",
-    "#aaaaa...........uuuuuu#",
-    "#aaaaa...##............#",
+    "#aaaaa...##......uuuuuu#",
     "#...##...##....##......#",
     "#...##.........##......#",
     "#......##..............#",
@@ -6845,15 +6845,15 @@ const OPS_MAPS = {
     "#...........####.......#",
     "#....#.#..####..##..##.#",
     "#.##................##.#",
-    "#.##..##...##....##....#",
-    "#.....##...##....##....#",
-    "#......................#",
+    "#.##..##...##....##bbbb#",
+    "#.....##...##....##bbbb#",
+    "#.................bbbbb#",
     "#......................#",
     "#..##....##........##..#",
     "#..##....##....##..##..#",
-    "#rrrrrr........##.bbbbb#",
-    "#rrrrrr...........bbbbb#",
-    "#rrrrrr...........bbbbb#",
+    "#rrrrrr........##......#",
+    "#rrrrrr................#",
+    "#rrrrrr................#",
     "########################",
   ] },
 };
@@ -6908,6 +6908,14 @@ function opsSetMap(id) {
 }
 const cellC = ([x, z]) => [x * CS + CS / 2, z * CS + CS / 2];
 // which bomb site ("a", "b" or null) someone stands in, feet at height jh: upstairs only the upper-floor sites count
+// free-for-all spawns face the open side of the map: the heading with the longest clear view, pulled toward the middle
+function opsSpawnYaw(x, z) {
+  const mid = OG * CS / 2; let best = Math.random() * 6.28, bs = -1;
+  for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2, fx = -Math.sin(a), fz = -Math.cos(a);
+    const d = OPS_ML ? mlRay([x, 1.5, z], [fx, 0, fz], 30) : oRay(x, z, fx, fz, 30), toMid = Math.hypot(mid - x, mid - z) || 1;
+    const sc = Math.min(d, 30) + 8 * ((mid - x) * fx + (mid - z) * fz) / toMid + Math.random() * 2 - ([4, 8].some(r => (OPS_MAP[Math.floor((z + fz * r) / CS)] || "")[Math.floor((x + fx * r) / CS)] === "v") ? 25 : 0); if (sc > bs) { bs = sc; best = a; } }
+  return best;
+}
 function opsSiteAt(x, z, jh) {
   const up = OPS_ML && OPS_M.up && (jh || 0) > OPS_UPH - 0.6, cx = Math.floor(x / CS), cz = Math.floor(z / CS);
   if (up) { for (const [k, cs] of Object.entries(OPS_M.upSites || {})) if (cs.some(([a, b]) => a === cx && b === cz)) return k; return null; }
@@ -7486,7 +7494,10 @@ function makeOps(md) {
       const g = S.g, p = g.P[i];
       const others = g.P.filter((q, j) => j !== i && q.alive);
       let best = null, bs = -1;
-      for (let k = 0; k < 24; k++) { const c = cellC(OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]); const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
+      // never spawn on top of a free router (a free grab) or on the edge of the void (a step and you fall)
+      const tr = g.tr && g.tr.by < 0 ? g.tr : null, edge = (x, z) => [[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => (OPS_MAP[z + dz] || "")[x + dx] === "v");
+      for (let k = 0; k < 48 && !(k >= 24 && best); k++) { const cl = OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)], c = cellC(cl); if (k < 44 && ((tr && Math.hypot(tr.x - c[0], tr.z - c[1]) < 13) || edge(cl[0], cl[1]))) continue;
+        const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
       if (p.bot) p.bot.rs = {};
       p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.prot = g.t + 1.5; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
       p.sh = 0;
@@ -8008,7 +8019,7 @@ function makeOps(md) {
         F.rsq = pl[7]; F.me.x = pl[8]; F.me.z = pl[9]; F.me.p = 0; F.spawnHintT = team ? 0 : 5; F.hurtDir = null; F.reloadT = 0;
         // free-for-all modes: a full load every life. Breach: guns you survive with keep what's left in them; the starting pistol is always reloaded
         if (!team || !F.ammo || !F.res) { F.ammo = OW.map(w => w.mag); F.res = OW.map(w => w.res); } else { F.ammo[0] = OW[0].mag; F.res[0] = OW[0].res; } F.scoped = false; F.rescope = -1; F.adsHeld = false; F.ads = 0;
-        F.me.a = team ? (pl[2] === 0 ? 0 : Math.PI) : Math.random() * 6.28;
+        F.me.a = team ? (pl[2] === 0 ? 0 : Math.PI) : opsSpawnYaw(F.me.x, F.me.z);
         F.cur = pl[12] >= 0 ? pl[12] : (pl[15] != null ? pl[15] : 0);
         F.jh = oHAt(F.me.x, F.me.z); F.vy = 0; F.vel = { x: 0, z: 0 }; F.hk = null; F.spawnHintT = arena ? 5 : F.spawnHintT;
       }
