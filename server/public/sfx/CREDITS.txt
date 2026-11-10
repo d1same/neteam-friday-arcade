@@ -19,3 +19,7 @@ eng-mid.wav: "Engine sounds(2)" by pauliuw (OpenGameArt.org), CC0, trimmed into 
 laser1.mp3, laser2.mp3: "Laser Sound Effects" by EZduzziteh (OpenGameArt.org), CC0.
 land1.mp3: "Jump Landing Sound" by MentalSanityOff (OpenGameArt.org), CC0.
 Full source URLs per file: assets-src/SOURCES.md on the assets-realistic branch of the repository.
+shot-lmg.mp3 (Norinco SKS), shot-scout.mp3 (Savage 10 .300 Blackout), far-*.mp3 (each gun recorded from mid distance): The Free Firearm Sound Library (https://opengameart.org/content/the-free-firearm-sound-library), CC0.
+bolt-*.mp3: cut from "equipment clicks III" by lfa (OpenGameArt.org, recorded on a real bolt-action rifle), CC0.
+clip1.mp3, clip2.mp3, bullet1.mp3: "Gun Reload Sound Effects" by BMacZero (OpenGameArt.org), CC0.
+rl-ar.mp3: "assaultriflereload1" from "Gun reload sounds" by SpringySpringo (OpenGameArt.org), CC0.

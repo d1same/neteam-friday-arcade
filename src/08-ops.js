@@ -329,7 +329,7 @@ const OW = [
   { id: "deagle", n: "Kernel Magnum", short: "MAGNUM", slot: 2, cost: 700, dmg: 54, hs: 2.4, rate: 0.48, mag: 7, rl: 2.2, spr: 0.014, mv: 0.06, range: 60, spd: 0.98, auto: false, kick: 0.045, col: "#c084fc", snd: "heavy", kill: 300, vm: [0.38, 0.14, 0.14], d: "Heavy pistol, headshot kills" },
   { id: "carbine", n: "Proxy Carbine", short: "CARBINE", slot: 1, cost: 2100, dmg: 27, hs: 3.2, rate: 0.095, mag: 25, rl: 2.2, spr: 0.015, mv: 0.045, range: 65, spd: 0.97, auto: true, kick: 0.01, col: "#3ddc97", snd: "carbine", kill: 300, vm: [0.62, 0.13, 0.24], d: "Cheaper rifle" },
   { id: "lmg", n: "Botnet LMG", short: "LMG", slot: 1, cost: 5000, dmg: 30, hs: 2.4, rate: 0.088, mag: 100, rl: 5.0, spr: 0.026, mv: 0.06, range: 70, spd: 0.8, auto: true, kick: 0.009, col: "#ff9f1c", snd: "lmg", kill: 300, vm: [0.85, 0.17, 0.3], d: "100 rounds, very slow" },
-  { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "sniper", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], d: "Light sniper, move fast" },
+  { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "scout", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], d: "Light sniper, move fast" },
   { id: "rocket", n: "Packet Launcher", short: "ROCKET", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.8, mag: 5, rl: 2.6, spr: 0, mv: 0, range: 120, spd: 0.95, auto: false, kick: 0.06, col: "#ff6a1a", snd: "rocket", kill: 300, rocket: true, vm: [0.8, 0.2, 0.3], d: "Splash damage · rocket jumps" },
   { id: "laser", n: "Photon Laser", short: "LASER", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.85, mag: 99, rl: 0, spr: 0, mv: 0, range: 160, spd: 1.05, auto: true, kick: 0.025, col: "#ff3df0", snd: "laser", kill: 300, laser: true, vm: [0.72, 0.14, 0.34], d: "One hit, one kill" },
 ];
@@ -861,9 +861,9 @@ function makeOps(md) {
     slotOf(V, slot) { return this.owned(V).find(w => OW[w].slot === slot); },
     switchTo(V, wi) {
       const F = V.fps; if (!F || !this.owned(V).includes(wi) || F.cur === wi) return;
-      F.last = F.cur; F.cur = wi; F.reloadT = 0; F.scoped = false; F.fireCd = Math.max(F.fireCd, OW[wi].melee ? 0.2 : 0.35); F.swapT = 0.35; if (OW[wi].melee) SFX.swish(0.25); else SFX.clank(0.5);
+      F.last = F.cur; F.cur = wi; F.reloadT = 0; F.scoped = false; F.rescope = -1; F.fireCd = Math.max(F.fireCd, OW[wi].melee ? 0.2 : 0.35); F.swapT = 0.35; if (OW[wi].melee) SFX.swish(0.25); else SFX.clank(0.5);
     },
-    reload(V) { const F = V.fps, W0 = OW[F.cur]; if (W0.melee || F.reloadT > 0 || F.ammo[F.cur] >= W0.mag) return; F.reloadT = W0.rl; F.scoped = false; if (!SFX.reload(W0.id, W0.rl)) { SFX.clank(0.6); setTimeout(() => SFX.clank(0.5), W0.rl * 450); setTimeout(() => SFX.clank(0.8), W0.rl * 880); } },
+    reload(V) { const F = V.fps, W0 = OW[F.cur]; if (W0.melee || F.reloadT > 0 || F.ammo[F.cur] >= W0.mag) return; F.reloadT = W0.rl; F.scoped = false; F.rescope = -1; if (!SFX.reload(W0.id, W0.rl)) { SFX.clank(0.6); setTimeout(() => SFX.clank(0.5), W0.rl * 450); setTimeout(() => SFX.clank(0.8), W0.rl * 880); } },
     buy(V, it) { const F = V.fps; F.buyReq = [++F.buySeq, it]; SFX.play("blip"); },
     shopOpen(V, on) {
       const F = V.fps; if (!F || !F.shop) return;
@@ -908,10 +908,11 @@ function makeOps(md) {
         }
         if (e.button === 0) F.firing = true;
         if (e.button === 2 && laser) this.hook(V, true);
-        if (e.button === 2 && OW[F.cur].scope) { F.scoped = !F.scoped; SFX.clank(0.3); }
+        if (e.button === 2 && OW[F.cur].scope) { F.scoped = !F.scoped; F.rescope = -1; SFX.clank(0.3); }
+        if (e.button === 2) F.adsHeld = true;
         if (e.button === 2 && OW[F.cur].melee) F.stab = true;
       });
-      on(window, "mouseup", (e) => { if (e.button === 0) { F.firing = false; F.latch = false; } if (e.button === 2 && F.hk && !F.hkKey) F.hk = null; F.dragLook = false; });
+      on(window, "mouseup", (e) => { if (e.button === 0) { F.firing = false; F.latch = false; } if (e.button === 2 && F.hk && !F.hkKey) F.hk = null; if (e.button === 2) F.adsHeld = false; F.dragLook = false; });
       on(window, "mousemove", (e) => {
         const locked = document.pointerLockElement === cv; if (!locked && !F.dragLook) return;
         const mx = e.movementX || 0, my = e.movementY || 0;
@@ -966,7 +967,7 @@ function makeOps(md) {
         const tc = document.createElement("div"); tc.className = "ops-touch";
         const mk = (txt, cls, down, up) => { const b = document.createElement("button"); b.type = "button"; b.className = cls; b.textContent = txt; b.addEventListener("touchstart", (e) => { e.preventDefault(); e.stopPropagation(); down(); }, { passive: false }); if (up) b.addEventListener("touchend", (e) => { e.preventDefault(); up(); }); tc.append(b); return b; };
         mk("FIRE", "t-fire", () => { F.firing = true; }, () => { F.firing = false; F.latch = false; });
-        mk("ALT", "t-scope", () => { if (OW[F.cur].scope) F.scoped = !F.scoped; if (OW[F.cur].melee) F.stab = true; });
+        mk("ALT", "t-scope", () => { if (OW[F.cur].scope) { F.scoped = !F.scoped; F.rescope = -1; } else F.adsHeld = !F.adsHeld; if (OW[F.cur].melee) F.stab = true; });
         mk("R", "t-r", () => this.reload(V));
         mk("💣", "t-frag", () => this.throwNade(V, 0));
         mk("☁", "t-smoke", () => this.throwNade(V, 1));
@@ -1042,7 +1043,7 @@ function makeOps(md) {
       const pl = g.pl && g.pl[me];
       const alive = !pl || pl[1] === 1;
       if (pl && pl[7] !== F.rsq) { // (re)spawn
-        F.rsq = pl[7]; F.me.x = pl[8]; F.me.z = pl[9]; F.me.p = 0; F.spawnHintT = team ? 0 : 5; F.hurtDir = null; F.ammo = OW.map(w => w.mag); F.reloadT = 0; F.scoped = false;
+        F.rsq = pl[7]; F.me.x = pl[8]; F.me.z = pl[9]; F.me.p = 0; F.spawnHintT = team ? 0 : 5; F.hurtDir = null; F.ammo = OW.map(w => w.mag); F.reloadT = 0; F.scoped = false; F.rescope = -1; F.adsHeld = false; F.ads = 0;
         F.me.a = team ? (pl[2] === 0 ? 0 : Math.PI) : Math.random() * 6.28;
         F.cur = pl[12] >= 0 ? pl[12] : (pl[15] != null ? pl[15] : 0);
         F.jh = oHAt(F.me.x, F.me.z); F.vy = 0; F.vel = { x: 0, z: 0 }; F.hk = null; F.spawnHintT = arena ? 5 : F.spawnHintT;
@@ -1061,7 +1062,12 @@ function makeOps(md) {
       if (g.ph !== F.prevPh) { if (team && g.ph === "buy" && alive && !matchMedia("(pointer: coarse)").matches) this.shopOpen(V, true); if (g.ph !== "buy" && F.shop && !F.shop.hidden) this.shopOpen(V, false); F.prevPh = g.ph; }
       if (F.shop && !F.shop.hidden) this.syncShop(V);
       // look
-      const LK = lookPrefs(), sens = 0.0024 * LK.s * (F.scoped ? 0.3 : 1);
+      // aiming down the sights (hold right mouse) on guns without a scope: 0..1, eased in and out
+      { const W = OW[F.cur], can = !W.scope && !W.melee && !W.laser && !W.rocket && F.adsHeld && !(F.reloadT > 0) && !(F.swapT > 0) && alive;
+        F.ads = clamp((F.ads || 0) + (can ? dt : -dt) * 7, 0, 1); }
+      // the sniper goes back into its scope once the bolt is worked, unless you reload or switch
+      if (F.rescope >= 0 && F.rescope === F.cur && !(F.reloadT > 0) && F.fireCd <= OW[F.cur].rate * 0.22 && alive) { F.scoped = true; F.rescope = -1; }
+      const LK = lookPrefs(), sens = 0.0024 * LK.s * (F.scoped ? 0.3 : 1) * (1 - 0.3 * (F.ads || 0));
       F.me.a -= F.look.dx * sens * (LK.ix ? -1 : 1); F.me.p = clamp(F.me.p - F.look.dy * sens * (LK.iy ? -1 : 1), -1.25, 1.25);
       F.lookVX = F.look.dx / Math.max(dt, 0.001) * 0.016; F.lookVY = F.look.dy / Math.max(dt, 0.001) * 0.016;
       F.look.dx = 0; F.look.dy = 0;
@@ -1081,7 +1087,7 @@ function makeOps(md) {
         const crouchKey = KEYS.has("KeyC") || (KEYS.has("ControlLeft") && kbLocked()) || F.crouchT;
         OPS_STEP = 0.35; const gPre = oGround(F.me.x, F.me.z, PR, F.jh || 0), airPre = (F.jh || 0) > gPre + 0.01 || (F.vy || 0) > 0; F.tuck = !!(crouchKey && airPre); OPS_STEP = F.tuck ? 0.68 : 0.35;
         F.cr = lerp(F.cr || 0, crouchKey && !airPre ? 1 : 0, 1 - Math.pow(0.0001, dt));
-        const top = 5.4 * W0.spd * (arena ? 1.3 : 1) * (pl && pl[22] ? 0.92 : 1) * (walk ? 0.5 : 1) * (F.scoped ? 0.55 : 1) * (1 - 0.55 * F.cr);
+        const top = 5.4 * W0.spd * (arena ? 1.3 : 1) * (pl && pl[22] ? 0.92 : 1) * (walk ? 0.5 : 1) * (F.scoped ? 0.55 : 1) * (1 - 0.25 * (F.ads || 0)) * (1 - 0.55 * F.cr);
         const sa = Math.sin(F.me.a), ca = Math.cos(F.me.a);
         // velocity with acceleration / friction instead of instant start-stop; little air control
         const tvx = (-sa * fx + ca * sx) * top, tvz = (-ca * fx - sa * sx) * top, air = airPre;
@@ -1193,6 +1199,7 @@ function makeOps(md) {
       F.kick = 1; if (F.flash) F.flash.intensity = W0.pel ? 22 : 14;
       let spread = W0.laser ? 0 : (W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom) * (F.cr > 0.5 ? 0.65 : 1) + (F.inAir ? 0.09 : 0);
       if (W0.scope && !F.scoped) spread = 0.07 + (F.moving ? W0.mv : 0);
+      if (F.ads > 0) spread *= 1 - (W0.pel ? 0.3 : 0.55) * F.ads;
       F.bloom = Math.min(0.06, F.bloom + (W0.auto ? 0.006 : 0.012));
       const aimA = me.a + (F.recA || 0), aimP = me.p + (F.rec || 0);
       // recoil pattern: the first rounds climb, then the muzzle weaves side to side. It is the same every spray, so it can be learned.
@@ -1245,7 +1252,7 @@ function makeOps(md) {
       this.shell(V); if (!W0.laser) SFX.casing(0.5, W0.pel ? 1 : 0);
       if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.hit(headAny); }
       Object.keys(dmgAcc).forEach(k => this.pop(F, Math.round(dmgAcc[k]), !!headIdx[k]));
-      if (W0.scope) F.scoped = false;
+      if (W0.scope && F.scoped) { F.scoped = false; F.rescope = F.cur; }
     },
     // spent casing flips out of the ejection port
     shell(V) {
@@ -2196,7 +2203,7 @@ function makeOps(md) {
       SFX.sync();
       GFX.fitStage(F, F.cam);
       F.fovK = Math.max(0, (F.fovK || 0) - dt * 22);
-      const fov = F.scoped ? 22 : 74 + F.fovK; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
+      const fov = F.scoped ? 22 : 74 - 16 * (F.ads || 0) + F.fovK; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
       // players
       { const K = F.cull || (F.cull = { fr: new T.Frustum(), m: new T.Matrix4(), s: new T.Sphere(new T.Vector3(), 2.4), d: new T.Vector3() });
         F.cam.updateMatrixWorld(); K.m.multiplyMatrices(F.cam.projectionMatrix, F.cam.matrixWorldInverse); K.fr.setFromProjectionMatrix(K.m); F.cam.getWorldDirection(K.d); K.x = F.cam.position.x + K.d.x * 12; K.z = F.cam.position.z + K.d.z * 12; }
@@ -2330,11 +2337,12 @@ function makeOps(md) {
       if (gm) {
         const rl = F.reloadT > 0 ? Math.sin(Math.min(1, F.reloadT / OW[F.cur].rl) * Math.PI) : 0, sw = F.swapT ? F.swapT / 0.35 : 0;
         F.sway = F.sway || { x: 0, y: 0 }; F.sway.x = lerp(F.sway.x, clamp(-(F.lookVX || 0) * 0.0004, -0.04, 0.04), 0.15); F.sway.y = lerp(F.sway.y, clamp((F.lookVY || 0) * 0.0004, -0.04, 0.04), 0.15);
-        const U = gm.userData, base = U.knife ? [0.2, -0.2, -0.38] : U.vm;
+        const U = gm.userData, ad = U.knife ? 0 : F.ads || 0, base = U.knife ? [0.2, -0.2, -0.38] : [U.vm[0] * (1 - ad), U.vm[1] + ad * 0.045, U.vm[2] + ad * 0.05];
+        if (ad > 0) { F.sway.x *= 1 - 0.6 * ad; F.sway.y *= 1 - 0.6 * ad; }
         F.throwT = Math.max(0, (F.throwT || 0) - dt); const thw = F.throwT > 0 ? Math.sin((1 - F.throwT / 0.45) * Math.PI) : 0;
         const W1 = OW[F.cur], ps = U.knife ? { tilt: 0, dip: 0 } : GUNS.pose(gm, { reload: F.reloadT > 0 ? 1 - F.reloadT / W1.rl : -1, kick: F.kick, cyc: W1.rate > 0.5 && F.fireCd > 0 ? 1 - F.fireCd / W1.rate : 1 });
         const kz = U.knife ? 0.045 : 0.03 + W1.kick * 0.9, sw2 = sw * sw;
-        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 + F.sway.x + thw * 0.08, base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22, base[2] + F.kick * kz);
+        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 * (1 - 0.7 * ad) + F.sway.x + thw * 0.08, base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22, base[2] + F.kick * kz);
         gm.rotation.set(F.kick * (U.knife ? 0.08 : 0.035 + W1.kick * 1.6) + sw2 * 0.9 + ps.tilt * 0.25, F.sway.x * 2 + ps.tilt * 0.5, -ps.tilt * 0.9 - sw2 * 0.4);
         if (gm.userData.knife) {
           // swing: slash sweeps sideways, stab thrusts forward
