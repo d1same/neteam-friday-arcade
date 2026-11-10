@@ -1152,6 +1152,12 @@ function connectServer(timeoutMs = 2500) {
 function makeServerBackend(firstWs) {
   let uid = store("nfa-uid"); if (!uid) { uid = "u-" + randId(14); store("nfa-uid", uid); }
   let ws = firstWs, myPeer = null, mine = {}, isOpen = false;
+  // a secret for this page load: lets us take our seat back (same peer id) after a network blip,
+  // so a match in progress carries on instead of dropping us
+  const tok = (() => { try { return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return randId(16) + randId(16); } })();
+  // scoreboard writes made while the connection is down wait here and go out when it is back
+  const outbox = [];
+  function write(m) { if (ws && ws.readyState === 1 && isOpen) ws.send(JSON.stringify(m)); else { outbox.push(m); if (outbox.length > 40) outbox.shift(); } }
   const peers = new Map();
   const handlers = new Set(), connHandlers = new Set();
   let snap = Object.freeze([]), pend = { joined: [], left: [], updated: [] }, sched = false;
@@ -1192,6 +1198,7 @@ function makeServerBackend(firstWs) {
         (m.peers || []).forEach(x => { if (x.peer !== myPeer) upsert(x.peer, x.by, x.presence); });
         send({ t: "p", presence: mine });
         for (const [id, s] of subs) send({ t: "sub", id, path: s.path, kind: s.kind });
+        while (outbox.length) send(outbox.shift());
         connHandlers.forEach(f => f(true));
       } else if (m.t === "p") { if (m.peer !== myPeer) upsert(m.peer, m.by, m.presence); }
       else if (m.t === "left") { const p = peers.get(m.peer); if (p) { pend.left.push(p); peers.delete(m.peer); notify(); } }
@@ -1202,7 +1209,7 @@ function makeServerBackend(firstWs) {
       const retry = () => setTimeout(async () => { const s = await connectServer(4000); if (s) attach(s); else retry(); }, 1500);
       retry();
     };
-    ws.send(JSON.stringify({ t: "hello", uid }));
+    ws.send(JSON.stringify(myPeer ? { t: "hello", uid, tok, peer: myPeer } : { t: "hello", uid, tok }));
   }
   const room = {
     server: true, uid,
@@ -1226,9 +1233,9 @@ function makeServerBackend(firstWs) {
     return {
       id: path.split("/").pop(), path,
       get: () => new Promise((res) => { const un = subscribe(path, "doc", (d) => { un(); res(docSnap(path, d)); }); }),
-      set: async (data) => send({ t: "set", path, data }),
-      update: async (data) => send({ t: "update", path, data }),
-      delete: async () => send({ t: "del", path }),
+      set: async (data) => write({ t: "set", path, data }),
+      update: async (data) => write({ t: "update", path, data }),
+      delete: async () => {}, // the server keeps records append-only
       onSnapshot(next) { return subscribe(path, "doc", (d) => next(docSnap(path, d))); },
     };
   }
@@ -3776,14 +3783,14 @@ function makeOps(md) {
       if (Math.hypot(p.x - p.ax, p.z - p.az) > 0.6) { p.actT = 0; return; }
       p.actT += dt;
       if (canPlant && p.actT >= this.PLANT) {
-        g.bomb = { st: 1, x: p.x, z: p.z, t: this.BOMB, site: ch === "a" ? 0 : 1, by: i }; p.pln++; p.actT = 0; p.cr = Math.min(9000, p.cr + 300);
+        g.bomb = { st: 1, x: p.x, z: p.z, t: this.BOMB, site: ch === "a" ? 0 : 1, by: i }; p.pln++; p.actT = 0; p.cr = Math.min(16000, p.cr + 300);
         this.say(S, [2, g.bomb.site]);
-      } else if (canDefuse && p.actT >= this.DEFUSE) { b.st = 2; p.dfs++; p.actT = 0; p.cr = Math.min(9000, p.cr + 300); }
+      } else if (canDefuse && p.actT >= this.DEFUSE) { b.st = 2; p.dfs++; p.actT = 0; p.cr = Math.min(16000, p.cr + 300); }
     },
     endRound(S, win, why) {
       const g = S.g; g.sc[win]++; g.ph = "post"; g.pt = this.POST;
       g.ls[win] = 0; g.ls[1 - win] = Math.min(4, g.ls[1 - win] + 1);
-      g.P.forEach(p => { p.cr = Math.min(9000, p.cr + (p.tm === win ? 3000 : 1400 + 500 * g.ls[1 - win])); p.actT = 0; });
+      g.P.forEach(p => { p.cr = Math.min(16000, p.cr + (p.tm === win ? 3000 : 1400 + 500 * g.ls[1 - win])); p.actT = 0; });
       this.say(S, [3, win, why]);
     },
     hostTick(S, dt, inputs) {
@@ -3823,12 +3830,12 @@ function makeOps(md) {
         // hit claims [id, target, head, weapon]
         if (Array.isArray(inp.hc) && g.ph === "live") {
           let mx = p.lastClaim;
-          for (const c of inp.hc) {
-            if (!Array.isArray(c) || !(c[0] > p.lastClaim)) continue;
+          for (const c of inp.hc.slice(-24)) {
+            if (!Array.isArray(c) || !Number.isFinite(c[0]) || !(c[0] > p.lastClaim)) continue;
             mx = Math.max(mx, c[0]);
             if ((c[1] | 0) < 0) { const k = -1 - (c[1] | 0), pp = OPS_PROPS[k], wi = c[3] | 0, W1 = OW[wi]; if (pp && W1 && this.owns(S, p, wi) && Math.hypot(pp.x - p.x, pp.z - p.z) < (W1.melee ? 3.4 : W1.range + 6)) this.hitProp(S, k, i, W1.dmg); continue; }
             const tg = c[1] | 0, q = P[tg], wi = c[3] | 0, W0 = OW[wi];
-            if (!q || !W0 || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
+            if (!q || !W0 || W0.rocket || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
             // one shot = one window; shotgun pellets share it
             if (g.t - p.lastHitT >= W0.rate * 0.55) { p.lastHitT = g.t; p.budget = W0.pel || 1; }
             if (!(p.budget > 0)) continue;
@@ -3956,7 +3963,7 @@ function makeOps(md) {
       };
     },
     timeLeft(S) { const g = S.g; if (!team) return (this.DUR - g.t) * 1000; return (g.bomb.st === 1 && g.ph === "live" ? g.bomb.t : g.pt) * 1000; },
-    done(S) { const g = S.g; return team ? g.over : troph ? (g.t >= this.DUR || g.P.some(p => p.hold >= this.HOLD)) : (g.t >= this.DUR || g.P.some(p => p.k >= this.GOAL)); },
+    done(S) { const g = S.g, hs = g.P.filter(p => !p.bot); if (hs.length && hs.every(p => p.gone)) return true; return team ? g.over : troph ? (g.t >= this.DUR || g.P.some(p => p.hold >= this.HOLD)) : (g.t >= this.DUR || g.P.some(p => p.k >= this.GOAL)); },
     rank(S) {
       if (troph) return S.g.P.map((p, i) => ({ i, v: Math.floor(p.hold), de: p.d, k: p.k, label: Math.floor(p.hold) + "s held · " + p.k + " elim" + (p.k === 1 ? "" : "s"), rec: Math.floor(p.hold) })).sort((a, b) => (b.v - a.v) || (b.k - a.k) || (a.de - b.de));
       const g = S.g, win = g.sc[0] === g.sc[1] ? -1 : g.sc[0] > g.sc[1] ? 0 : 1;
@@ -4028,7 +4035,7 @@ function makeOps(md) {
     clientEnter(V) {
       opsApplyTeamColors();
       const F = V.fps = { ready: false, failed: false, me: { x: OG * CS / 2, z: OG * CS / 2, a: 0, p: 0 }, rsq: -1, cur: 0, last: KNIFE, stepT: 0, ammo: OW.map(w => w.mag), reloadT: 0, fireCd: 0, firing: false, latch: false, scoped: false, bloom: 0, kick: 0,
-        shotN: 0, claimN: 0, claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: 0, buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
+        shotN: 0, claimN: Math.floor(now()), thSeq: Math.floor(now()), rkSeq: Math.floor(now()), claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: Math.floor(now()), buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
       loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
       this.bind(V);
     },
@@ -4324,6 +4331,7 @@ function makeOps(md) {
         else { this.reload(V); F.latch = true; }
       }
       const act = F.act && alive;
+      if (F.claims.length > 48) F.claims.splice(0, F.claims.length - 24);
       const out = { x: +F.me.x.toFixed(2), z: +F.me.z.toFixed(2), a: +F.me.a.toFixed(2), q: F.rsq, w: F.cur, sh: F.lastShot || 0, hc: F.claims.slice(-12), act: act ? 1 : 0, cr: F.cr > 0.5 ? 1 : 0, jh: +(F.jh || 0).toFixed(2), th: F.th || 0, rk: F.rk || 0, hk: F.hk ? F.hk.map(v => +v.toFixed(2)) : 0 };
       if (F.buyReq) out.buy = F.buyReq;
       return out;
@@ -5736,8 +5744,10 @@ const race = {
         if (inp && go && Number.isInteger(inp.use) && inp.use !== p.useSeq) { p.useSeq = inp.use; if (p.it) this.useItem(S, i); }
         if (inp && go && Number.isInteger(inp.fire) && inp.fire !== p.fireSeq) { p.fireSeq = inp.fire; this.shoot(S, i); }
         if (inp && go && Number.isFinite(inp.x) && Number.isFinite(inp.z)) {
+          // the car goes where its driver says it is. (This used to ignore any jump of 60+ track samples, so one long
+          // network stall left that car frozen for the rest of the race.) Progress is rate-limited below instead.
           const n = rcNearest(inp.x, inp.z, p.i);
-          if (Math.abs(rcWrap(n.i - p.i)) < 60) { p.x = inp.x; p.z = inp.z; p.a = +inp.a || 0; p.v = +inp.v || 0; p.i = n.i; p.bo = inp.bo ? 1 : 0; }
+          p.x = inp.x; p.z = inp.z; p.a = +inp.a || 0; p.v = clamp(+inp.v || 0, -12, RC_BOOST + 4); p.i = n.i; p.bo = inp.bo ? 1 : 0;
         }
       }
       if (!go) return;
@@ -5748,7 +5758,10 @@ const race = {
       // coffee spills
       for (const hz of g.hz) if (!hz.gone && Math.hypot(hz.x - p.x, hz.z - p.z) < 2.1 && !(hz.own === i && g.t - hz.t0 < 1.2)) { hz.gone = 1; this.hit(S, i, 2, hz.own); }
       if (p.fin) return;
-      p.dist += rcWrap(p.i - prevI);
+      // forward progress can't be credited faster than a boosting car could really cover it (with slack for lag)
+      p.pb = Math.min(110, (p.pb == null ? 110 : p.pb) + dt * 45);
+      let adv = rcWrap(p.i - prevI); if (adv > 0) { adv = Math.min(adv, Math.floor(p.pb)); p.pb -= adv; }
+      p.dist += adv;
       const ld = p.dist < 0 ? 0 : Math.floor(p.dist / RC.N);
       if (ld > p.ld) { const prevT = p.lt.reduce((s, v) => s + v, 0); p.lt.push(Math.round(g.t * 1000) - prevT); p.ld = ld;
         if (ld >= RC_LAPS) { p.fin = ++g.place; p.ft = Math.round(g.t * 1000); if (!g.firstFin) g.firstFin = g.t; } }
@@ -5857,7 +5870,7 @@ const race = {
       bt: g.P.map(p => p.bot ? [+p.x.toFixed(2), +p.z.toFixed(2), +p.a.toFixed(3), +p.v.toFixed(1), p.bo > 0 ? 1 : 0, +(p.slip || 0).toFixed(2)] : 0) };
   },
   timeLeft(S) { const g = S.g; if (g.t < 0) return -g.t * 1000; if (g.firstFin) return Math.max(0, (g.firstFin + this.GRACE - g.t) * 1000); return (this.LIMIT - g.t) * 1000; },
-  done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b && !p.gone); return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
+  done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b && !p.gone); if (!humans.length && g.t > 0 && S.ro.some(r => !r.b)) return true; return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
   mapList() { const sub = { dusk: "Dusk", dawn: "Sunrise", neon: "Neon night", storm: "Storm" }, d = { manhattan: "flowing", midtown: "tight grid", bridge: "long and fast", harbor: "sweepers", neon: "hairpins", queens: "high speed" }; return Object.keys(RC_TRACKS).map(id => ({ id, n: RC_TRACKS[id].n, sub: sub[RC_TRACKS[id].sky || "dusk"] + " · " + (d[id] || "") })); },
   rank(S) {
     const g = S.g;
@@ -5909,7 +5922,8 @@ const race = {
 
   // ---------------- client ----------------
   clientEnter(V) {
-    const F = V.fps = { ready: false, failed: false, me: null, rsq: -1, cam: 0, stick: null, brake: false, drift: false, remote: {}, useSeq: 0, hitSeen: null, boSeen: null, evSeen: null, hzM: {}, fx: [], lastBoEv: 0, fireSeq: 0, firing: false, fireAt: 0, blM: {}, bmM: {}, skM: {}, wfx: [], blindT: 0, toast: null, lastLd: 0, prevPos: 0, wrongT: 0, lastDist: null, shake: 0 };
+    const sq = this._seq && this._seq.sid === V.sid ? this._seq : (this._seq = { sid: V.sid, use: 0, fire: 0 });
+    const F = V.fps = { ready: false, failed: false, me: null, rsq: -1, cam: 0, stick: null, brake: false, drift: false, remote: {}, sq, useSeq: sq.use, hitSeen: null, boSeen: null, evSeen: null, hzM: {}, fx: [], lastBoEv: 0, fireSeq: sq.fire, firing: false, fireAt: 0, blM: {}, bmM: {}, skM: {}, wfx: [], blindT: 0, toast: null, lastLd: 0, prevPos: 0, wrongT: 0, lastDist: null, shake: 0 };
     loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
     const cv = $("#gameCanvas"), unb = F.unbind = [];
     const on = (el, ev, fn, o) => { el.addEventListener(ev, fn, o); unb.push(() => el.removeEventListener(ev, fn, o)); };
@@ -5982,7 +5996,7 @@ const race = {
     const ring = new T.Mesh(F.ringG, new T.MeshBasicMaterial({ color: new T.Color(2.4, 1.3, 0.5), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); ring.position.set(x, 0.1, z); F.scene.add(ring); F.wfx.push({ m: ring, life: 0.45, max: 0.45, s0: 0.5, s1: 8, op: 0.9 });
     this.sparks(V, x, z, 0xffb347, low ? 12 : 26);
   },
-  useItem2(V) { const F = V.fps, q = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !q || !q[7]) return; F.useSeq++; },
+  useItem2(V) { const F = V.fps, q = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !q || !q[7]) return; F.sq.use = ++F.useSeq; },
   reset(V) {
     const F = V.fps; if (!F || !F.me) return;
     const c = F.me, n = rcNearest(c.x, c.z, c.i), p = rcAt(n.i, 0);
@@ -5993,7 +6007,11 @@ const race = {
     const me = V.meIdx; if (me < 0) return null;
     const g = V.g || {}, q = g.pl && g.pl[me];
     if (!F.me) {
-      const row = Math.floor(me / 2), side = me % 2 ? 1 : -1, idx = RC.N - 6 - row * 5, p = rcAt(idx, side * 3.6);
+      const row = Math.floor(me / 2), side = me % 2 ? 1 : -1;
+      let idx = RC.N - 6 - row * 5, lat = side * 3.6;
+      // coming back into a race that is under way: pick up where the host last had us, not back on the grid
+      if (q && g.t > 0 && q[0] > 0) { idx = ((q[0] % RC.N) + RC.N) % RC.N; lat = 0; }
+      const p = rcAt(idx, lat);
       F.me = { x: p[0], z: p[1], a: rcHead(idx), v: 0, i: idx, bo: 0, skill: 1 };
     }
     const c = F.me, go = g.t != null && g.t >= 0 && V.h.ph === "play", fin = q && q[2];
@@ -6018,7 +6036,7 @@ const race = {
       if (q[12] !== F.boSeen) { F.boSeen = q[12]; c.bo = Math.max(c.bo || 0, 2.2); c.boEv = (c.boEv || 0) + 1; }
       if (q[7] && q[7] !== F.lastIt) SFX.play("right"); F.lastIt = q[7];
     }
-    if (F.firing && go && !fin && q && !q[14] && performance.now() - F.fireAt > 320) { F.fireAt = performance.now(); F.fireSeq++; }
+    if (F.firing && go && !fin && q && !q[14] && performance.now() - F.fireAt > 320) { F.fireAt = performance.now(); F.sq.fire = ++F.fireSeq; }
     if (q && q[14] && F.firing && !F.ohWarn) { F.ohWarn = 1; SFX.tone(220, 0.2, "square", 0.05, -80); } if (q && !q[14]) F.ohWarn = 0;
     const ev = c.boEv || 0;
     rcDrive(c, dt, gas, steer, F.drift, false);
@@ -6374,6 +6392,8 @@ if (!GAMES[APP.sel] || !GAME_ORDER.includes(APP.sel)) APP.sel = GAME_ORDER[0];
 })();
 
 // ---------- peers helpers ----------
+// game ids arrive from other browsers and from stored records: only real, own entries count (never "constructor" and friends)
+function gameOf(id) { return typeof id === "string" && Object.prototype.hasOwnProperty.call(GAMES, id) ? GAMES[id] : null; }
 function lobbyPeers() {
   return NET.room ? NET.room.peers().filter(p => p.presence && typeof p.presence.nick === "string" && p.kind !== "agent") : [];
 }
@@ -6382,7 +6402,9 @@ function findHost() {
   let best = null;
   for (const p of NET.room.peers()) {
     const h = p.presence && p.presence.h;
-    if (!h || !h.id || !GAMES[h.game] || !Array.isArray(h.ro)) continue;
+    // ignore anything that isn't a well-formed session, so one broken or hostile browser can't lock everyone's screen
+    if (!h || typeof h !== "object" || typeof h.id !== "string" || !h.id || !gameOf(h.game) || typeof h.ph !== "string" || !Number.isFinite(h.since)) continue;
+    if (!Array.isArray(h.ro) || h.ro.length > 32 || !h.ro.every(r => r && typeof r === "object" && typeof r.k === "string")) continue;
     if (!best || h.since < best.h.since || (h.since === best.h.since && p.peer < best.peer)) best = { peer: p.peer, h, p };
   }
   return best;
@@ -6409,17 +6431,20 @@ function startSession(gameId) {
   APP.S = S; APP.optOut = null;
   S.rr = roomState(S);
   let last = now(), lastSend = 0;
-  clearInterval(APP.hostTimer);
-  APP.hostTimer = setInterval(() => {
-    const t = now(), dtMs = clamp(t - last, 0, 120); last = t;
-    hostTick(dtMs);
+  stopHostTimer();
+  APP.hostTimer = startHostTimer(() => {
+    // browsers slow timers right down in a background tab. Catch up on the time that really passed (in small
+    // steps, up to two seconds) so the match clock and the bots don't crawl for everyone when the host tabs away.
+    if (APP.S !== S) return;
+    const t = now(); let left = clamp(t - last, 0, 2000); last = t;
+    while (left > 0.5 && APP.S === S) { const d = Math.min(left, 50); hostTick(d); left -= d; }
     if (t - lastSend > 60 && APP.S) {
       lastSend = t;
       // two people pressed Start at the same moment: the older game wins, the other host stands down
       const other = findHost(); if (other && other.h.id !== APP.S.id && other.peer !== NET.myPeerLabel()) { endSession(); toast("Someone else started a game first. Joining theirs."); return; }
       setPresence({ h: packH() });
     }
-  }, 1000 / 60);
+  });
   setPresence({ h: packH(), rdy: { s: S.id, v: 0 } });
   SFX.play("start");
 }
@@ -6430,6 +6455,23 @@ function tallyVotes(mod, room) {
   room.forEach(r => { if (r.mv && ids.has(r.mv)) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
   const best = Math.max(0, ...Object.values(cnt)); if (!best) return null;
   const top = Object.keys(cnt).filter(k => cnt[k] === best); return top[Math.floor(Math.random() * top.length)];
+}
+// the host loop runs off a worker's clock where it can: worker timers keep ticking at full rate when the tab is in the background
+function startHostTimer(fn) {
+  try {
+    const url = URL.createObjectURL(new Blob(["setInterval(function(){postMessage(0)}," + (1000 / 60) + ");"], { type: "application/javascript" }));
+    const w = new Worker(url); URL.revokeObjectURL(url);
+    const h = { w, id: 0 };
+    w.onmessage = () => fn();
+    // if the worker can't run here, fall back to an ordinary timer
+    w.onerror = () => { try { w.terminate(); } catch (e) {} if (APP.hostTimer === h && !h.id) { h.w = null; h.id = setInterval(fn, 1000 / 60); } };
+    return h;
+  } catch (e) { return { w: null, id: setInterval(fn, 1000 / 60) }; }
+}
+function stopHostTimer() {
+  const h = APP.hostTimer; APP.hostTimer = 0; if (!h) return;
+  if (h.w) { try { h.w.terminate(); } catch (e) {} }
+  if (h.id) clearInterval(h.id);
 }
 function launchSession() {
   const S = APP.S, mod = GAMES[S.game];
@@ -6526,7 +6568,7 @@ function finishSession() {
   } else S.saved = "practice";
 }
 function endSession() {
-  clearInterval(APP.hostTimer); APP.hostTimer = 0;
+  stopHostTimer();
   APP.S = null;
   setPresence({ h: null });
 }
@@ -6728,7 +6770,7 @@ function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; if (APP.S && APP
 function renderReady(V) {
   const ov = $("#overlay"); ov.textContent = "";
   const isHost = APP.S && APP.S.id === V.sid;
-  const rr = (V.h.rr || []).slice().sort((a, b) => b.h - a.h || b.v - a.v || a.n.localeCompare(b.n));
+  const rr = (V.h.rr || []).slice().filter(r => r && typeof r === "object").sort((a, b) => b.h - a.h || b.v - a.v || String(a.n).localeCompare(String(b.n)));
   const nReady = rr.filter(r => r.v === 1).length;
   const card = document.createElement("div"); card.className = "card ready-card";
   const tag = document.createElement("div"); tag.className = "ready-tag"; tag.textContent = "MATCH LOBBY";
@@ -7045,13 +7087,16 @@ function drawCards() {
 
 // ---------- scoreboard ----------
 function onMatches(snap) {
-  APP.matches = snap.docs.map(d => d.data()).filter(m => m && GAMES[m.g] && Array.isArray(m.ps)).sort((a, b) => (b.at || 0) - (a.at || 0));
+  // stored records are tidied before use so one odd entry can't break the scoreboard for everyone
+  APP.matches = snap.docs.map(d => d.data()).filter(m => m && typeof m === "object" && gameOf(m.g) && Array.isArray(m.ps))
+    .map(m => { const at = Number.isFinite(+m.at) ? +m.at : 0; return Object.assign({}, m, { at, day: typeof m.day === "string" ? m.day : dayKey(at), ps: m.ps.filter(p => p && typeof p === "object") }); })
+    .sort((a, b) => b.at - a.at);
   renderBoard();
 }
 function aggregate(ms) {
-  const by = {};
+  const by = Object.create(null);
   ms.filter(m => !m.solo).sort((a, b) => a.at - b.at).forEach(m => m.ps.forEach(p => {
-    if (!p || !p.u) return;
+    if (!p || typeof p.u !== "string" || !p.u) return;
     const o = by[p.u] || (by[p.u] = { u: p.u, n: "", c: null, pts: 0, wins: 0, games: 0 });
     o.n = cleanNick(p.n) || o.n; o.c = validChar(p.c) || o.c; o.pts += +p.pt || 0; o.wins += p.pl === 1 ? 1 : 0; o.games++;
   }));
@@ -7087,7 +7132,7 @@ function renderBoard() {
     GAME_ORDER.forEach(id => {
       const mod = GAMES[id], best = recs[id];
       const row = document.createElement("div"); row.className = "record";
-      row.append(best ? avatarCanvas(best.p.c, 38) : avatarCanvas([0, 9, 3, 0, 0], 38));
+      row.append(best ? avatarCanvas(validChar(best.p.c) || [0, 0, 0, 0, 0], 38) : avatarCanvas([0, 9, 3, 0, 0], 38));
       const mid = document.createElement("div"); mid.style.minWidth = "0";
       const l = document.createElement("div"); l.className = "lbl"; l.textContent = mod.title + " · " + mod.rec.label;
       const nm = document.createElement("div"); nm.style.fontWeight = "700"; nm.textContent = best ? cleanNick(best.p.n) : "Up for grabs";
@@ -7296,7 +7341,7 @@ async function boot() {
     APP.peerMap = {}; ch.peers.forEach(p => APP.peerMap[p.peer] = p);
     if (ch.joined.some(p => !p.sameTab) && APP.view === "lobby") SFX.play("join");
     // two hosts at once: the older session wins
-    if (APP.S) { const h = findHost(); if (h && h.h.id !== APP.S.id) { clearInterval(APP.hostTimer); APP.hostTimer = 0; APP.S = null; setPresence({ h: null }); } }
+    if (APP.S) { const h = findHost(); if (h && h.h.id !== APP.S.id) { stopHostTimer(); APP.S = null; setPresence({ h: null }); } }
     updateLobby();
   });
   NET.room.onConnection(() => updateLobby());

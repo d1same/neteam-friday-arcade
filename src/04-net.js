@@ -122,6 +122,12 @@ function connectServer(timeoutMs = 2500) {
 function makeServerBackend(firstWs) {
   let uid = store("nfa-uid"); if (!uid) { uid = "u-" + randId(14); store("nfa-uid", uid); }
   let ws = firstWs, myPeer = null, mine = {}, isOpen = false;
+  // a secret for this page load: lets us take our seat back (same peer id) after a network blip,
+  // so a match in progress carries on instead of dropping us
+  const tok = (() => { try { return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return randId(16) + randId(16); } })();
+  // scoreboard writes made while the connection is down wait here and go out when it is back
+  const outbox = [];
+  function write(m) { if (ws && ws.readyState === 1 && isOpen) ws.send(JSON.stringify(m)); else { outbox.push(m); if (outbox.length > 40) outbox.shift(); } }
   const peers = new Map();
   const handlers = new Set(), connHandlers = new Set();
   let snap = Object.freeze([]), pend = { joined: [], left: [], updated: [] }, sched = false;
@@ -162,6 +168,7 @@ function makeServerBackend(firstWs) {
         (m.peers || []).forEach(x => { if (x.peer !== myPeer) upsert(x.peer, x.by, x.presence); });
         send({ t: "p", presence: mine });
         for (const [id, s] of subs) send({ t: "sub", id, path: s.path, kind: s.kind });
+        while (outbox.length) send(outbox.shift());
         connHandlers.forEach(f => f(true));
       } else if (m.t === "p") { if (m.peer !== myPeer) upsert(m.peer, m.by, m.presence); }
       else if (m.t === "left") { const p = peers.get(m.peer); if (p) { pend.left.push(p); peers.delete(m.peer); notify(); } }
@@ -172,7 +179,7 @@ function makeServerBackend(firstWs) {
       const retry = () => setTimeout(async () => { const s = await connectServer(4000); if (s) attach(s); else retry(); }, 1500);
       retry();
     };
-    ws.send(JSON.stringify({ t: "hello", uid }));
+    ws.send(JSON.stringify(myPeer ? { t: "hello", uid, tok, peer: myPeer } : { t: "hello", uid, tok }));
   }
   const room = {
     server: true, uid,
@@ -196,9 +203,9 @@ function makeServerBackend(firstWs) {
     return {
       id: path.split("/").pop(), path,
       get: () => new Promise((res) => { const un = subscribe(path, "doc", (d) => { un(); res(docSnap(path, d)); }); }),
-      set: async (data) => send({ t: "set", path, data }),
-      update: async (data) => send({ t: "update", path, data }),
-      delete: async () => send({ t: "del", path }),
+      set: async (data) => write({ t: "set", path, data }),
+      update: async (data) => write({ t: "update", path, data }),
+      delete: async () => {}, // the server keeps records append-only
       onSnapshot(next) { return subscribe(path, "doc", (d) => next(docSnap(path, d))); },
     };
   }

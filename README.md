@@ -52,9 +52,30 @@ Each match gives people points by placing among people only (bots never take you
 ## How it works
 
 - `server/server.js`: a small Node server (one dependency, `ws`). It serves the game, relays live player state between browsers, and saves scores to a JSON file.
-- The person who presses Start runs that game's simulation in their browser and shares it with everyone. Keep that tab in front while hosting, because browsers slow down background tabs.
+- The person who presses Start runs that game's simulation in their browser and shares it with everyone. The host loop runs off a worker clock, so the match keeps its pace if the host switches tabs (the host's own view still pauses while hidden).
+- A dropped connection reconnects on its own and takes the same seat back, so a short network blip doesn't remove you from a match.
 - Firewall Frenzy uses three.js r159, served locally from `server/public/vendor/` so it works without internet access.
 - Identity is a random id kept in each browser, with no logins. It's meant for a trusted team on your own network.
+
+## Security
+
+There are no logins, and the host's browser decides match results, so this is for a trusted team on your own network: don't expose it to the internet. Within that, the server protects itself and the scoreboard:
+
+- Malformed or oversized messages are dropped; they can't crash the server. Each connection has a message budget, and there are caps on connections, stored records and uploaded photos.
+- The scoreboard is append-only. Browsers can't delete or rewrite saved matches, a match is only accepted from the browser hosting that game, its fields are validated, and league points are computed by the server from the placings.
+- Each browser can only write its own profile. Photos must be real JPEGs up to 256 KB and are served with a locked-down content type.
+- Web pages on other sites can't connect to the arcade from a coworker's browser (same-site check on the WebSocket and uploads), and the page is sent with a Content-Security-Policy and related headers.
+
+Optional environment variables:
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `ALLOWED_ORIGINS` | empty | Extra hostnames allowed to connect, comma separated. Set this if you put the arcade behind a reverse proxy that changes the Host header. |
+| `ORIGIN_CHECK` | on | `off` disables the same-site check. |
+| `MAX_CLIENTS` | 200 | Most browser connections at once. |
+| `MAX_PER_IP` | 64 | Most connections from one address. |
+
+Because of the Content-Security-Policy, game assets must be served by the arcade itself (`server/public/vendor`, `sfx`, `models`), not from external CDNs.
 
 ## Editing
 

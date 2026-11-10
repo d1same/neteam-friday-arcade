@@ -12,6 +12,8 @@ if (!GAMES[APP.sel] || !GAME_ORDER.includes(APP.sel)) APP.sel = GAME_ORDER[0];
 })();
 
 // ---------- peers helpers ----------
+// game ids arrive from other browsers and from stored records: only real, own entries count (never "constructor" and friends)
+function gameOf(id) { return typeof id === "string" && Object.prototype.hasOwnProperty.call(GAMES, id) ? GAMES[id] : null; }
 function lobbyPeers() {
   return NET.room ? NET.room.peers().filter(p => p.presence && typeof p.presence.nick === "string" && p.kind !== "agent") : [];
 }
@@ -20,7 +22,9 @@ function findHost() {
   let best = null;
   for (const p of NET.room.peers()) {
     const h = p.presence && p.presence.h;
-    if (!h || !h.id || !GAMES[h.game] || !Array.isArray(h.ro)) continue;
+    // ignore anything that isn't a well-formed session, so one broken or hostile browser can't lock everyone's screen
+    if (!h || typeof h !== "object" || typeof h.id !== "string" || !h.id || !gameOf(h.game) || typeof h.ph !== "string" || !Number.isFinite(h.since)) continue;
+    if (!Array.isArray(h.ro) || h.ro.length > 32 || !h.ro.every(r => r && typeof r === "object" && typeof r.k === "string")) continue;
     if (!best || h.since < best.h.since || (h.since === best.h.since && p.peer < best.peer)) best = { peer: p.peer, h, p };
   }
   return best;
@@ -47,17 +51,20 @@ function startSession(gameId) {
   APP.S = S; APP.optOut = null;
   S.rr = roomState(S);
   let last = now(), lastSend = 0;
-  clearInterval(APP.hostTimer);
-  APP.hostTimer = setInterval(() => {
-    const t = now(), dtMs = clamp(t - last, 0, 120); last = t;
-    hostTick(dtMs);
+  stopHostTimer();
+  APP.hostTimer = startHostTimer(() => {
+    // browsers slow timers right down in a background tab. Catch up on the time that really passed (in small
+    // steps, up to two seconds) so the match clock and the bots don't crawl for everyone when the host tabs away.
+    if (APP.S !== S) return;
+    const t = now(); let left = clamp(t - last, 0, 2000); last = t;
+    while (left > 0.5 && APP.S === S) { const d = Math.min(left, 50); hostTick(d); left -= d; }
     if (t - lastSend > 60 && APP.S) {
       lastSend = t;
       // two people pressed Start at the same moment: the older game wins, the other host stands down
       const other = findHost(); if (other && other.h.id !== APP.S.id && other.peer !== NET.myPeerLabel()) { endSession(); toast("Someone else started a game first. Joining theirs."); return; }
       setPresence({ h: packH() });
     }
-  }, 1000 / 60);
+  });
   setPresence({ h: packH(), rdy: { s: S.id, v: 0 } });
   SFX.play("start");
 }
@@ -68,6 +75,23 @@ function tallyVotes(mod, room) {
   room.forEach(r => { if (r.mv && ids.has(r.mv)) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
   const best = Math.max(0, ...Object.values(cnt)); if (!best) return null;
   const top = Object.keys(cnt).filter(k => cnt[k] === best); return top[Math.floor(Math.random() * top.length)];
+}
+// the host loop runs off a worker's clock where it can: worker timers keep ticking at full rate when the tab is in the background
+function startHostTimer(fn) {
+  try {
+    const url = URL.createObjectURL(new Blob(["setInterval(function(){postMessage(0)}," + (1000 / 60) + ");"], { type: "application/javascript" }));
+    const w = new Worker(url); URL.revokeObjectURL(url);
+    const h = { w, id: 0 };
+    w.onmessage = () => fn();
+    // if the worker can't run here, fall back to an ordinary timer
+    w.onerror = () => { try { w.terminate(); } catch (e) {} if (APP.hostTimer === h && !h.id) { h.w = null; h.id = setInterval(fn, 1000 / 60); } };
+    return h;
+  } catch (e) { return { w: null, id: setInterval(fn, 1000 / 60) }; }
+}
+function stopHostTimer() {
+  const h = APP.hostTimer; APP.hostTimer = 0; if (!h) return;
+  if (h.w) { try { h.w.terminate(); } catch (e) {} }
+  if (h.id) clearInterval(h.id);
 }
 function launchSession() {
   const S = APP.S, mod = GAMES[S.game];
@@ -164,7 +188,7 @@ function finishSession() {
   } else S.saved = "practice";
 }
 function endSession() {
-  clearInterval(APP.hostTimer); APP.hostTimer = 0;
+  stopHostTimer();
   APP.S = null;
   setPresence({ h: null });
 }
@@ -366,7 +390,7 @@ function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; if (APP.S && APP
 function renderReady(V) {
   const ov = $("#overlay"); ov.textContent = "";
   const isHost = APP.S && APP.S.id === V.sid;
-  const rr = (V.h.rr || []).slice().sort((a, b) => b.h - a.h || b.v - a.v || a.n.localeCompare(b.n));
+  const rr = (V.h.rr || []).slice().filter(r => r && typeof r === "object").sort((a, b) => b.h - a.h || b.v - a.v || String(a.n).localeCompare(String(b.n)));
   const nReady = rr.filter(r => r.v === 1).length;
   const card = document.createElement("div"); card.className = "card ready-card";
   const tag = document.createElement("div"); tag.className = "ready-tag"; tag.textContent = "MATCH LOBBY";
@@ -683,13 +707,16 @@ function drawCards() {
 
 // ---------- scoreboard ----------
 function onMatches(snap) {
-  APP.matches = snap.docs.map(d => d.data()).filter(m => m && GAMES[m.g] && Array.isArray(m.ps)).sort((a, b) => (b.at || 0) - (a.at || 0));
+  // stored records are tidied before use so one odd entry can't break the scoreboard for everyone
+  APP.matches = snap.docs.map(d => d.data()).filter(m => m && typeof m === "object" && gameOf(m.g) && Array.isArray(m.ps))
+    .map(m => { const at = Number.isFinite(+m.at) ? +m.at : 0; return Object.assign({}, m, { at, day: typeof m.day === "string" ? m.day : dayKey(at), ps: m.ps.filter(p => p && typeof p === "object") }); })
+    .sort((a, b) => b.at - a.at);
   renderBoard();
 }
 function aggregate(ms) {
-  const by = {};
+  const by = Object.create(null);
   ms.filter(m => !m.solo).sort((a, b) => a.at - b.at).forEach(m => m.ps.forEach(p => {
-    if (!p || !p.u) return;
+    if (!p || typeof p.u !== "string" || !p.u) return;
     const o = by[p.u] || (by[p.u] = { u: p.u, n: "", c: null, pts: 0, wins: 0, games: 0 });
     o.n = cleanNick(p.n) || o.n; o.c = validChar(p.c) || o.c; o.pts += +p.pt || 0; o.wins += p.pl === 1 ? 1 : 0; o.games++;
   }));
@@ -725,7 +752,7 @@ function renderBoard() {
     GAME_ORDER.forEach(id => {
       const mod = GAMES[id], best = recs[id];
       const row = document.createElement("div"); row.className = "record";
-      row.append(best ? avatarCanvas(best.p.c, 38) : avatarCanvas([0, 9, 3, 0, 0], 38));
+      row.append(best ? avatarCanvas(validChar(best.p.c) || [0, 0, 0, 0, 0], 38) : avatarCanvas([0, 9, 3, 0, 0], 38));
       const mid = document.createElement("div"); mid.style.minWidth = "0";
       const l = document.createElement("div"); l.className = "lbl"; l.textContent = mod.title + " · " + mod.rec.label;
       const nm = document.createElement("div"); nm.style.fontWeight = "700"; nm.textContent = best ? cleanNick(best.p.n) : "Up for grabs";
@@ -934,7 +961,7 @@ async function boot() {
     APP.peerMap = {}; ch.peers.forEach(p => APP.peerMap[p.peer] = p);
     if (ch.joined.some(p => !p.sameTab) && APP.view === "lobby") SFX.play("join");
     // two hosts at once: the older session wins
-    if (APP.S) { const h = findHost(); if (h && h.h.id !== APP.S.id) { clearInterval(APP.hostTimer); APP.hostTimer = 0; APP.S = null; setPresence({ h: null }); } }
+    if (APP.S) { const h = findHost(); if (h && h.h.id !== APP.S.id) { stopHostTimer(); APP.S = null; setPresence({ h: null }); } }
     updateLobby();
   });
   NET.room.onConnection(() => updateLobby());
