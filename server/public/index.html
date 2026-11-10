@@ -8000,7 +8000,7 @@ function makeOps(md) {
       V.ro.forEach((r, i) => {
         const av = F.avatars[i]; const pl = g.pl && g.pl[i];
         let x, z, a, ref = null;
-        if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; ref = g; }
+        if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; a += Math.PI; ref = g; }   // bots send their move heading, people their camera yaw: half a turn apart
         else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = (inp.a || 0) + Math.PI; ref = inp; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
         const ox = av.x, oz = av.z;
         if (i === V.meIdx || !ref) { if (!av.init || Math.hypot(av.x - x, av.z - z) > 5 || i === V.meIdx) { av.x = x; av.z = z; av.init = true; } else { const k = 1 - Math.pow(0.0005, dt); av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); } av.nsT = null; }
