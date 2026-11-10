@@ -842,7 +842,7 @@ const race = {
   // ---- sound: your engine through the gears, the nearest rivals with a little doppler, wind, tyres and the kerb rumble
   audio(V, dt) {
     const F = V.fps, a = SFX.on ? SFX.ensure() : null; if (!a || a.state !== "running" || !F.cars) return;
-    const A = F.aud || (F.aud = { me: SFX.engine(true), others: [0, 1, 2].map(() => SFX.engine(false)), sq: SFX.nloop(a, "bandpass", 1900, 7, 0.3), wind: SFX.nloop(a, "bandpass", 600, 0.5, 0), rum: SFX.nloop(a, "lowpass", 170, 0.8, 0), scr: SFX.nloop(a, "bandpass", 2400, 1.6, 0.3), rev: 0.2 });
+    const A = F.aud || (F.aud = { me: SFX.engine(true), others: [0, 1, 2].map(() => SFX.engine(false)), sq: SFX.nloop(a, "bandpass", 1300, 1.4, 0.3), wind: SFX.nloop(a, "bandpass", 600, 0.5, 0), rum: SFX.nloop(a, "lowpass", 170, 0.8, 0), scr: SFX.nloop(a, "bandpass", 2400, 1.6, 0.3), rev: 0.2 });
     if (!F.ambOn) { F.ambOn = 1; const sky = rcWorld(RC_ID).sky; SFX.space("street"); SFX.amb(sky === "storm" ? "rain" : sky === "neon" ? "night" : "city"); }
     const GE = [0, 13, 24, 35, 46, 72], revOf = (v) => { v = Math.abs(v); let k = 0; while (k < 4 && v > GE[k + 1]) k++; const lo = GE[k] * 0.72; return 0.16 + 0.8 * clamp((v - lo) / (GE[k + 1] - lo), 0, 1); };
     const me = V.meIdx, c = me >= 0 && F.me ? F.me : null, live = V.h.ph === "play", cx = F.cam3.position.x, cz = F.cam3.position.z, k = 1 - Math.exp(-dt * 10);
@@ -850,15 +850,15 @@ const race = {
       const gas = F.gas || 0, waiting = ((V.g && V.g.t) || 0) < 0, tgt = waiting ? 0.2 + Math.max(0, gas) * 0.55 : revOf(c.v);
       A.rev += (tgt - A.rev) * k; A.me.set(A.rev, c.bo > 0 ? 1 : gas > 0.1 ? 0.85 : 0.12, c.bo > 0 ? 0.27 : 0.22, 0, 1);
       const sl = Math.abs(c.slip || 0), sp = Math.abs(c.v);
-      A.sq.set(sp > 10 ? clamp(sl - 0.1, 0, 0.3) * 0.5 : 0, 1700 + sl * 1100, 0); A.wind.set(Math.pow(Math.min(1, sp / 62), 2) * 0.1, 380 + sp * 14, 0); A.rum.set(c.off && sp > 4 ? 0.2 * Math.min(1, sp / 20) : 0, 150, 0);
+      A.sq.set(sp > 10 ? clamp(sl - 0.12, 0, 0.3) * 0.3 : 0, 1100 + sl * 700, 0); A.wind.set(Math.pow(Math.min(1, sp / 62), 2) * 0.1, 380 + sp * 14, 0); A.rum.set(c.off && sp > 4 ? 0.2 * Math.min(1, sp / 20) : 0, 150, 0);
       A.scr.set(c.hitT > 0.2 && sp > 5 ? 0.09 * Math.min(1, sp / 30) : 0, 1900 + sp * 28, 0);
     } else { A.me.set(0.15, 0, 0, 0, 1); A.sq.set(0); A.wind.set(0); A.rum.set(0); A.scr.set(0); }
     // the three nearest rivals
-    const near = []; F.cars.forEach((car, i) => { if (i === me || !car.init) return; const d = Math.hypot(car.x - cx, car.z - cz); car.vr = car.pd == null || dt <= 0 ? 0 : lerp(car.vr || 0, (d - car.pd) / dt, 0.2); car.pd = d; if (d < 70) near.push([d, car]); });
+    const near = []; F.cars.forEach((car, i) => { if (i === me || !car.init) return; const d = Math.hypot(car.x - cx, car.z - cz); car.vr = car.pd == null || dt <= 0 ? 0 : lerp(car.vr || 0, (d - car.pd) / dt, 0.2); car.pd = d; if (d < 55) near.push([d, car]); });
     near.sort((p, q) => p[0] - q[0]);
     A.others.forEach((e, n) => { const q = near[n]; if (!e) return; if (!q || !live) return e.set(0.2, 0.3, 0, 0, 1);
       const car = q[1], d = q[0], ca = F.camA || 0, pan = d > 0.5 ? clamp(((car.x - cx) * -Math.cos(ca) + (car.z - cz) * Math.sin(ca)) / d, -1, 1) * 0.8 : 0, sp = Math.hypot(car.x - (car.ax == null ? car.x : car.ax), car.z - (car.az == null ? car.z : car.az)) / Math.max(dt, 0.001);
-      car.av = lerp(car.av || 0, Math.min(70, sp), 0.1); e.set(revOf(car.av), 0.75, 0.2 * Math.pow(1 - d / 70, 2), pan, clamp(1 - car.vr / 110, 0.86, 1.16)); });
+      car.av = lerp(car.av || 0, Math.min(70, sp), 0.1); e.set(revOf(car.av), 0.75, 0.13 * Math.pow(1 - d / 55, 2.5), pan, clamp(1 - car.vr / 110, 0.86, 1.16)); });
     F.cars.forEach(car => { car.ax = car.x; car.az = car.z; });
   },
   hud(ctx, V, dt, t) {

@@ -14,4 +14,8 @@ thud1.mp3, tink1.mp3, metal2.mp3, fall1.mp3: "75 CC0 breaking / falling / hit sf
 thwack*.mp3: "Thwack Sounds" by AntumDeluge (OpenGameArt.org), CC0.
 casing*.mp3: "Metal impact sounds" by BMacZero (OpenGameArt.org), CC0.
 zap*.mp3, power-down.mp3, shield1.mp3: "Electricity game sound pack" by faxcorp (OpenGameArt.org), CC0.
+eng-idle.wav: "Motor Sound Effect" by EZduzziteh (OpenGameArt.org), CC0, trimmed into a seamless loop.
+eng-mid.wav: "Engine sounds(2)" by pauliuw (OpenGameArt.org), CC0, trimmed into a seamless loop.
+laser1.mp3, laser2.mp3: "Laser Sound Effects" by EZduzziteh (OpenGameArt.org), CC0.
+land1.mp3: "Jump Landing Sound" by MentalSanityOff (OpenGameArt.org), CC0.
 Full source URLs per file: assets-src/SOURCES.md on the assets-realistic branch of the repository.
