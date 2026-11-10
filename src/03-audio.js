@@ -66,7 +66,20 @@ const SFX = {
   step(vol = 0.3, pan = 0, surf = 0) {
     const a = this.ensure(); if (!a || vol < 0.01) return;
     let sn = 1 + (Math.random() * 5 | 0); if (sn === this._ls) sn = sn % 5 + 1; this._ls = sn;   // never the same recording twice in a row
-    if (this.samp("step" + sn, vol * 0.6, pan, (surf ? 1.06 : 0.92) * (0.95 + Math.random() * 0.1), 0.45)) return;
+    // a boot on a hard floor: the recorded tap slowed and muffled, a low heel thump under it and a short sole scuff after it
+    const b = this.S["step" + sn]; this.load();
+    if (b) {
+      const t = a.currentTime, o = this.out(a, vol * 0.5, pan), r = 0.74 + Math.random() * 0.08;
+      const src = a.createBufferSource(); src.buffer = b; src.playbackRate.value = r;
+      const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 1500 + Math.random() * 500; lp.Q.value = 0.4;
+      const sg = a.createGain(); sg.gain.value = 0.85; src.connect(lp).connect(sg).connect(o); src.start(t);
+      const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(92, t); th.frequency.exponentialRampToValueAtTime(48, t + 0.09);
+      tg.gain.setValueAtTime(0.0001, t); tg.gain.exponentialRampToValueAtTime(0.55, t + 0.008); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.15);
+      const n = a.createBufferSource(); n.buffer = this.noiseBuf(a); const bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 700 + Math.random() * 300; bp.Q.value = 0.7;
+      const ng = a.createGain(); ng.gain.setValueAtTime(0.0001, t + 0.05); ng.gain.exponentialRampToValueAtTime(0.1, t + 0.075); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
+      n.connect(bp).connect(ng).connect(o); n.start(t + 0.05, Math.random(), 0.16);
+      return;
+    }
     const t = a.currentTime, o = this.out(a, vol * 0.5, pan);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = surf ? 1400 : 700 + Math.random() * 200; f.Q.value = 1.2;
     const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.008); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);

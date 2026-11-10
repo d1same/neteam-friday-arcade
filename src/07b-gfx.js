@@ -160,5 +160,5 @@ function pinToStage(F, w, h) {
   const right = Math.max(0, box.clientWidth - (gc.offsetLeft + w)), bottom = Math.max(0, box.clientHeight - (gc.offsetTop + h));
   if (F.touch) { F.touch.style.right = right + 8 + "px"; F.touch.style.bottom = bottom + h * 0.13 + "px"; }
   if (F.setBtn) { F.setBtn.style.right = right + 8 + "px"; F.setBtn.style.top = gc.offsetTop + 8 + "px"; F.setBtn.style.bottom = "auto"; }
-  if (F.setPanel) { F.setPanel.style.right = right + 8 + "px"; F.setPanel.style.top = gc.offsetTop + 50 + "px"; F.setPanel.style.bottom = "auto"; }
+  if (F.setPanel && !F.setPanel.classList.contains("set-modal")) { F.setPanel.style.right = right + 8 + "px"; F.setPanel.style.top = gc.offsetTop + 50 + "px"; F.setPanel.style.bottom = "auto"; }
 }

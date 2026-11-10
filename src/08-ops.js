@@ -893,9 +893,27 @@ function makeOps(md) {
         box.append(sh); F.shop = sh;
       }
       // aim settings (shared with the other 3D game)
-      const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.textContent = "⚙ Settings";
+      const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.innerHTML = "<span>⚙</span> Settings";
       const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
-      sp.innerHTML = '<h4>Aim settings</h4><label><input type="checkbox" data-k="iy"> Invert up/down <small>(key I)</small></label><label><input type="checkbox" data-k="ix"> Invert left/right</label><label class="sl">Sensitivity <b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label><label><input type="checkbox" data-cb> Color-blind team colors</label><label class="sl">Resolution <b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label><label class="sl">Graphics <select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label><button type="button" class="btn" data-close>Done</button>';
+      sp.classList.add("set-modal");
+      sp.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Settings</h4></div><button type="button" class="set-x" data-close aria-label="Close">✕</button></header>' +
+        '<div class="set-grid">' +
+        '<section><h5>Mouse and aim</h5>' +
+        '<label class="sl"><span>Sensitivity</span><b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label>' +
+        '<label class="sw"><span>Invert up/down <small>key I</small></span><input type="checkbox" data-k="iy"><i></i></label>' +
+        '<label class="sw"><span>Invert left/right</span><input type="checkbox" data-k="ix"><i></i></label></section>' +
+        '<section><h5>Video</h5>' +
+        '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto</option><option value="high">High quality</option><option value="low">Performance</option></select></label>' +
+        '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label></section>' +
+        '<section><h5>Sound</h5>' +
+        '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label></section>' +
+        '<section><h5>Accessibility</h5>' +
+        '<label class="sw"><span>Color-blind team colors <small>orange ▲ vs blue ■</small></span><input type="checkbox" data-cb><i></i></label></section>' +
+        '</div>' +
+        '<div class="set-keys"><span><kbd>WASD</kbd> move</span><span><kbd>Shift</kbd> walk</span><span><kbd>Space</kbd> jump</span><span><kbd>R</kbd> reload</span><span><kbd>1</kbd>–<kbd>5</kbd> weapons</span><span><kbd>Tab</kbd> scoreboard</span><span><kbd>Esc</kbd> free the mouse</span></div>' +
+        '<footer><span class="hint">Saved on this device.</span><button type="button" class="btn primary" data-close>Done</button></footer>';
+      const snd = sp.querySelector("[data-snd]"); snd.checked = SFX.on;
+      snd.addEventListener("change", () => { SFX.on = snd.checked; store("nfa-sound", SFX.on); const sbn = $("#soundBtn"); if (sbn) sbn.textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
       const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
       cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
       const rsI = sp.querySelector("[data-rs]"), rsV = sp.querySelector("[data-rv]"), rsShow = () => { rsV.textContent = rsI.value + "%"; };
@@ -906,7 +924,7 @@ function makeOps(md) {
       sb.addEventListener("click", (e) => { e.stopPropagation(); if (document.pointerLockElement) try { document.exitPointerLock(); } catch (er) {} sp.hidden = !sp.hidden; syncLookPanel(F); });
       sp.addEventListener("mousedown", (e) => e.stopPropagation());
       sp.addEventListener("input", (e) => { const k = e.target.dataset.k; if (!k) return; const L = lookPrefs(); L[k] = k === "s" ? clamp(+e.target.value || 1, 0.3, 3) : e.target.checked; saveLookPrefs(L); syncLookPanel(F); });
-      sp.querySelector("[data-close]").addEventListener("click", () => { sp.hidden = true; });
+      sp.querySelectorAll("[data-close]").forEach(el => el.addEventListener("click", () => { sp.hidden = true; }));
       box.append(sb, sp); F.setBtn = sb; F.setPanel = sp;
     },
     clientInput(V, dt, inp) {
@@ -981,7 +999,7 @@ function makeOps(md) {
         const onG = (F.jh || 0) <= gNow + 0.01 && (F.vy || 0) <= 0;
         if (onG) {
           F.jh = gNow; F.vy = 0;
-          if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.step(0.4, 0, true); }
+          if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.step(0.25, 0, true); }
           if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.tone(380, 0.25, "triangle", 0.06, 700); F.padT = 0.4; }
         }
         F.wantJump = false;
@@ -997,7 +1015,7 @@ function makeOps(md) {
         F.bob += spdNow * dt * 2.4 * (F.inAir ? 0 : 1);
         F.moving = moving && !walk && F.cr < 0.5 && !F.inAir; F.walking = (walk || F.cr >= 0.5) && moving;
         // footsteps: running is loud, Shift-walking is silent
-        if (F.moving) { F.stepT += Math.hypot(mx, mz); if (F.stepT > 2.1) { F.stepT = 0; SFX.step(0.42, 0, F.stepAlt = !F.stepAlt); } }
+        if (F.moving) { F.stepT += Math.hypot(mx, mz); if (F.stepT > 2.45) { F.stepT = 0; SFX.step(0.34, 0, F.stepAlt = !F.stepAlt); } }
       } else { F.moving = false; F.vel = { x: 0, z: 0 }; F.jh = alive ? (F.jh || 0) : 0; F.vy = 0; F.cr = 0; F.hk = null; }
       F.eyeH = EYE - 0.55 * (F.cr || 0) + (F.jh || 0) - (F.landT || 0) * 0.35;
       // weapon
@@ -1852,7 +1870,7 @@ function makeOps(md) {
         // enemy footsteps: only running players make noise
         if (i !== V.meIdx && pl && pl[1] && dt > 0) {
           const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2); av.mvx = lerp(av.mvx || 0, (av.x - ox) / dt, 0.2); av.mvz = lerp(av.mvz || 0, (av.z - oz) / dt, 0.2);
-          if (av.spd > 3.6) { av.stepT = (av.stepT || 0) + v * dt; if (av.stepT > 2.1) { av.stepT = 0; const d = Math.hypot(av.x - F.me.x, av.z - F.me.z); if (d < 26) SFX.step(0.75 * (1 - d / 26), this.panOf(F, av.x, av.z, d), i & 1); } }
+          if (av.spd > 3.6) { av.stepT = (av.stepT || 0) + v * dt; if (av.stepT > 2.45) { av.stepT = 0; const d = Math.hypot(av.x - F.me.x, av.z - F.me.z); if (d < 26) SFX.step(0.75 * (1 - d / 26), this.panOf(F, av.x, av.z, d), i & 1); } }
         }
         const rin = r.b ? null : V.inputOf(i);
         av.cr = lerp(av.cr || 0, rin && rin.cr ? 1 : 0, 1 - Math.pow(0.0005, dt)); av.jh = rin && rin.jh > 0 ? lerp(av.jh || 0, rin.jh, 0.5) : Math.max(0, (av.jh || 0) - dt * 6);
@@ -2004,6 +2022,18 @@ function makeOps(md) {
       const tm = pl ? pl[2] : 0;
       const box = (x, y, w, h, r = 12, a = 0.72) => { ctx.fillStyle = "rgba(10,11,13," + a + ")"; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); };
       ctx.textBaseline = "middle";
+      // HUD plates: dark glass with a cut corner and a thin accent edge
+      const plate = (x, y, w, h, col, side = "l", a = 0.78, c = 10) => {
+        ctx.beginPath();
+        if (side === "l") { ctx.moveTo(x, y); ctx.lineTo(x + w - c, y); ctx.lineTo(x + w, y + c); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); }
+        else { ctx.moveTo(x + c, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + h); ctx.lineTo(x, y + h); ctx.lineTo(x, y + c); }
+        ctx.closePath();
+        const gr = ctx.createLinearGradient(0, y, 0, y + h); gr.addColorStop(0, "rgba(22,25,30," + a + ")"); gr.addColorStop(1, "rgba(8,9,11," + Math.min(1, a + 0.12) + ")");
+        ctx.fillStyle = gr; ctx.fill(); ctx.strokeStyle = "rgba(255,255,255,.09)"; ctx.lineWidth = 1; ctx.stroke();
+        if (col) { ctx.fillStyle = col; ctx.fillRect(side === "l" ? x : x + w - 3, y + (side === "l" ? 0 : c), 3, h - (side === "l" ? 0 : c)); }
+      };
+      const segs = (x, y, w, h, k, col, n = 10) => { const gw = (w - (n - 1) * 3) / n; for (let q = 0; q < n; q++) { const f = clamp(k * n - q, 0, 1); ctx.fillStyle = "rgba(255,255,255,.1)"; ctx.fillRect(x + q * (gw + 3), y, gw, h); if (f > 0) { ctx.fillStyle = col; ctx.fillRect(x + q * (gw + 3), y, gw * f, h); } } };
+      const cap = (tx, x, y, col = "#8b919b") => { ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillStyle = col; try { ctx.letterSpacing = "2px"; } catch (e) {} ctx.fillText(tx, x, y); try { ctx.letterSpacing = "0px"; } catch (e) {} };
       // events
       (g.kf || []).forEach(k => {
         if (k[4] <= F.kfSeen) return; F.kfSeen = k[4];
@@ -2062,20 +2092,20 @@ function makeOps(md) {
       // top center: score / timer
       const tl = Math.max(0, (V.h.tl || 0) - V.age);
       if (team) {
-        box(W / 2 - 150, 10, 300, 56, 14);
-        ctx.textAlign = "center"; ctx.font = "700 30px 'Chakra Petch', sans-serif";
-        ctx.fillStyle = TEAM[0].hex; ctx.fillText(String((g.sc || [0, 0])[0]), W / 2 - 112, 38);
-        ctx.fillStyle = TEAM[1].hex; ctx.fillText(String((g.sc || [0, 0])[1]), W / 2 + 112, 38);
+        plate(W / 2 - 70, 8, 140, 58, null, "l", 0.82, 0);
+        for (const k of [0, 1]) { const x0 = k ? W / 2 + 72 : W / 2 - 72 - 64; plate(x0, 8, 64, 58, null, k ? "l" : "r", 0.82, 12); ctx.fillStyle = TEAM[k].hex; ctx.fillRect(x0, 62, 64, 4);
+          ctx.textAlign = "center"; ctx.font = "700 34px 'Chakra Petch', sans-serif"; ctx.fillStyle = TEAM[k].hex; ctx.fillText(String((g.sc || [0, 0])[k]), x0 + 32, 35); }
+        ctx.textAlign = "center";
         const b = g.bomb || [0];
         if (b[0] === 1 && g.ph === "live") { ctx.fillStyle = Math.floor(t * 4) % 2 ? "#ff4d5e" : "#ffd23f"; ctx.font = "700 24px 'JetBrains Mono', monospace"; ctx.fillText("💣 " + (b[3] / 10).toFixed(1), W / 2, 33); }
         else { ctx.fillStyle = g.ph === "buy" ? "#ff8a3d" : "#f5f1e6"; ctx.font = "700 24px 'JetBrains Mono', monospace"; ctx.fillText(fmtTime(tl), W / 2, 33); }
-        ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText(g.ph === "buy" ? "BUY TIME" : "ROUND " + (g.rd || 1), W / 2, 56);
+        ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText(g.ph === "buy" ? "BUY TIME" : "ROUND " + (g.rd || 1), W / 2, 54);
         // alive pips
         const al = [[], []]; (g.pl || []).forEach(p => al[p[2]].push(p[1]));
-        al.forEach((list, k) => list.forEach((a, j) => { ctx.fillStyle = a ? TEAM[k].hex : "rgba(255,255,255,.18)"; const x = k === 0 ? W / 2 - 162 - j * 13 : W / 2 + 162 + j * 13; ctx.beginPath(); ctx.roundRect(x - 4, 26, 8, 20, 3); ctx.fill(); }));
+        al.forEach((list, k) => list.forEach((a, j) => { ctx.fillStyle = a ? TEAM[k].hex : "rgba(255,255,255,.18)"; const x = k === 0 ? W / 2 - 150 - j * 12 : W / 2 + 150 + j * 12; ctx.fillRect(x - 4, 26, 7, 22); }));
       } else if (troph) {
         const pls = g.pl || [], lead = pls.reduce((m, p) => Math.max(m, p[21] || 0), 0), mine = pl ? pl[21] || 0 : 0, tr = g.tr || [0, 0, 0, -1];
-        box(W / 2 - 180, 10, 360, 66, 14); ctx.textAlign = "center";
+        plate(W / 2 - 180, 8, 360, 68, "#ffd23f", "l", 0.82, 12); ctx.textAlign = "center";
         ctx.font = "700 22px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(fmtTime(tl), W / 2, 30);
         ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText("YOU " + Math.floor(mine / 10) + "s  ·  BEST " + Math.floor(lead / 10) + "s  ·  WIN AT " + this.HOLD + "s", W / 2, 50);
         ctx.font = "700 12px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ffd23f"; ctx.fillText(tr[3] >= 0 ? "🏆 " + (tr[3] === me ? "YOU" : ((V.ro[tr[3]] || {}).n || "").toUpperCase()) : "🏆 ROUTER IS FREE", W / 2, 66);
@@ -2091,7 +2121,7 @@ function makeOps(md) {
       } else {
         const ranked = (g.pl || []).map((p, i) => ({ i, k: p[3], d: p[4] })).sort((a, b) => b.k - a.k || a.d - b.d);
         const lead = ranked[0], myRank = ranked.findIndex(o => o.i === me) + 1;
-        box(W / 2 - 160, 10, 320, 50, 14);
+        plate(W / 2 - 130, 8, 260, 54, "#ff8a3d", "l", 0.82, 12);
         ctx.textAlign = "center"; ctx.font = "700 22px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(fmtTime(tl), W / 2, 30);
         ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9";
         ctx.fillText((myRank ? "#" + myRank + "  ·  " : "") + ((g.pl && me >= 0 && g.pl[me]) ? g.pl[me][3] : 0) + " / " + this.GOAL, W / 2, 50);
@@ -2120,23 +2150,32 @@ function makeOps(md) {
       if (team && pl && g.ph === "buy" && alive) { ctx.textAlign = "center"; ctx.font = "700 15px Inter, sans-serif"; ctx.fillStyle = "#ff8a3d"; if (F.shop && F.shop.hidden) { ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "rgba(10,11,13,.7)"; ctx.beginPath(); ctx.roundRect(W / 2 - 75, H * 0.36 - 14, 150, 28, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText("B  BUY GUNS", W / 2, H * 0.36); } }
       // bottom-left: health/armor
       if (pl) {
-        box(14, H - 66, 250, 52);
-        ctx.textAlign = "left"; ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.fillStyle = pl[0] > 50 ? "#f5f1e6" : pl[0] > 25 ? "#ffd23f" : "#ff4d5e";
-        ctx.fillText("✚ " + pl[0], 28, H - 39);
-        ctx.fillStyle = "#4cc9f0"; ctx.fillText("◈ " + pl[5], 142, H - 39);
-        ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(28, H - 22, 220, 4); ctx.fillStyle = "#3ddc97"; ctx.fillRect(28, H - 22, 2.2 * pl[0], 4);
-        if (team) { box(14, H - 104, 120, 32, 10); ctx.font = "700 16px 'JetBrains Mono', monospace"; ctx.fillStyle = "#3ddc97"; ctx.fillText("$" + pl[10].toLocaleString(), 26, H - 88); }
+        const hp = Math.max(0, pl[0]), hc = hp > 50 ? "#f5f1e6" : hp > 25 ? "#ffd23f" : "#ff4d5e", low = hp <= 25 && pl[1];
+        plate(14, H - 84, 300, 70, low && Math.floor(t * 3) % 2 ? "#ff4d5e" : "#3ddc97", "l");
+        ctx.textAlign = "left"; cap("HEALTH", 30, H - 70); cap("ARMOR", 186, H - 70);
+        ctx.font = "700 40px 'Chakra Petch', sans-serif"; ctx.fillStyle = hc; ctx.fillText(String(hp), 28, H - 45);
+        ctx.font = "700 28px 'Chakra Petch', sans-serif"; ctx.fillStyle = pl[5] > 0 ? "#4cc9f0" : "#5b6068"; ctx.fillText(String(pl[5] | 0), 186, H - 47);
+        segs(104, H - 50, 66, 8, hp / 100, hp > 50 ? "#3ddc97" : hp > 25 ? "#ffd23f" : "#ff4d5e", 5);
+        segs(240, H - 50, 58, 8, (pl[5] | 0) / 100, "#4cc9f0", 5);
+        segs(28, H - 26, 270, 4, hp / 100, hp > 50 ? "#3ddc97" : hp > 25 ? "#ffd23f" : "#ff4d5e", 20);
+        if (team) { plate(14, H - 122, 132, 32, "#3ddc97", "l", 0.74, 8); ctx.textAlign = "left"; ctx.font = "700 17px 'JetBrains Mono', monospace"; ctx.fillStyle = "#3ddc97"; ctx.fillText("$" + pl[10].toLocaleString(), 28, H - 105); }
         // bottom-right: weapon + ammo
-        const W0 = OW[F.cur];
-        box(W - 270, H - 66, 256, 52);
-        ctx.textAlign = "right"; ctx.font = "700 30px 'Chakra Petch', sans-serif"; ctx.fillStyle = !W0.melee && F.ammo[F.cur] <= W0.mag * 0.25 ? "#ff6b57" : "#f5f1e6";
-        ctx.fillText(W0.melee ? "—" : W0.laser ? "∞" : F.reloadT > 0 ? "…" : String(F.ammo[F.cur]), W - 92, H - 39);
-        ctx.font = "700 14px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText(W0.melee || W0.laser ? "" : "/ " + W0.mag, W - 30, H - 36);
+        const W0 = OW[F.cur], lowA = !W0.melee && !W0.laser && F.ammo[F.cur] <= W0.mag * 0.25;
+        plate(W - 284, H - 84, 270, 70, W0.col, "r");
+        ctx.textAlign = "left"; cap(W0.n.toUpperCase(), W - 270, H - 70, W0.col);
+        ctx.textAlign = "right"; ctx.font = "700 44px 'Chakra Petch', sans-serif"; ctx.fillStyle = lowA ? "#ff6b57" : "#f5f1e6";
+        const atx = W0.melee ? "—" : W0.laser ? "∞" : F.reloadT > 0 ? "··" : String(F.ammo[F.cur]);
+        ctx.fillText(atx, W - 96, H - 42);
+        ctx.textAlign = "left"; ctx.font = "700 16px 'JetBrains Mono', monospace"; ctx.fillStyle = "#8b919b"; ctx.fillText(W0.melee || W0.laser ? "" : "/ " + W0.mag, W - 88, H - 38);
+        if (!W0.melee && !W0.laser) { if (F.reloadT > 0) { ctx.fillStyle = "rgba(255,255,255,.1)"; ctx.fillRect(W - 270, H - 26, 240, 4); ctx.fillStyle = "#ff8a3d"; ctx.fillRect(W - 270, H - 26, 240 * (1 - F.reloadT / W0.rl), 4); ctx.textAlign = "left"; cap("RELOADING", W - 270, H - 44, "#ff8a3d"); }
+          else { segs(W - 270, H - 26, 240, 4, F.ammo[F.cur] / W0.mag, lowA ? "#ff6b57" : "#d7dbe2", Math.min(W0.mag, 30)); if (lowA) { ctx.textAlign = "left"; cap(F.ammo[F.cur] ? "LOW AMMO" : "R  RELOAD", W - 270, H - 44, "#ff6b57"); } } }
         if (F.walking && F.walkHintT !== -1) { ctx.textAlign = "center"; ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = "#3ddc97"; ctx.fillText("WALKING · SILENT", W / 2, H - 20); }
-        ctx.textAlign = "left"; ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillStyle = W0.col; ctx.fillText(W0.n.toUpperCase(), W - 258, H - 23);
-        const own = this.owned(V); let wx = W - 16; ctx.font = "700 11px 'JetBrains Mono', monospace"; for (let k = own.length - 1; k >= 0; k--) { const o = own[k], lab = OW[o].slot + " " + OW[o].short, tw = ctx.measureText(lab).width + 14; box(wx - tw, H - 92, tw, 20, 6, o === F.cur ? 0.9 : 0.55); ctx.textAlign = "center"; ctx.fillStyle = o === F.cur ? OW[o].col : "#8a90b8"; ctx.fillText(lab, wx - tw / 2, H - 82); wx -= tw + 5; }
-        for (const [k, lab, col] of [[1, "5 SMOKE", "#c9ced8"], [0, "4 FRAG", "#7ddc6a"]].filter(c => !laser && !(troph && c[0] === 1))) { const n = pl[18 + k] | 0, tw = ctx.measureText(lab).width + 14; box(wx - tw, H - 92, tw, 20, 6, 0.55); ctx.textAlign = "center"; ctx.fillStyle = n ? col : "#4a4f63"; ctx.fillText(lab, wx - tw / 2, H - 82); wx -= tw + 5; }
-        if (F.reloadT > 0) { ctx.fillStyle = "rgba(255,255,255,.15)"; ctx.fillRect(W - 258, H - 60, 232, 4); ctx.fillStyle = "#ff8a3d"; ctx.fillRect(W - 258, H - 60, 232 * (1 - F.reloadT / W0.rl), 4); }
+        const own = this.owned(V); let wx = W - 14; ctx.font = "700 11px 'JetBrains Mono', monospace";
+        const chip = (key, lab, col, on, dim) => { ctx.font = "700 11px 'JetBrains Mono', monospace"; const tw = ctx.measureText(lab).width + 34; plate(wx - tw, H - 114, tw, 24, on ? col : null, "r", on ? 0.9 : 0.6, 6);
+          ctx.fillStyle = on ? col : "rgba(255,255,255,.14)"; ctx.fillRect(wx - tw + 5, H - 109, 15, 14); ctx.textAlign = "center"; ctx.fillStyle = on ? "#0b0c0e" : "#c9ced6"; ctx.fillText(String(key), wx - tw + 12.5, H - 101.5);
+          ctx.textAlign = "left"; ctx.fillStyle = dim ? "#4a4f58" : on ? "#f5f1e6" : "#9aa1ab"; ctx.fillText(lab, wx - tw + 25, H - 101.5); wx -= tw + 5; };
+        for (let k = own.length - 1; k >= 0; k--) { const o = own[k]; chip(OW[o].slot, OW[o].short, OW[o].col, o === F.cur, false); }
+        for (const [k, key, lab, col] of [[1, 5, "SMOKE", "#c9ced8"], [0, 4, "FRAG", "#7ddc6a"]].filter(c => !laser && !(troph && c[0] === 1))) { const n = pl[18 + k] | 0; chip(key, lab, col, false, !n); }
       }
       if (me < 0) {
         const tx = F.specName ? "WATCHING " + F.specName.toUpperCase() : "WATCHING";
@@ -2148,7 +2187,7 @@ function makeOps(md) {
       // dead overlay
       if (pl && !alive) {
         ctx.fillStyle = "rgba(10,11,13,.35)"; ctx.fillRect(0, 0, W, H);
-        ctx.textAlign = "center"; ctx.font = "700 40px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ff4d5e"; ctx.fillText("ELIMINATED", W / 2, H * 0.4);
+        plate(W / 2 - 190, H * 0.4 - 36, 380, 96, "#ff4d5e", "l", 0.8, 14); ctx.textAlign = "center"; ctx.font = "700 38px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ff4d5e"; ctx.fillText("ELIMINATED", W / 2, H * 0.4);
         ctx.font = "700 16px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6";
         ctx.fillText(team ? (F.specName ? "WATCHING " + F.specName.toUpperCase() : "NEXT ROUND") : "BACK IN " + Math.ceil(pl[13] / 10), W / 2, H * 0.4 + 40);
       }
@@ -2159,16 +2198,15 @@ function makeOps(md) {
         const pa = g.pl && g.pl[a], pb = g.pl && g.pl[b];
         const ca = team && pa ? TEAM[pa[2]].hex : A ? A.hex : "#fff", cb = team && pb ? TEAM[pb[2]].hex : B.hex;
         const mid = " " + (wi === -1 ? "PAYLOAD" : wi === -2 ? "⚡ BATTERY" : wi === -3 ? "FRAG" : wi === -4 ? "ROCKET" : (OW[wi] || OW[0]).short) + (hs ? " ◎ " : " "), an = A && a !== b ? A.n : "💥", bn = B.n;
-        ctx.font = "700 13px Inter, sans-serif"; const wa = ctx.measureText(an).width, wm = ctx.measureText(mid).width, wb = ctx.measureText(bn).width, w = wa + wm + wb + 22;
-        const y = 76 + k * 28, x = W - w - 14;
-        ctx.globalAlpha = Math.min(1, o.life); box(x, y, w, 24, 8, 0.75);
-        if (a === me || b === me) { ctx.strokeStyle = "#ff8a3d"; ctx.lineWidth = 1.5; ctx.stroke(); }
-        ctx.textAlign = "left"; ctx.fillStyle = ca; ctx.fillText(an, x + 11, y + 12); ctx.fillStyle = hs ? "#ffd23f" : "#9da1a9"; ctx.fillText(mid, x + 11 + wa, y + 12); ctx.fillStyle = cb; ctx.fillText(bn, x + 11 + wa + wm, y + 12);
+        ctx.font = "700 11px 'JetBrains Mono', monospace"; const wm = ctx.measureText(mid).width; ctx.font = "700 13px Inter, sans-serif"; const wa = ctx.measureText(an).width, wb = ctx.measureText(bn).width, w = wa + wm + wb + 22;
+        const y = 62 + k * 30, x = W - w - 14, mine = a === me || b === me;
+        ctx.globalAlpha = Math.min(1, o.life); plate(x - 4, y, w + 4, 25, mine ? "#ff8a3d" : null, "r", mine ? 0.92 : 0.7, 7);
+        ctx.textAlign = "left"; ctx.fillStyle = ca; ctx.fillText(an, x + 8, y + 13); ctx.fillStyle = hs ? "#ffd23f" : "#8b919b"; ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.fillText(mid, x + 8 + wa, y + 13); ctx.font = "700 13px Inter, sans-serif"; ctx.fillStyle = cb; ctx.fillText(bn, x + 8 + wa + wm, y + 13);
         ctx.globalAlpha = 1;
       });
       // minimap
       const ms = Math.min(5.2, 118 / OG), mx = 14, my = 14, mw = OG * ms;
-      box(mx - 5, my - 5, mw + 10, mw + 24, 8, 0.7);
+      plate(mx - 6, my - 6, mw + 12, mw + 26, null, "l", 0.74, 10);
       ctx.textAlign = "left"; ctx.font = "700 10px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.fillText(OPS_M.n.toUpperCase(), mx, my + mw + 11);
       OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "#") { ctx.fillStyle = "rgba(170,180,230,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "a" || ch === "b") { ctx.fillStyle = ch === "a" ? "rgba(76,201,240,.25)" : "rgba(61,220,151,.25)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
       if (OPS_M.only) { OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { const hh = oCellH(x, z); if (hh) { ctx.fillStyle = hh > 2 ? "rgba(255,138,61,.45)" : "rgba(76,201,240,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "^") { ctx.fillStyle = "#3ddc97"; ctx.fillRect(mx + x * ms + ms * 0.25, my + z * ms + ms * 0.25, ms * 0.5, ms * 0.5); } }));
@@ -2185,10 +2223,30 @@ function makeOps(md) {
       const bm = g.bomb || [0]; if (bm[0] === 1) { ctx.fillStyle = Math.floor(t * 4) % 2 ? "#ff4d5e" : "#ffd23f"; ctx.fillRect(mx + bm[1] / CS * ms - 3, my + bm[2] / CS * ms - 3, 6, 6); }
       // scoreboard (Tab)
       if (F.tab) {
-        box(W / 2 - 300, 80, 600, 40 + V.ro.length * 24, 14, 0.9);
-        ctx.font = "700 12px 'JetBrains Mono', monospace"; ctx.fillStyle = "#9da1a9"; ctx.textAlign = "left"; ctx.fillText("PLAYER", W / 2 - 280, 100); ctx.textAlign = "right"; ctx.fillText("K", W / 2 + 90, 100); ctx.fillText("D", W / 2 + 135, 100); ctx.fillText("A", W / 2 + 180, 100); ctx.fillText(team ? "$" : "HS", W / 2 + 270, 100);
-        const order = V.ro.map((r, i) => i).sort((a, b) => team ? (g.pl[a][2] - g.pl[b][2]) || (g.pl[b][3] - g.pl[a][3]) : (g.pl[b][3] - g.pl[a][3]));
-        order.forEach((i, k) => { const r = V.ro[i], q = g.pl[i]; const y = 124 + k * 24; ctx.textAlign = "left"; ctx.fillStyle = team ? TEAM[q[2]].hex : r.hex; ctx.font = (i === me ? "800" : "600") + " 14px Inter, sans-serif"; ctx.fillText((q[1] ? "" : "✖ ") + r.n + (r.b ? " (bot)" : q[16] ? " (left)" : ""), W / 2 - 280, y); ctx.textAlign = "right"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillText(String(q[3]), W / 2 + 90, y); ctx.fillText(String(q[4]), W / 2 + 135, y); ctx.fillText(String(q[17] || 0), W / 2 + 180, y); ctx.fillText(team ? (!pl || q[2] === pl[2] ? "$" + q[10] : "—") : String(q[14]), W / 2 + 270, y); });
+        const order = V.ro.map((r, i) => i).filter(i => g.pl && g.pl[i]).sort((a, b) => team ? (g.pl[a][2] - g.pl[b][2]) || (g.pl[b][3] - g.pl[a][3]) : troph ? ((g.pl[b][21] || 0) - (g.pl[a][21] || 0)) || (g.pl[b][3] - g.pl[a][3]) : (g.pl[b][3] - g.pl[a][3]) || (g.pl[a][4] - g.pl[b][4]));
+        const RH = 26, bw = 680, bx = W / 2 - bw / 2, rowsH = order.length * RH + (team ? 2 * 26 : 0), bh = 84 + rowsH + 14, by = Math.max(74, (H - bh) / 2 - 10);
+        ctx.fillStyle = "rgba(6,7,9,.5)"; ctx.fillRect(0, 0, W, H);
+        plate(bx, by, bw, bh, "#ff8a3d", "l", 0.94, 18);
+        ctx.textAlign = "left"; ctx.font = "700 22px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(this.title.toUpperCase(), bx + 22, by + 26);
+        cap(OPS_M.n.toUpperCase() + "  ·  " + (team ? "ROUND " + (g.rd || 1) : troph ? "HOLD " + this.HOLD + "s TO WIN" : "FIRST TO " + this.GOAL), bx + 22, by + 48);
+        ctx.textAlign = "right"; ctx.font = "700 22px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(fmtTime(tl), bx + bw - 22, by + 26);
+        if (team) { ctx.font = "700 14px 'Chakra Petch', sans-serif"; const sc = g.sc || [0, 0]; ctx.fillStyle = TEAM[1].hex; ctx.fillText(String(sc[1]), bx + bw - 22, by + 48); const w1 = ctx.measureText(String(sc[1])).width; ctx.fillStyle = "#8b919b"; ctx.fillText(" : ", bx + bw - 22 - w1, by + 48); const w2 = ctx.measureText(" : ").width; ctx.fillStyle = TEAM[0].hex; ctx.fillText(String(sc[0]), bx + bw - 22 - w1 - w2, by + 48); }
+        const cols = [["K", 380], ["D", 430], ["A", 480], ["K/D", 545], [team ? "$" : troph ? "HOLD" : "HS", 640]];
+        let y = by + 72; ctx.fillStyle = "rgba(255,255,255,.08)"; ctx.fillRect(bx + 14, y + 10, bw - 28, 1);
+        ctx.textAlign = "left"; cap("#", bx + 22, y); cap("PLAYER", bx + 54, y); ctx.textAlign = "right"; cols.forEach(c => cap(c[0], bx + c[1], y));
+        y += 12; let lastT = -1, rank = 0;
+        order.forEach((i) => { const r = V.ro[i], q = g.pl[i];
+          if (team && q[2] !== lastT) { lastT = q[2]; rank = 0; ctx.fillStyle = TEAM[lastT].hex; ctx.globalAlpha = 0.16; ctx.fillRect(bx + 14, y + 3, bw - 28, 22); ctx.globalAlpha = 1; ctx.fillRect(bx + 14, y + 3, 3, 22); ctx.textAlign = "left"; cap(TEAM[lastT].n.toUpperCase() + (lastT === 0 ? "  ·  ATTACK" : "  ·  DEFEND"), bx + 26, y + 14, TEAM[lastT].hex); y += 26; }
+          rank++; const cy = y + RH / 2;
+          if (i === me) { ctx.fillStyle = "rgba(255,138,61,.14)"; ctx.fillRect(bx + 14, y, bw - 28, RH); ctx.fillStyle = "#ff8a3d"; ctx.fillRect(bx + 14, y, 3, RH); } else if (rank % 2 === 0) { ctx.fillStyle = "rgba(255,255,255,.03)"; ctx.fillRect(bx + 14, y, bw - 28, RH); }
+          ctx.globalAlpha = q[1] ? 1 : 0.5; ctx.textAlign = "left"; ctx.font = "700 12px 'JetBrains Mono', monospace"; ctx.fillStyle = "#8b919b"; ctx.fillText(String(rank), bx + 22, cy);
+          ctx.fillStyle = team ? TEAM[q[2]].hex : r.hex; ctx.beginPath(); ctx.arc(bx + 44, cy, 4, 0, 7); ctx.fill();
+          ctx.fillStyle = i === me ? "#ffffff" : "#e3e6ea"; ctx.font = (i === me ? "800" : "600") + " 14px Inter, sans-serif"; ctx.fillText(r.n, bx + 56, cy); const nw = ctx.measureText(r.n).width;
+          const tag = !q[1] ? "DEAD" : r.b ? "BOT" : q[16] ? "LEFT" : (troph && q[22]) ? "ROUTER" : ""; if (tag) cap(tag, bx + 64 + nw, cy, tag === "DEAD" ? "#ff4d5e" : tag === "ROUTER" ? "#ffd23f" : "#6d737d");
+          ctx.textAlign = "right"; ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(String(q[3]), bx + 380, cy); ctx.fillStyle = "#b9bec6"; ctx.fillText(String(q[4]), bx + 430, cy); ctx.fillText(String(q[17] || 0), bx + 480, cy);
+          ctx.fillText((q[3] / Math.max(1, q[4])).toFixed(2), bx + 545, cy);
+          ctx.fillStyle = team ? "#3ddc97" : troph ? "#ffd23f" : "#b9bec6"; ctx.fillText(team ? (!pl || q[2] === pl[2] ? "$" + q[10] : "—") : troph ? Math.floor((q[21] || 0) / 10) + "s" : String(q[14] || 0), bx + 640, cy);
+          ctx.globalAlpha = 1; y += RH; });
       }
       if (F.stick) { const s = APP.gameScale || 1, r = $("#gameCanvas").getBoundingClientRect(); ctx.strokeStyle = "rgba(245,241,230,.35)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((F.stick.bx - r.left) / s, (F.stick.by - r.top) / s, 55 / s, 0, 7); ctx.stroke(); ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc((F.stick.x - r.left) / s, (F.stick.y - r.top) / s, 22 / s, 0, 7); ctx.fill(); }
       if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !matchMedia("(pointer: coarse)").matches && (!F.shop || F.shop.hidden) && !(team && g.ph === "buy")) {
