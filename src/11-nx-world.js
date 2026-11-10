@@ -369,7 +369,9 @@ const NXW = (() => {
         const c = z * G + x; if (!skyM[c]) continue; const x0 = x * CS, z0 = z * CS;
         L1.ceilY[c] = Infinity; L1.ceilOn[c] = 0;
         quad("glass", x0, TOP + 0.4, z0 + CS, CS, 0, 0, 0, 0, -CS, { seg: 4 });
-        for (const k of [0, 1, 2, 3]) { box("trimBlack", x0 + k, TOP + 0.28, z0, x0 + k + 0.06, TOP + 0.4, z0 + CS, { occ: false, seg: 2 }); box("trimBlack", x0, TOP + 0.28, z0 + k, x0 + CS, TOP + 0.4, z0 + k + 0.06, { occ: false, seg: 2 }); }
+        // deep steel beams on the cell lines, slim glazing bars half way between them
+        box("trimBlack", x0 - 0.06, TOP, z0, x0 + 0.06, TOP + 0.4, z0 + CS, { occ: false, seg: 2 }); box("trimBlack", x0, TOP, z0 - 0.06, x0 + CS, TOP + 0.4, z0 + 0.06, { occ: false, seg: 2 });
+        box("trimBlack", x0 + 1.98, TOP + 0.32, z0, x0 + 2.02, TOP + 0.4, z0 + CS, { occ: false, seg: 2 }); box("trimBlack", x0, TOP + 0.32, z0 + 1.98, x0 + CS, TOP + 0.4, z0 + 2.02, { occ: false, seg: 2 });
         rectLight([x0 + CS / 2, TOP + 0.38, z0 + CS / 2], [CS / 2, 0, 0], [0, 0, CS / 2], [0, -1, 0], null, { portal: true });
         for (let d = 0; d < 4; d++) { const [dx, dz] = DIRS[d], nx = x + dx, nz = z + dz; if (inb(nx, nz) && skyM[nz * G + nx]) continue;
           const mx = x0 + CS / 2 + dx * CS / 2, mz = z0 + CS / 2 + dz * CS / 2, ux = -dz * CS, uz = dx * CS;

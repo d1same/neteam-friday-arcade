@@ -3,7 +3,7 @@
 // a plaster core, an oak-slat room, old brick, cast concrete, or a glazed room you can look into (server racks, meeting
 // rooms). Sites are the server room and the network closet, the lobby and the NOC are the two spawns.
 NXW.themes.office = (B, M, env) => {
-  const { W, A, G, H, CS, quad, box, cyl, occ, rectLight, lightMat, matAlb, hsh, PX, PY, NY, PZ, NZ, ALL } = B, NXb = B.NX;
+  const { W, A, G, H, CS, quad, box, cyl, tube, occ, rectLight, lightMat, matAlb, hsh, PX, PY, NY, PZ, NZ, ALL } = B, NXb = B.NX;
   const { ch, solid, inb, border, ci, faces, runs, pods, podOf, frame, faceAt, zoneOf, openN } = A;
   const DIRS = NXW.DIRS, norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
   // ---- sun and sky: low golden sun from the south-west, coming in through the glass
@@ -138,12 +138,18 @@ NXW.themes.office = (B, M, env) => {
   }
   NXW.MATS.leaf = NXW.MATS.leaf || { c: [0.07, 0.19, 0.06], r: 0.6, m: 0 };
 
+  // upstairs offices: the fixed desks (the game collides with the same boxes); walls behind a desk keep only wall things
+  const FURN = B.li && typeof opsFurniture === "function" ? opsFurniture(M) : [], deskWall = new Uint8Array(G * G * 4);
+  FURN.forEach(q => { const d = DIRS.findIndex(([a, b]) => a === -q.dx && b === -q.dz); deskWall[ci(q.cx, q.cz) * 4 + d] = 1; });
   for (const f of faces) {
     const c = ci(f.cx, f.cz), st = styleOf(f), key = WALLKEY[st], h1 = hsh(f.cx, f.cz, f.d), h2 = hsh(f.cx, f.cz, f.d + 4);
     f.style = st; f.alb = matAlb(key);
     if (terrace[c]) { windowFace(f); continue; }
     // walls along a stair or over a drop stay plain: nothing may stand in the stair or hang over the void
-    if ((B.stair && B.stair[ci(f.ox, f.oz)]) || noFloor(f.ox, f.oz)) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; continue; }
+    // beside a stair: a dark wall clad in oak battens, the feature wall of the atrium
+    if (B.stair && B.stair[ci(f.ox, f.oz)]) { B.wall(f, "o_wallDark", 0, 0, CS, H); f.kind = "plain"; f.alb = matAlb("o_wallDark"); for (let k = 0; k < 32; k++) { const u = 0.035 + k * 0.125; B.fbox(f, "o_oak", u, 0, 0, u + 0.055, H - 0.02, 0.028, { f: (ALL & ~NY & ~PY), occ: false, rot: 1, seg: 1.6 }); } continue; }
+    if (noFloor(f.ox, f.oz)) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; continue; }
+    if (deskWall[ci(f.ox, f.oz) * 4 + f.d]) { B.wall(f, key, 0, 0, CS, H); f.kind = "plain"; baseboard(f, 0, CS); if (h2 < 0.5) poster(f, 2); else if (h2 < 0.75) wallTV(f, 2); continue; }
     // glazed rooms
     const wantNiche = st === "server" ? ((f.zone === "siteA" || f.zone === "siteB") && h1 < 0.75) : st === "glass" ? h1 < 0.8 : st === "plaster" ? h1 < 0.16 : st === "noc" ? h1 < 0.3 : false;
     if (wantNiche && canNiche(f)) { niche(f, key, st === "server" || st === "noc" ? "racks" : st === "glass" ? "meeting" : "office"); continue; }
@@ -225,6 +231,33 @@ NXW.themes.office = (B, M, env) => {
   // ducts: follow long straight open runs, alternating sides, with hangers
   for (let z = 1; z < G - 1; z++) { let x = 1; while (x < G - 1) { if (solid(x, z) || noCeil(x, z) || zoneOf(x, z) !== "hall") { x++; continue; } let e = x; while (e < G - 1 && !solid(e, z) && !noCeil(e, z) && zoneOf(e, z) === "hall") e++; if (e - x >= 4 && hsh(x, z, 95) < 0.6) { const zc = z * CS + (hsh(x, z, 96) < 0.5 ? 0.75 : CS - 0.75); box("trimSteel", x * CS + 0.3, 2.78, zc - 0.3, e * CS - 0.3, 3.1, zc + 0.3, { f: ALL, seg: 2, uo: 0.3 }); for (let k = x * CS + 1; k < e * CS - 0.5; k += 2) box("trimBlack", k - 0.02, 2.76, zc - 0.33, k + 0.02, H, zc + 0.33, { f: ALL & ~PY, occ: false }); } x = e + 1; } }
   for (let x = 1; x < G - 1; x++) { let z = 1; while (z < G - 1) { if (solid(x, z) || noCeil(x, z) || zoneOf(x, z) !== "hall") { z++; continue; } let e = z; while (e < G - 1 && !solid(x, e) && !noCeil(x, e) && zoneOf(x, e) === "hall") e++; if (e - z >= 4 && hsh(x, z, 97) < 0.6) { const xc = x * CS + (hsh(x, z, 98) < 0.5 ? 0.7 : CS - 0.7); box("redPaint", xc - 0.035, 3.0, z * CS + 0.2, xc + 0.035, 3.07, e * CS - 0.2, { f: ALL & ~PY, occ: false, seg: 2 }); box("trimSteel", xc + 0.25, 2.93, z * CS + 0.2, xc + 0.6, 2.97, e * CS - 0.2, { f: ALL, occ: false, seg: 2 }); } z = e + 1; } }
+
+  // ---- desks: oak top on black legs, two screens, an office chair, sometimes a plant
+  FURN.forEach((q) => {
+    const yT = q.y1 - q.y0, mx = (q.x0 + q.x1) / 2, mz = (q.z0 + q.z1) / 2, ax = q.dz !== 0 ? 1 : 0, az = 1 - ax;   // (ax, az): along the desk
+    box("o_oak", q.x0, yT - 0.04, q.z0, q.x1, yT, q.z1, { f: ALL, seg: 2 });
+    const hw = (q.x1 - q.x0) / 2, hd = (q.z1 - q.z0) / 2;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { const lx = mx + sx * (hw - 0.05), lz = mz + sz * (hd - 0.05); box("trimBlack", lx - 0.025, 0, lz - 0.025, lx + 0.025, yT - 0.04, lz + 0.025, { occ: false }); }
+    // modesty panel on the wall side
+    { const wx = mx + q.dx * (q.dx ? hw - 0.06 : 0), wz = mz + q.dz * (q.dz ? hd - 0.06 : 0); box("trimBlack", wx - (ax ? hw - 0.06 : 0.01), 0.25, wz - (az ? hd - 0.06 : 0.01), wx + (ax ? hw - 0.06 : 0.01), yT - 0.04, wz + (az ? hd - 0.06 : 0.01), { occ: false, seg: 2 }); }
+    const nd = [-q.dx, -q.dz];   // the side people sit on
+    for (const k of [-1, 1]) {
+      const cxm = mx + ax * k * 0.42 + q.dx * 0.18, czm = mz + az * k * 0.42 + q.dz * 0.18, Ux = -q.dz, Uz = q.dx;   // screen faces the chair
+      box("plasticBlack", cxm - Math.abs(Ux) * 0.29 - Math.abs(q.dx) * 0.015, yT + 0.17, czm - Math.abs(Uz) * 0.29 - Math.abs(q.dz) * 0.015, cxm + Math.abs(Ux) * 0.29 + Math.abs(q.dx) * 0.015, yT + 0.53, czm + Math.abs(Uz) * 0.29 + Math.abs(q.dz) * 0.015, { occ: false });
+      box("trimBlack", cxm - 0.02 + q.dx * 0.04, yT, czm - 0.02 + q.dz * 0.04, cxm + 0.02 + q.dx * 0.04, yT + 0.17, czm + 0.02 + q.dz * 0.04, { occ: false });
+      const px = cxm + nd[0] * 0.017 - Ux * 0.27, pz = czm + nd[1] * 0.017 - Uz * 0.27;
+      B.decal("glow", [px, yT + 0.19, pz], [Ux * 0.54, 0, Uz * 0.54], [0, 0.32, 0], 160, { k: "screen", v: Math.floor(hsh(q.cx * 3 + k, q.cz, 41) * 6) });
+    }
+    // chair: five-star base, gas lift, seat and back
+    const chx = mx + nd[0] * 0.78 + ax * (q.s - 0.5) * 0.4, chz = mz + nd[1] * 0.78 + az * (q.s - 0.5) * 0.4;
+    for (let k = 0; k < 5; k++) { const a = k / 5 * Math.PI * 2 + q.s; tube("trimBlack", chx, 0.07, chz, chx + Math.cos(a) * 0.3, 0.05, chz + Math.sin(a) * 0.3, 0.02, 4); }
+    cyl("chrome", chx, 0.07, chz, 0.025, 0.36, 8, { occ: false, cap: false });
+    box("o_feltDark", chx - 0.25, 0.43, chz - 0.25, chx + 0.25, 0.5, chz + 0.25, { f: ALL, occ: false });
+    box("o_feltDark", chx + nd[0] * 0.24 - (ax ? 0.23 : 0.03), 0.52, chz + nd[1] * 0.24 - (az ? 0.23 : 0.03), chx + nd[0] * 0.24 + (ax ? 0.23 : 0.03), 1.05, chz + nd[1] * 0.24 + (az ? 0.23 : 0.03), { f: ALL, occ: false });
+    if (q.s > 0.7) { const plx = mx + ax * (hw + 0.35) * (q.s > 0.85 ? 1 : -1), plz = mz + az * (hd + 0.35) * (q.s > 0.85 ? 1 : -1);
+      cyl("trimBlack", plx + q.dx * 0.15, 0, plz + q.dz * 0.15, 0.2, 0.45, 10, { occ: false });
+      for (let k = 0; k < 6; k++) { const hh = hsh(q.cx * 5 + k, q.cz * 3, 88); cyl("leaf", plx + q.dx * 0.15 + (hh - 0.5) * 0.2, 0.43, plz + q.dz * 0.15 + (hsh(k, q.cz, 89) - 0.5) * 0.2, 0.07 + hh * 0.05, 0.6 + hh * 0.5, 5, { r1: 0.02, occ: false, cap: false }); } }
+  });
 
   // ---- floor markings and signs
   const siteCells = (k) => { const out = []; for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (ch(x, z) === k) out.push([x, z]); return out; };

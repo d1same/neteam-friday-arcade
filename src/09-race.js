@@ -842,6 +842,7 @@ const race = {
     SFX.sync(); this.audio(V, dt);
     if (F.nx) F.nx.update(dt, t);
     if (F.post) F.post.render(F.scene, F.cam3, t); else F.renderer.render(F.scene, F.cam3);
+    if (F.nx) NXS.keep(F.nx);   // a shader compiled mid-race stays compiled (no freeze the next time it is needed)
   },
   // ---- sound: your engine through the gears, the nearest rivals with a little doppler, wind, tyres and the kerb rumble
   audio(V, dt) {
