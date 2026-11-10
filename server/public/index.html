@@ -174,6 +174,8 @@ body.playing #gameView input, body.playing #gameView textarea { -webkit-user-sel
 .records { display: grid; gap: 8px; }
 .record { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 8px 10px 8px 8px; border-radius: 12px; background: var(--panel-2); }
 .record canvas { width: 38px; height: 38px; }
+.hof .record small.hof-more { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hof .record.mine { box-shadow: inset 3px 0 0 var(--accent, #ff8a3d); }
 .record .lbl { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
 .record .val { font-family: var(--f-mono); font-weight: 700; color: var(--bulb); font-variant-numeric: tabular-nums; }
 .feed { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -583,16 +585,10 @@ footer.foot { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-ali
       </section>
     </div>
 
-    <aside class="panel board" aria-label="Scoreboard">
-      <div class="section-title"><h2>Scoreboard</h2><span class="sub" id="boardSub"></span></div>
-      <div class="tabs" role="tablist">
-        <button role="tab" data-tab="today" aria-selected="true">Today</button>
-        <button role="tab" data-tab="all" aria-selected="false">All time</button>
-        <button role="tab" data-tab="records" aria-selected="false">Records</button>
-      </div>
+    <aside class="panel board" aria-label="Hall of Fame">
+      <div class="section-title"><h2>Hall of Fame</h2><span class="sub" id="boardSub"></span></div>
       <div id="boardBody"></div>
-      <div class="feed" id="feed"></div>
-      <p class="board-note">Points per match: 1st 10 · 2nd 7 · 3rd 5 · 4th 3 · everyone else 1. Placings count people only, so bots never take your points. League points need 2+ people; solo games still set records.</p>
+      <p class="board-note">All time, everyone who has played on this server. Real people only, bots never count. Kills against bots count too; wins need 2+ people.</p>
     </aside>
   </div>
   <footer class="foot">Keep this tab in front while you host a game. Background tabs slow down.</footer>
@@ -6910,6 +6906,8 @@ function makeOps(md) {
     },
     say(S, a) { const g = S.g; g.ann = a.concat([++g.aseq]); },
     seat: true,
+    // one player's numbers for the all-time Hall of Fame
+    stats(S, i) { const p = S.g.P[i]; return { k: p.k, d: p.d, hs: p.hsk, kn: p.knk || 0, as: p.as, dmg: Math.round(p.dmg), obj: p.pln + p.dfs, hold: Math.floor(p.hold || 0), mvp: S.board && S.board.mvp === i ? 1 : 0 }; },
     // hand bot i's place to the first person waiting to join (keeps the bot's side and colour)
     takeSeat(S, i) {
       const q = S.joinQ && S.joinQ.shift(); if (!q) return false; const r = S.ro[i], p = S.g.P[i];
@@ -6982,7 +6980,7 @@ function makeOps(md) {
         q.hp = 0; q.alive = 0; q.d++; q.actT = 0; q.rT = 3; q.dieT = g.t;
         // a fall or your own grenade still counts as a kill for the enemy who hurt you most this life
         if (from < 0 || from === tgt) { let bj = -1, bv = 0; for (const j in q.hb) if (+j !== tgt && q.hb[j] > bv && g.P[j] && this.enemy(S, +j, tgt)) { bv = q.hb[j]; bj = +j; } if (bj >= 0) from = bj; }
-        if (from >= 0 && from !== tgt) { const f = g.P[from]; f.k++; if (head) f.hsk++; f.cr = Math.min(16000, f.cr + (W0.kill || 300)); }
+        if (from >= 0 && from !== tgt) { const f = g.P[from]; f.k++; if (head) f.hsk++; if (W0.melee && wi >= 0) f.knk = (f.knk || 0) + 1; f.cr = Math.min(16000, f.cr + (W0.kill || 300)); }
         // assist: anyone else who did 40+ damage to this life
         for (const j in q.hb) if (+j !== from && q.hb[j] >= 40 && g.P[j]) g.P[j].as++;
         q.hb = {};
@@ -9333,7 +9331,7 @@ const race = {
   id: "race", title: "Neteam Grand Prix", tag: "3D street race · six NYC circuits", custom3d: true,
   blurb: "3 laps. Grab data packets for EMPs, shockwaves and coffee spills.",
   how: [],
-  keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera"],
+  keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera", "B look back"],
   rec: { label: "Best lap", better: "min", fmt: v => (v / 1000).toFixed(2) + " s" },
   GRID: 4, LIMIT: 300, GRACE: 25,
   fill(n) { return Math.max(6, Math.min(8, n)); },
@@ -10014,9 +10012,11 @@ const race = {
     F.shake = Math.max(0, (F.shake || 0) - dt);
     const spd = Math.abs(tv || 0), fast = clamp((spd - 36) / 24, 0, 1), sh = F.shake * 0.5 + fast * fast * 0.035;
     if (F.nx && F.post && F.post.comp.u.uSpd) F.post.comp.u.uSpd.value = lerp(F.post.comp.u.uSpd.value, fast, 0.08);
-    const camX = tx - Math.sin(ca) * dist + (F.cam === 2 ? Math.sin(ca) * 0.6 : 0), camZ = tz - Math.cos(ca) * dist + (F.cam === 2 ? Math.cos(ca) * 0.6 : 0);
+    // hold B to look back (the camera swings in front of the car)
+    const cs = (KEYS.has("KeyB") || F.lookBack) ? -1 : 1;
+    const camX = tx - cs * Math.sin(ca) * dist + (F.cam === 2 ? cs * Math.sin(ca) * 0.6 : 0), camZ = tz - cs * Math.cos(ca) * dist + (F.cam === 2 ? cs * Math.cos(ca) * 0.6 : 0);
     F.cam3.position.set(camX + (Math.random() - 0.5) * sh, hgt + (Math.random() - 0.5) * sh, camZ + (Math.random() - 0.5) * sh);
-    F.cam3.lookAt(tx + Math.sin(ca) * 8, F.cam === 2 ? 1.3 : 1.2, tz + Math.cos(ca) * 8);
+    F.cam3.lookAt(tx + cs * Math.sin(ca) * 8, F.cam === 2 ? 1.3 : 1.2, tz + cs * Math.cos(ca) * 8);
     const fov = 66 + clamp(Math.abs(tv || 0) / RC_BOOST, 0, 1.1) * 16; F.cam3.fov = lerp(F.cam3.fov, fov, 0.08); F.cam3.updateProjectionMatrix();
     if (me >= 0 && F.cars[me]) F.cars[me].spr.visible = F.cam !== 2;
     // speed streaks: points hanging in the air that you rush past
@@ -10520,7 +10520,7 @@ function finishSession() {
   if (humans.length >= 1 && NET.db) {
     const doc = {
       g: S.game, at: Date.now(), day: dayKey(), nb: S.ro.filter(r => r.b).length, solo: solo ? 1 : 0,
-      ps: humans.map(o => { const r = S.ro[o.i]; return { u: r.u, n: r.n, c: r.c, pl: o.hp, pt: solo ? 0 : o.pt, sc: o.rec == null ? null : o.rec }; }),
+      ps: humans.map(o => { const r = S.ro[o.i]; let st; try { st = mod.stats ? mod.stats(S, o.i) : undefined; } catch (e) {} return { u: r.u, n: r.n, c: r.c, pl: o.hp, pt: solo ? 0 : o.pt, sc: o.rec == null ? null : o.rec, st }; }),
     };
     if (solo) S.res.forEach(o => { o.pt = 0; });
     S.saved = "saving"; S.solo = solo;
@@ -11054,7 +11054,7 @@ function renderMe() {
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
 // homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
-const SHOT_V = 4;
+const SHOT_V = 5;
 // map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
 const MAP_SHOT_V = 1;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
@@ -11150,68 +11150,51 @@ function computeRecords() {
   });
   return out;
 }
+function onStats(snap) {
+  APP.stats = snap.docs.map(d => d.data()).filter(o => o && typeof o === "object" && typeof o.u === "string");
+  renderBoard();
+}
+// the Hall of Fame: all-time leaders among everyone who has played on this server (real people only; the server adds them up)
+const HOF = [
+  ["Most kills", o => o.k, v => v.toLocaleString()],
+  ["Most headshots", o => o.hs, v => v.toLocaleString()],
+  ["Most knife kills", o => o.kn, v => v.toLocaleString()],
+  ["Best K/D", o => (o.k >= 20 ? o.k / Math.max(1, o.d) : 0), v => v.toFixed(2), "20+ kills"],
+  ["Most wins", o => o.wins, v => String(v), "with 2+ people"],
+  ["Most MVPs", o => o.mvp, v => String(v)],
+  ["Most kills in one match", o => o.bk, v => String(v)],
+  ["Most damage", o => o.dmg, v => v >= 10000 ? Math.round(v / 1000) + "k" : v.toLocaleString()],
+  ["Plants and defuses", o => o.obj, v => String(v)],
+  ["Golden Router time", o => o.hold, v => v >= 60 ? Math.floor(v / 60) + "m " + (v % 60) + "s" : v + "s"],
+  ["Matches played", o => o.games, v => String(v)],
+];
 function renderBoard() {
   const body = $("#boardBody"); body.textContent = "";
-  const today = dayKey();
-  const todays = APP.matches.filter(m => m.day === today);
-  $("#boardSub").textContent = todays.length ? todays.length + " match" + (todays.length > 1 ? "es" : "") + " today" : "";
-  $$(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === APP.tab)));
   const recs = computeRecords(); APP.recs = recs; APP.heroSel = null; renderHero();
   GAME_ORDER.forEach(id => {
     const mod = GAMES[id], best = recs[id];
     const recEl = $('.game-card[data-g="' + id + '"] .rec');
     if (recEl) { recEl.textContent = ""; if (best) { const b = document.createElement("b"); b.textContent = mod.rec.fmt(best.v); recEl.append("Record ", b); } else recEl.textContent = "No record yet"; }
   });
-  if (APP.tab === "records") {
-    const box = document.createElement("div"); box.className = "records";
-    GAME_ORDER.forEach(id => {
-      const mod = GAMES[id], best = recs[id];
-      const row = document.createElement("div"); row.className = "record";
-      row.append(best ? avatarCanvas(validChar(best.p.c) || [0, 0, 0, 0, 0], 38) : avatarCanvas([0, 9, 3, 0, 0], 38));
-      const mid = document.createElement("div"); mid.style.minWidth = "0";
-      const l = document.createElement("div"); l.className = "lbl"; l.textContent = mod.title + " · " + mod.rec.label;
-      const nm = document.createElement("div"); nm.style.fontWeight = "700"; nm.textContent = best ? cleanNick(best.p.n) : "Up for grabs";
-      mid.append(l, nm);
-      const v = document.createElement("div"); v.className = "val"; v.textContent = best ? mod.rec.fmt(best.v) : "—";
-      row.append(mid, v); box.append(row);
-    });
-    body.append(box);
-  } else {
-    const rows = aggregate(APP.tab === "today" ? todays : APP.matches);
-    if (!rows.length) {
-      const e = document.createElement("div"); e.className = "empty";
-      e.textContent = APP.tab === "today" ? "No league games yet today. Play with 2+ people to earn points." : "No matches yet. Every match with 2+ people adds points here.";
-      body.append(e);
-    } else {
-      const box = document.createElement("div"); box.className = "rows";
-      rows.slice(0, 12).forEach((r, k) => {
-        const row = document.createElement("div"); row.className = "row" + (k === 0 ? " first" : "");
-        const rk = document.createElement("span"); rk.className = "rank"; rk.textContent = String(k + 1);
-        const who = document.createElement("div"); who.className = "who";
-        const b = document.createElement("b"); b.textContent = (r.n || "Tech") + (r.u === NET.uid ? " (you)" : "");
-        const sm = document.createElement("small"); sm.textContent = r.wins + " win" + (r.wins === 1 ? "" : "s") + " · " + r.games + " played" + (k === 0 && APP.tab === "today" ? " · MVP of the day" : "");
-        who.append(b, sm);
-        const pts = document.createElement("div"); pts.className = "pts"; pts.textContent = String(r.pts);
-        const ps = document.createElement("small"); ps.textContent = "PTS"; pts.append(ps);
-        row.append(rk, avatarCanvas(r.c || [0, 0, 0, 0, 0], 38), who, pts);
-        box.append(row);
-      });
-      body.append(box);
-    }
-  }
-  const feed = $("#feed"); feed.textContent = "";
-  if (APP.matches.length) {
-    const h4 = document.createElement("h4"); h4.textContent = "Recent matches";
-    const ul = document.createElement("ul");
-    APP.matches.slice(0, 6).forEach(m => {
-      const li = document.createElement("li");
-      const w = m.ps.find(p => p.pl === 1);
-      const a = document.createElement("span"); a.textContent = GAMES[m.g].title + " · " + (w ? cleanNick(w.n) + (m.solo ? " vs bots" : " won") : "done");
-      const b = document.createElement("span"); b.textContent = (m.day === today ? "" : m.day.slice(5).replace("-", "/") + " ") + clockStr(m.at);
-      li.append(a, b); ul.append(li);
-    });
-    feed.append(h4, ul);
-  }
+  const all = APP.stats || [];
+  $("#boardSub").textContent = all.length ? all.length + " player" + (all.length > 1 ? "s" : "") : "";
+  const box = mkEl("div", "records hof");
+  HOF.forEach(([label, val, fmt, note]) => {
+    const rows = all.map(o => ({ o, v: +val(o) || 0 })).filter(r => r.v > 0).sort((a, b) => b.v - a.v);
+    const top = rows[0], row = mkEl("div", "record");
+    row.append(avatarCanvas(top ? validChar(top.o.c) || [0, 0, 0, 0, 0] : [0, 9, 3, 0, 0], 38));
+    const mid = mkEl("div"); mid.style.minWidth = "0";
+    mid.append(mkEl("div", "lbl", label + (note ? " · " + note : "")), Object.assign(mkEl("div", null, top ? cleanNick(top.o.n) || "Tech" : "Up for grabs"), { style: "font-weight:700" }));
+    // runners-up, and where you stand if you're not in the top three
+    const more = rows.slice(1, 3).map((r, k) => (k + 2) + ". " + (cleanNick(r.o.n) || "Tech") + " " + fmt(r.v));
+    const mine = rows.findIndex(r => r.o.u === NET.uid);
+    if (mine > 2) more.push("You #" + (mine + 1) + " · " + fmt(rows[mine].v));
+    if (more.length) mid.append(mkEl("small", "hof-more", more.join("  ·  ")));
+    row.append(mid, mkEl("div", "val", top ? fmt(top.v) : "—"));
+    if (top && top.o.u === NET.uid) row.classList.add("mine");
+    box.append(row);
+  });
+  body.append(box);
 }
 
 // ---------- character editor ----------
@@ -11310,7 +11293,6 @@ function bindEvents() {
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
   $("#sndTestBtn").addEventListener("click", () => soundTest());
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
-  $$(".tabs button").forEach(b => b.addEventListener("click", () => { APP.tab = b.dataset.tab; renderBoard(); }));
   $("#fsBtn").addEventListener("click", toggleFullscreen);
   $("#leaveBtn").addEventListener("click", () => {
     if (APP.S && APP.V && APP.S.id === APP.V.sid) { endSession(); toast("You ended the game for everyone."); }
@@ -11411,6 +11393,7 @@ async function boot() {
       try { NET.db.collection("matches").onSnapshot(onMatches, () => {}); } catch (e) {}
     });
   } catch (e) { try { NET.db.collection("matches").onSnapshot(onMatches, () => {}); } catch (e2) {} }
+  try { NET.db.collection("stats").onSnapshot(onStats, () => {}); } catch (e) {}
   updateLobby();
   if (!APP.me.nick) setTimeout(openEditor, 400);
 }
