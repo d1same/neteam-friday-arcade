@@ -1680,7 +1680,7 @@ function makeOps(md) {
       const flash = new T.PointLight(0xffd59a, 0, 9, 2); flash.position.set(0.22, -0.12, -0.9); cam.add(flash); F.flash = flash;
       F.tracers = []; F.parts = [];
       // the sound of the place: reverb size, floor underfoot and a bed of ambience
-      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof" }[th] || "office"); }
+      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open", sky: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof", sky: "roof" }[th] || "office"); }
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
       // bullet holes: one mesh holding a ring of small quads, oldest overwritten first
       { const N = GFX.lowEnd() ? 60 : 180, g = new T.BufferGeometry(), uv = new Float32Array(N * 12); for (let i = 0; i < N; i++) uv.set([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], i * 12);
