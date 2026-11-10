@@ -14,7 +14,7 @@ const RC_SKY = {
   neon: { st: [[0, "#06010f"], [0.35, "#22063a"], [0.47, "#5a0a5a"], [0.5, "#ff2fd0"], [0.53, "#1a0636"], [1, "#0a0216"]], fog: 0x2a0838, fd: 0.005, hs: 0xd070ff, hg: 0x10203a, hi: 1.0, kc: 0x5cf0ff, ki: 1.4, lamp: 34, exp: 1.0 },
   storm: { st: [[0, "#0a1014"], [0.35, "#1c2a30"], [0.47, "#33464c"], [0.5, "#7a9aa0"], [0.53, "#25343a"], [1, "#0e1416"]], fog: 0x24323a, fd: 0.0055, hs: 0x9fc4d0, hg: 0x1a2024, hi: 1.3, kc: 0xcfe6ff, ki: 1.2, lamp: 30, exp: 1.0 },
 };
-const RC_HW = 8, RC_WALL = 13, RC_LAPS = 3;
+const RC_HW = 8, RC_WALL = 13, RC_LAPS = 3, RC_M = 48;
 let RC_ID = "", RC = null, RC_PADS = [], RC_BOXES = [];
 function rcSetTrack(id) {
   if (!RC_TRACKS[id]) id = "manhattan"; if (id === RC_ID) return; RC_ID = id;
@@ -57,9 +57,16 @@ function rcBuild(P) {
   const tan = pts.map((p, i) => { const q = pts[(i + 1) % N], o = pts[(i - 1 + N) % N]; const dx = q[0] - o[0], dz = q[1] - o[1], l = Math.hypot(dx, dz) || 1; return [dx / l, dz / l]; });
   const curv = pts.map((p, i) => { const a = tan[(i - 3 + N) % N], b = tan[(i + 3) % N]; return Math.abs(Math.atan2(a[0] * b[1] - a[1] * b[0], a[0] * b[0] + a[1] * b[1])); });
   let mnx = 1e9, mxx = -1e9, mnz = 1e9, mxz = -1e9; pts.forEach(p => { mnx = Math.min(mnx, p[0]); mxx = Math.max(mxx, p[0]); mnz = Math.min(mnz, p[1]); mxz = Math.max(mxz, p[1]); });
-  return { pts, tan, curv, N, len, box: [mnx, mxx, mnz, mxz] };
+  // slide the whole track so it sits RC_M metres inside the positive quarter: the baked-light grid starts at 0, 0
+  const ox = RC_M - Math.floor(mnx), oz = RC_M - Math.floor(mnz); pts.forEach(p => { p[0] += ox; p[1] += oz; });
+  return { pts, tan, curv, N, len, box: [mnx + ox, mxx + ox, mnz + oz, mxz + oz] };
 }
 rcSetTrack("manhattan");
+// the track as a world for the NX engine: an open grid of 4 m cells that only carries the baked light
+function rcWorld(id) {
+  if (!RC_TRACKS[id]) id = "manhattan"; const T = RC_TRACKS[id], R = id === RC_ID ? RC : rcBuild(T.ctrl), G = Math.ceil((Math.max(R.box[1], R.box[3]) + RC_M) / 4);
+  return { n: T.n, theme: "race", rows: Array(G).fill(".".repeat(G)), fp: G > 100 ? 6 : 8, ps: 4, noRefl: true, track: R, sky: T.sky || "dusk", tid: id, hw: RC_HW, wall: RC_WALL };
+}
 function rcNearest(x, z, hint) {
   const N = RC.N; let best = -1, bd = 1e18;
   const scan = (i) => { const p = RC.pts[i], d = (p[0] - x) ** 2 + (p[1] - z) ** 2; if (d < bd) { bd = d; best = i; } };
@@ -73,6 +80,7 @@ function rcNearest(x, z, hint) {
 function rcWrap(d) { const N = RC.N; d = ((d % N) + N) % N; return d > N / 2 ? d - N : d; }
 const rcAt = (i, lat) => { const p = RC.pts[((i % RC.N) + RC.N) % RC.N], tg = RC.tan[((i % RC.N) + RC.N) % RC.N]; return [p[0] - tg[1] * lat, p[1] + tg[0] * lat]; };
 const rcHead = (i) => { const tg = RC.tan[((i % RC.N) + RC.N) % RC.N]; return Math.atan2(tg[0], tg[1]); };
+// ---- driving
 const RC_MAX = 44, RC_BOOST = 62, RC_GRASS = 20;
 // pickups: drive through a glowing data packet to grab one
 const RC_ITEMS = [null,
@@ -360,6 +368,7 @@ const race = {
     const F = V.fps; if (!F) return;
     (F.unbind || []).forEach(f => f());
     if (F.post) try { F.post.dispose(); } catch (e) {}
+    if (F.nx) try { F.nx.dispose(); } catch (e) {}
     if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
     [F.cv, F.touch].forEach(el => el && el.remove());
     V.fps = null;
@@ -467,8 +476,10 @@ const race = {
     $("#stagebox").insertBefore(cv, $("#gameCanvas")); F.cv = cv;
     let renderer;
     const low = GFX.lowEnd();
-    try { renderer = new T.WebGLRenderer({ canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
+    const nxOn = !!(NXW.themes.race && (store("nfa-gfx") || {}).nx !== 0);
+    try { renderer = new T.WebGLRenderer(nxOn ? { canvas: cv, antialias: false, depth: false, stencil: false, powerPreference: "high-performance" } : { canvas: cv, antialias: low, powerPreference: "high-performance" }); } catch (e) { F.failed = true; return; }
     renderer.setPixelRatio(Math.min(low ? 1.25 : 1.75, devicePixelRatio || 1));
+    if (nxOn) { F.renderer = renderer; this.buildNX(V, renderer); return; }
     renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.ACESFilmicToneMapping; const SK = RC_SKY[RC_TRACKS[RC_ID].sky || "dusk"]; renderer.toneMappingExposure = SK.exp;
     F.renderer = renderer;
     F.post = GFX.post(renderer, { strength: 1.0, threshold: 1.0, vignette: 0.5, low });
@@ -583,6 +594,40 @@ const race = {
     const tIm = new T.InstancedMesh(new T.CylinderGeometry(0.25, 0.35, 2.4, 6), trunkM, trees.length), lIm = new T.InstancedMesh(new T.IcosahedronGeometry(1.8, 0), leafM, trees.length);
     trees.forEach(([x, z, s], i) => { m4.makeScale(s, s, s).setPosition(x, 1.2 * s, z); tIm.setMatrixAt(i, m4); m4.makeScale(s, s * 1.2, s).setPosition(x, 3.3 * s, z); lIm.setMatrixAt(i, m4); });
     scene.add(tIm, lIm);
+    this.buildDyn(V, scene);
+    F.ready = true;
+  },
+  // ---- the track on the NX engine: baked light, scanned materials, real sky; then everything that moves
+  buildNX(V, renderer) {
+    const F = V.fps, T = THREE;
+    renderer.outputColorSpace = T.SRGBColorSpace; renderer.toneMapping = T.NoToneMapping;
+    const scene = new T.Scene(); F.scene = scene;
+    const cam = new T.PerspectiveCamera(68, 16 / 10, 0.1, 1700); F.cam3 = cam; scene.add(cam);
+    NX.drsReset();
+    NXS.create(renderer, scene, cam, "rc-" + RC_ID, rcWorld(RC_ID)).then((S) => {
+      if (V.fps !== F || APP.V !== V) { S.dispose(); return; }
+      F.nx = S; const g = S.W.grade || {};
+      if (g.fog) scene.fog = new T.FogExp2(new T.Color(g.fog[0], g.fog[1], g.fog[2]), g.fogD || 0.003);
+      F.post = NXP.create(renderer, S, g);
+      // countdown lights under the gantry banner
+      const gantry = new T.Group(); gantry.position.set(RC.pts[0][0], 0, RC.pts[0][1]); gantry.rotation.y = rcHead(0); scene.add(gantry);
+      F.lights = [0, 1, 2].map(k => { const m = new T.Mesh(new T.SphereGeometry(0.36, 18, 12), new T.MeshBasicMaterial({ color: 0x330a0e })); m.scale.z = 0.45; m.position.set(-1.6 + k * 1.6, 6.2, 0.27); gantry.add(m); const m2 = m.clone(); m2.material = m.material; m2.position.z = -0.27; gantry.add(m2); const bk = new T.Mesh(new T.BoxGeometry(1.3, 1.3, 0.5), new T.MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.6 })); bk.position.set(-1.6 + k * 1.6, 6.2, 0); gantry.add(bk); return m; });
+      // boost pads
+      const padTex = GFX.tex(128, 128, (x, w, h) => { x.fillStyle = "rgba(10,40,70,.9)"; x.fillRect(0, 0, w, h); x.fillStyle = "#4cc9f0"; for (let k = 0; k < 3; k++) { const y = 10 + k * 40; x.beginPath(); x.moveTo(20, y + 30); x.lineTo(64, y); x.lineTo(108, y + 30); x.lineTo(108, y + 40); x.lineTo(64, y + 12); x.lineTo(20, y + 40); x.fill(); } });
+      F.padTex = padTex;
+      const padMat = new T.MeshBasicMaterial({ map: padTex, color: new T.Color(2.2, 2.2, 2.2), transparent: true, opacity: 0.95, blending: T.AdditiveBlending, depthWrite: false });
+      RC_PADS.forEach(([pi, pl]) => { const p = rcAt(pi, pl); const m = new T.Mesh(new T.PlaneGeometry(4.6, 5.2), padMat); m.rotation.order = "YXZ"; m.rotation.set(-Math.PI / 2, rcHead(pi) + Math.PI, 0); m.position.set(p[0], 0.07, p[1]); scene.add(m); });
+      const hq = S.W.hq || { x: 0, z: 0, h: 100 };
+      const spire = new T.Mesh(new T.CylinderGeometry(0.3, 0.8, 20, 8), new T.MeshBasicMaterial({ color: 0xff4d5e })); spire.position.set(hq.x, hq.h + 10, hq.z); scene.add(spire); F.spire = spire;
+      this.buildDyn(V, scene);
+      scene.traverse(o => { if (o.isMesh && !o.userData.nxStatic && o.material && o.material.isMeshStandardMaterial && !(o.geometry && o.geometry.type === "PlaneGeometry")) o.castShadow = true; });
+      S.adopt(scene);
+      F.ready = true;
+    }).catch((e) => { console.error("[nx] race build failed", e); F.failed = true; });
+  },
+  // ---- everything that moves: cars, pickups, spills, effects
+  buildDyn(V, scene) {
+    const F = V.fps, T = THREE, m4 = new T.Matrix4();
     // cars: extruded body + glass cabin, clear-coat paint, real-looking wheels, glowing lights, headlight pool on the road
     const prof = (pts, depth, bevel) => { const sh = new T.Shape(); pts.forEach((p, k) => k ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1])); sh.closePath(); const g = new T.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 6 }); g.translate(0, 0, -depth / 2); g.rotateY(-Math.PI / 2); g.computeVertexNormals(); return g; };
     const bodyGeo = prof([[-2.15, 0.32], [2.05, 0.32], [2.25, 0.45], [2.25, 0.62], [1.4, 0.86], [0.9, 0.95], [-1.6, 0.98], [-2.2, 1.02], [-2.25, 0.62]], 1.8, 0.12);
@@ -634,7 +679,6 @@ const race = {
     F.spillM = new T.MeshStandardMaterial({ map: spillTex, transparent: true, depthWrite: false, roughness: 0.05, metalness: 0.3 });
     F.spillG = new T.PlaneGeometry(4.4, 4.4); F.spillG.rotateX(-Math.PI / 2);
     F.ringG = new T.RingGeometry(0.8, 1.1, 40); F.ringG.rotateX(-Math.PI / 2);
-    F.ready = true;
   },
   draw(ctx, V, dt, t) {
     const F = V.fps; ctx.clearRect(0, 0, W, H); if (!F) return;
@@ -710,13 +754,14 @@ const race = {
     F.cam3.lookAt(tx + Math.sin(ca) * 8, F.cam === 2 ? 1.3 : 1.2, tz + Math.cos(ca) * 8);
     const fov = 66 + clamp(Math.abs(tv || 0) / RC_BOOST, 0, 1.1) * 16; F.cam3.fov = lerp(F.cam3.fov, fov, 0.08); F.cam3.updateProjectionMatrix();
     if (me >= 0 && F.cars[me]) F.cars[me].spr.visible = F.cam !== 2;
-    F.sky.position.set(F.cam3.position.x, 0, F.cam3.position.z);
+    if (F.sky) F.sky.position.set(F.cam3.position.x, 0, F.cam3.position.z);
     F.padTex.offset.y = -t * 1.4;
     F.spire.material.color.setHex(Math.floor(t * 1.5) % 2 ? 0xff4d5e : 0x550010);
     // countdown lights
-    const gt = (g.t || 0) / 10; F.lights.forEach((m, k) => m.material.color.setHex(gt >= 0 ? 0x3ddc97 : (gt > -3 + k ? 0xff2a3c : 0x330a0e)));
+    const gt = (g.t || 0) / 10; F.lights.forEach((m, k) => { const on = gt >= 0 || gt > -3 + k; m.material.color.setHex(gt >= 0 ? 0x3ddc97 : (on ? 0xff2a3c : 0x330a0e)); if (F.nx && on) m.material.color.multiplyScalar(2.6); });
     for (const o of F.smoke) { o.life -= dt; const k = o.life / 0.9; o.m.scale.setScalar(1 + (1 - k) * 3); o.m.position.y += dt * 0.6; o.m.material.opacity = 0.32 * k; if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
     F.smoke = F.smoke.filter(o => o.life > 0);
+    if (F.nx) F.nx.update(dt, t);
     if (F.post) F.post.render(F.scene, F.cam3, t); else F.renderer.render(F.scene, F.cam3);
   },
   hud(ctx, V, dt, t) {

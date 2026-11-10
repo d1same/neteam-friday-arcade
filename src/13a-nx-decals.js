@@ -202,6 +202,13 @@ const NXD = {
     x.fillStyle = NXD.PAINT[0]; x.fillRect(w * 0.33, h * 0.27, w * 0.075, h * 0.46); x.fillRect(w * 0.595, h * 0.27, w * 0.075, h * 0.46); x.fillRect(w * 0.33, h * 0.465, w * 0.34, h * 0.07);
     x.font = NXD.FONT(700, Math.round(h * 0.06)); x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(d.t || "5t", w / 2, h * 0.82); NXD.wear(x, w, h, r, 500);
   },
+  // ---- start line, the banner over it, and roadside billboards
+  k_checker(x, w, h, d, r) { const n = Math.max(2, Math.round(h / (w / 28))), cw = w / 28, chh = h / n; for (let j = 0; j < n; j++) for (let i = 0; i < 28; i++) { x.fillStyle = (i + j) % 2 ? "rgba(18,18,20,.95)" : "rgba(235,233,225,.95)"; x.fillRect(i * cw, j * chh, cw + 0.5, chh + 0.5); } NXD.wear(x, w, h, r, 120); },
+  k_banner(x, w, h, d, r) { x.fillStyle = "#07080a"; x.fillRect(0, 0, w, h); x.strokeStyle = "#ffd23f"; x.lineWidth = h * 0.07; x.strokeRect(h * 0.06, h * 0.06, w - h * 0.12, h - h * 0.12); x.fillStyle = "#ffd23f"; x.textAlign = "center"; x.textBaseline = "middle"; const px = NXD.fit(x, d.t || "", w * 0.86, h * 0.62, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(d.t || "", w / 2, h * 0.54); },
+  k_bill(x, w, h, d, r) {
+    const col = ["#3ddc97", "#ffd23f", "#ff7ac6", "#4cc9f0", "#ff6b57"][(d.col | 0) % 5], L = d.l || ["", ""]; x.fillStyle = "#08090c"; x.fillRect(0, 0, w, h); x.strokeStyle = col; x.lineWidth = h * 0.04; x.strokeRect(h * 0.03, h * 0.03, w - h * 0.06, h - h * 0.06);
+    x.textAlign = "center"; x.textBaseline = "middle"; let px = NXD.fit(x, L[0], w * 0.84, h * 0.34, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillStyle = col; x.fillText(L[0], w / 2, h * 0.38); px = NXD.fit(x, L[1], w * 0.8, h * 0.17, 600); x.font = NXD.FONT(600, Math.round(px)); x.fillStyle = "#f2efe6"; x.fillText(L[1], w / 2, h * 0.7);
+  },
   // ---- the company name in light
   k_logo(x, w, h, d, r) {
     x.textBaseline = "middle"; x.textAlign = "left"; const px = h * 0.74; x.font = NXD.FONT(700, Math.round(px));

@@ -25,7 +25,7 @@ const OPS_MAPS = {
   "#...#...rrrrrr...#...#",
   "######################",
   ] },
-  farm: { n: "Server Farm", theme: "farm", sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
+  farm: { n: "Server Farm", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
     "#aaaa......uuuuuu#",
     "#aaaa......uuuuuu#",
@@ -1088,7 +1088,7 @@ function makeOps(md) {
         const h = Math.hypot(dir[0], dir[2]) || 1e-6;
         let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, W0.range) / h;
         if (dir[1] < -1e-4) t = Math.min(t, EY / -dir[1]);
-        if (dir[1] > 1e-4 && OPS_M.theme !== "desert" && OPS_M.theme !== "roof") t = Math.min(t, ((OPS_M.wallH || OWH) - EY) / dir[1]);
+        if (dir[1] > 1e-4 && OPS_M.theme !== "desert" && OPS_M.theme !== "roof") t = Math.min(t, ((OPS_M.ceilH || OPS_M.wallH || OWH) - EY) / dir[1]);
         t = oRayDecks([me.x, EY, me.z], dir, t);
         const prh = oRayProps([me.x, EY, me.z], dir, t); if (prh[1] >= 0) t = prh[0];
         let hitIdx = -1, hitY = 0;

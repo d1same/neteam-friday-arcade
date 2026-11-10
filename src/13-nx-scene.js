@@ -111,13 +111,14 @@ const NXS = {
       if (kind === "glass") { m.transparent = true; m.opacity = def.op == null ? 0.2 : def.op; m.depthWrite = false; m.side = T.DoubleSide; m.premultipliedAlpha = true; o.glass = 1; o.macro = 0; order = 30; }
       else if (kind === "decal") { m.map = S.decalTex; m.transparent = true; m.depthWrite = false; m.roughness = 0.82; m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -2; order = 10; }
       else if (kind === "glow") { m.map = S.decalTex; m.emissiveMap = S.decalTex; m.color.setRGB(0.55, 0.55, 0.55); m.emissive.setScalar(def.k || 1); m.roughness = 0.2; m.transparent = true; m.depthWrite = false; m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -2; order = 11; }
+      if (def.po) { m.polygonOffset = true; m.polygonOffsetFactor = -def.po; m.polygonOffsetUnits = -def.po; order = Math.max(order, 5); }
       NX.patchStatic(m, S, o); m.userData.order = order; S.mats[key] = m;
     }
   },
 
   // ---- meshes: one per material, big ones split into 16 m tiles so what is behind you is not drawn
   buildMeshes(S, vl) {
-    const T = THREE, W = S.W, CH = 16, nC = Math.max(1, Math.ceil(W.size / CH));
+    const T = THREE, W = S.W, CH = W.size > 200 ? 64 : 16, nC = Math.max(1, Math.ceil(W.size / CH));
     const add = (geo, mat) => { geo.computeBoundingSphere(); const m = new T.Mesh(geo, mat); m.matrixAutoUpdate = false; m.renderOrder = mat.userData.order || 0; m.userData.nxStatic = 1; S.group.add(m); return m; };
     for (const key in W.bat) {
       const b = W.bat[key], mat = S.mats[key]; if (!mat || !b.nv) continue;
@@ -244,7 +245,7 @@ void main(){ vec3 d = normalize( vDir );
     return { probes, own, G };
   },
   async reflBuild(S) {
-    const T = THREE, tier = S.tier, r = S.renderer; if (!tier.refl || !tier.reflN || !r.capabilities.isWebGL2) return;
+    const T = THREE, tier = S.tier, r = S.renderer; if (!tier.refl || !tier.reflN || !r.capabilities.isWebGL2 || S.W.noRefl) return;
     const plan = NXS.reflPlan(S); if (!plan) return;
     const P = plan.probes, n = P.length, G = plan.G, size = tier.refl, tw = 3 * Math.max(size, 112), th = 4 * size, cols = Math.min(n, Math.max(1, Math.floor(4096 / tw))), rws = Math.ceil(n / cols);
     NX.prog.n += n;
