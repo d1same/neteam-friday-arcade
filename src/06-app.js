@@ -607,6 +607,7 @@ function updateLobby() {
   const bots = APP.bots ? Math.max(0, (mod.fill ? mod.fill(Math.min(16, n)) : 4) - Math.min(16, n)) : 0;
   $("#startHint").textContent = n + (n === 1 ? " person" : " people") + (bots ? " + " + bots + " bot" + (bots > 1 ? "s" : "") : "") + " in the lineup. Everyone taps Ready in the match lobby first." + (n < 2 ? " Scores count with 2+ people." : "");
   $$(".game-card").forEach(el => el.setAttribute("aria-pressed", String(el.dataset.g === APP.sel)));
+  renderHero();
   // net pill
   const dot = $("#netDot"), txt = $("#netText");
   if (NET.server) { const on = NET.room.connected(); dot.className = "dot" + (on ? " on" : ""); txt.textContent = on ? "Online" : "Reconnecting…"; }
@@ -617,12 +618,27 @@ function renderMe() {
   paintAvatar($("#meCanvas"), APP.me.c, 34);
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
+const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
+function renderHero() {
+  const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;
+  if (APP.heroSel === id) return; APP.heroSel = id;
+  $("#heroTitle").textContent = g.title; $("#heroTag").textContent = g.tag; $("#heroKind").textContent = HERO_KIND[id] || "Game night";
+  const ks = $("#heroKeys"); ks.textContent = ""; (g.keys || []).slice(0, 6).forEach(k => { const sp = document.createElement("span"); sp.textContent = k; ks.append(sp); });
+  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg"; im.classList.add("swap"); const pre = new Image();
+  pre.onload = () => { im.src = src; im.classList.remove("swap"); }; pre.onerror = () => { im.style.display = "none"; }; pre.src = src;
+  const best = (APP.recs || {})[id]; $("#heroRec").textContent = best ? g.rec.fmt(best.v) : "—";
+}
 function buildCards() {
   const box = $("#gameCards"); box.textContent = "";
   GAME_ORDER.forEach(id => {
     const g = GAMES[id];
     const b = document.createElement("button"); b.className = "game-card"; b.dataset.g = id; b.type = "button";
-    const cv = document.createElement("canvas");
+    // real in-game screenshot; the drawn card art is the fallback if the image is missing
+    const cv = document.createElement("div"); cv.className = "shot";
+    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg";
+    im.onerror = () => { const c2 = document.createElement("canvas"); cv.replaceWith(c2); drawCards(); };
+    const kind = document.createElement("span"); kind.className = "kind"; kind.textContent = HERO_KIND[id] || "3D";
+    cv.append(im, kind);
     const body = document.createElement("div"); body.className = "body";
     const h3 = document.createElement("h3"); h3.textContent = g.title;
     const p = document.createElement("p"); p.textContent = g.tag;
@@ -644,7 +660,7 @@ function sampleRoster() {
 function drawCards() {
   const ro = sampleRoster();
   $$(".game-card").forEach(card => {
-    const id = card.dataset.g, mod = GAMES[id], cv = card.querySelector("canvas");
+    const id = card.dataset.g, mod = GAMES[id], cv = card.querySelector("canvas"); if (!cv) return;
     const w = cv.clientWidth || 260, h = cv.clientHeight || 162;
     const ctx = fitCanvas(cv, w, h);
     const V = { ro, meIdx: -1, sm: {}, age: 0, h: { ph: "play", seed: 7 }, inputOf: () => null, local: { x: 0, y: 0 }, prevSt: {}, lastBump: 99, lr: {}, pop: {}, prevGr: "" };
@@ -698,7 +714,7 @@ function renderBoard() {
   const todays = APP.matches.filter(m => m.day === today);
   $("#boardSub").textContent = todays.length ? todays.length + " match" + (todays.length > 1 ? "es" : "") + " today" : "";
   $$(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === APP.tab)));
-  const recs = computeRecords();
+  const recs = computeRecords(); APP.recs = recs; APP.heroSel = null; renderHero();
   GAME_ORDER.forEach(id => {
     const mod = GAMES[id], best = recs[id];
     const recEl = $('.game-card[data-g="' + id + '"] .rec');
