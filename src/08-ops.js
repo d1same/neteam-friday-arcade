@@ -1019,14 +1019,14 @@ function makeOps(md) {
         const onG = (F.jh || 0) <= gNow + 0.01 && (F.vy || 0) <= 0;
         if (onG) {
           F.jh = gNow; F.vy = 0;
-          if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.step(0.25, 0, true); }
+          if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.jump(0.5); }
           if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.pad(0.7); F.padT = 0.4; }
         }
         F.wantJump = false;
         if (!onG || F.vy > 0) {
           F.vy -= 17 * dt; const nj = (F.jh || 0) + F.vy * dt;
           if (nj <= gNow && F.vy <= 0) {
-            F.jh = gNow; F.vy = 0; SFX.step(0.7, 0, false);
+            const iv = -(F.vy || 0); F.jh = gNow; F.vy = 0; SFX.land(clamp((iv - 3) / 11, 0.15, 1));
             if (arena && KEYS.has("Space") && F.cr < 0.5) F.vy = JV; else F.landT = 0.18; // bunny hop: keep the speed
           } else { F.jh = nj; const top = (OPS_M.wallH || 99) - 1.95; if (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && F.jh > top) { F.jh = top; if (F.vy > 0) F.vy = 0; } }
         }
@@ -1091,7 +1091,7 @@ function makeOps(md) {
     fire(V) {
       const F = V.fps, me = F.me, W0 = OW[F.cur];
       if (W0.rocket) return this.fireRocket(V);
-      SFX.shot(W0.snd, 1); if (W0.laser) SFX.zap(0.6);
+      SFX.shot(W0.snd, 1);
       F.kick = 1; if (F.flash) F.flash.intensity = W0.pel ? 22 : 14;
       let spread = W0.laser ? 0 : (W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom) * (F.cr > 0.5 ? 0.65 : 1) + (F.inAir ? 0.09 : 0);
       if (W0.scope && !F.scoped) spread = 0.07 + (F.moving ? W0.mv : 0);
