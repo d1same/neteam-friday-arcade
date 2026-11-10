@@ -214,7 +214,7 @@ function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq",
 // feet height of whoever is moving, and how high a step they can take onto a box (more with legs tucked mid-air)
 let OPS_FEET = 0, OPS_STEP = 0.35;
 // multi-level maps (see opsBuildLevels): per-cell solid spans, stair runs, upper floor height
-let OPS_ML = false, OPS_SP = null, OPS_RAMP = null, OPS_UPH = 0, OPS_RAILS = [];
+let OPS_ML = false, OPS_SP = null, OPS_RAMP = null, OPS_UPH = 0, OPS_RAILS = [], OPS_FURN = [];
 const ML_SLAB = 0.35, ML_TOP = 99;
 let OPS_JUMP = {}, OPS_ID = "", OPS_M = null, OPS_MAP = [], OG = 0, OPS_CELLS = null, OPS_SITE = null, OPS_PROPS = [], OPS_PALIVE = new Uint8Array(0);
 // breakable props: 0 hardware crate, 1 old monitor on a cart, 2 Li-ion UPS battery (explodes)
@@ -357,7 +357,7 @@ function opsBuildLevels() {
   // glass balustrades (the world generator draws the same ones): round every opening in the upper floor, except where a
   // stair arrives, and down the open sides of each stair. A rail is an edge on the cell grid: fixed coordinate e on axis
   // ax (0 = a line of constant x), running a0..a1 on the other axis, standing on lo0..lo1 along it
-  OPS_RAILS = []; if (!U) return;
+  OPS_RAILS = []; OPS_FURN = opsFurniture(OPS_M); if (!U) return;
   const up = (x, z) => x < 0 || z < 0 || x >= OG || z >= OG ? "#" : (U.rows[z] || "")[x] || "#", gr = (x, z) => x < 0 || z < 0 || x >= OG || z >= OG ? "#" : OPS_MAP[z][x];
   const runs = (OPS_M.stairs || []).map(([cx, cz, dx, dz, n]) => ({ cx, cz, dx, dz, n })), inRun = (x, z) => runs.find(r => { for (let k = 0; k < r.n; k++) if (r.cx + r.dx * k === x && r.cz + r.dz * k === z) return true; return false; });
   for (let z = 0; z < OG; z++) for (let x = 0; x < OG; x++) {
@@ -371,6 +371,33 @@ function opsBuildLevels() {
       const lowEnd = along ? (r.dx > 0 ? x * CS : (x + 1) * CS) : (r.dz > 0 ? z * CS : (z + 1) * CS), dir = r.dx || r.dz, h0 = k / r.n * H, h1 = (k + 1) / r.n * H;
       const a0 = lowEnd, a1 = lowEnd + dir * CS, rail = along ? { ax: 2, e: (sg > 0 ? z + 1 : z) * CS } : { ax: 0, e: (sg > 0 ? x + 1 : x) * CS };
       OPS_RAILS.push(Object.assign(rail, a0 < a1 ? { a0, a1, lo0: h0, lo1: h1 } : { a0: a1, a1: a0, lo0: h1, lo1: h0 })); } }
+}
+// fixed furniture upstairs: desks with screens against the walls of the offices. The world generator draws exactly these
+// boxes (office theme) and they are solid to walking, shots and sight. Same layout on every machine (seeded by the map).
+function opsFurniture(M) {
+  const U = M && M.up; if (!U) return [];
+  const G = M.rows.length, up = (x, z) => x < 0 || z < 0 || x >= G || z >= G ? "#" : (U.rows[z] || "")[x] || "#", N4 = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  let sd = 0; for (const ch of "desks:" + M.n) sd = (sd * 31 + ch.charCodeAt(0)) >>> 0; sd = sd || 7;
+  const rnd = () => { sd ^= sd << 13; sd >>>= 0; sd ^= sd >>> 17; sd ^= sd << 5; sd >>>= 0; return sd / 4294967296; };
+  const out = [], stairTop = new Set((M.stairs || []).map(([cx, cz, dx, dz, n]) => (cx + dx * n) + "," + (cz + dz * n)));
+  for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) {
+    const r1 = rnd(), r2 = rnd(), r3 = rnd(); if (up(x, z) !== "." || stairTop.has(x + "," + z)) continue;
+    if (N4.some(([a, b]) => up(x + a, z + b) === " ")) continue;   // the gallery round the atrium stays clear
+    const walls = N4.filter(([a, b]) => up(x + a, z + b) === "#"); if (!walls.length || walls.length >= 3) continue;
+    if (walls.length === 2 && walls[0][0] === -walls[1][0] && walls[0][1] === -walls[1][1]) continue;   // corridor
+    if (r1 > 0.62) continue;
+    const [dx, dz] = walls[Math.floor(r2 * walls.length)], off = CS / 2 - 0.42, mx = x * CS + CS / 2 + dx * off, mz = z * CS + CS / 2 + dz * off, hw = dx ? 0.4 : 0.9, hd = dx ? 0.9 : 0.4;
+    out.push({ x0: mx - hw, x1: mx + hw, z0: mz - hd, z1: mz + hd, y0: U.h, y1: U.h + 0.76, dx, dz, cx: x, cz: z, s: r3 });
+  }
+  return out;
+}
+function mlFurnAt(x, z, lo, hi) { for (const f of OPS_FURN) if (x > f.x0 && x < f.x1 && z > f.z0 && z < f.z1 && f.y0 < hi && f.y1 > lo) return f; return null; }
+function mlFurnRay(o, d, maxT) {
+  let best = maxT;
+  for (const f of OPS_FURN) { let tn = 0, tf = best; const lo = [f.x0, f.y0, f.z0], hi = [f.x1, f.y1, f.z1];
+    for (let a = 0; a < 3 && tn <= tf; a++) { if (Math.abs(d[a]) < 1e-9) { if (o[a] < lo[a] || o[a] > hi[a]) tn = Infinity; continue; } let u = (lo[a] - o[a]) / d[a], v = (hi[a] - o[a]) / d[a]; if (u > v) { const q = u; u = v; v = q; } tn = Math.max(tn, u); tf = Math.min(tf, v); }
+    if (tn <= tf && tn < best) best = tn; }
+  return best;
 }
 // does a balustrade stand in the way of someone of radius r at (x, z) with their feet at `feet`
 function mlRailBlock(x, z, r, feet) {
@@ -388,11 +415,11 @@ function mlSpans(x, z) { const cx = Math.floor(x / CS), cz = Math.floor(z / CS);
 function mlTop(x, z, feet) {
   const sp = mlSpans(x, z); if (!sp) return ML_TOP; let g = OPS_DEEP;
   for (const [a, b] of sp) if (b <= feet + 0.55 && b > g) g = b;
-  const rh = mlRampH(x, z); if (rh >= 0 && rh <= feet + 0.55 && rh > g) g = rh; return g;
+  const rh = mlRampH(x, z); if (rh >= 0 && rh <= feet + 0.55 && rh > g) g = rh; if (OPS_FURN.length) for (const f of OPS_FURN) if (x > f.x0 && x < f.x1 && z > f.z0 && z < f.z1 && f.y1 <= feet + 0.55 && f.y1 > g) g = f.y1; return g;
 }
 // is anything solid between heights lo and hi at this point
 function mlHit(x, z, lo, hi) {
-  const sp = mlSpans(x, z); if (!sp) return true;
+  const sp = mlSpans(x, z); if (!sp) return true; if (OPS_FURN.length && mlFurnAt(x, z, lo, hi)) return true;
   for (const [a, b] of sp) if (a < hi && b > lo) return true;
   return mlRampH(x, z) > lo;
 }
@@ -400,7 +427,8 @@ function mlHit(x, z, lo, hi) {
 function mlCeil(x, z, feet) { const sp = mlSpans(x, z); if (!sp) return feet; let c = ML_TOP; for (const [a] of sp) if (a > feet + 0.55 && a < c) c = a; return c; }
 function mlCeilR(x, z, r, feet) { let c = ML_TOP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) c = Math.min(c, mlCeil(x + a, z + b, feet)); return c; }
 // a straight 3D ray against floors, walls, slabs and stairs: distance to the first hit (maxT if none)
-function mlRay(o, d, maxT) {
+function mlRay(o, d, maxT) { return mlRayW(o, d, OPS_FURN.length ? mlFurnRay(o, d, maxT) : maxT); }
+function mlRayW(o, d, maxT) {
   const h = Math.hypot(d[0], d[2]); let cx = Math.floor(o[0] / CS), cz = Math.floor(o[2] / CS);
   const sx = d[0] > 0 ? 1 : -1, sz = d[2] > 0 ? 1 : -1;
   const tdx = Math.abs(d[0]) > 1e-9 ? Math.abs(CS / d[0]) : Infinity, tdz = Math.abs(d[2]) > 1e-9 ? Math.abs(CS / d[2]) : Infinity;
@@ -1854,7 +1882,9 @@ function makeOps(md) {
       const scr = new T.Mesh(new T.PlaneGeometry(0.34, 0.12), new T.MeshBasicMaterial({ color: 0xff2a3c })); scr.rotation.x = -Math.PI / 2; scr.position.set(0, 0.325, 0.06);
       const halo = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: 0xff2a3c, transparent: true, blending: T.AdditiveBlending, depthWrite: false })); halo.scale.set(2.2, 2.2, 1); halo.position.y = 0.35;
       const led = new T.PointLight(0xff2a3c, 0, 7, 2); led.position.y = 0.7;
-      bomb.add(bb, strap, scr, halo, led); bomb.visible = false; scene.add(bomb); F.bomb = bomb; F.bombLed = led; F.bombScr = scr; F.bombHalo = halo;
+      // the light lives in the scene and only its brightness changes: showing or hiding a light changes the number of
+      // lights, and three.js then rebuilds every lit shader (a freeze in the middle of a round)
+      bomb.add(bb, strap, scr, halo); bomb.visible = false; scene.add(bomb, led); F.bomb = bomb; F.bombLed = led; F.bombScr = scr; F.bombHalo = halo;
       // ---- players: character card + soft shadow + team glow ring + gun + muzzle flash
       const shadowM = new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false });
       F.markTex = (t, hx) => GFX.tex(64, 64, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = hx; x.strokeStyle = "#0a0b0d"; x.lineWidth = 6; x.beginPath(); if (t === 0) { x.moveTo(w / 2, 8); x.lineTo(w - 8, h - 10); x.lineTo(8, h - 10); x.closePath(); } else x.rect(12, 12, w - 24, h - 24); x.stroke(); x.fill(); });
@@ -2442,8 +2472,8 @@ function makeOps(md) {
         [-0.24, 0, 0.24].forEach(ax => { const an = new T.Mesh(new T.CylinderGeometry(0.022, 0.03, 0.5, 8), gold); an.position.set(ax, 0.3, -0.18); an.rotation.x = -0.15; t0.add(an); });
         const leds = new T.Mesh(new T.BoxGeometry(0.5, 0.03, 0.02), new T.MeshBasicMaterial({ color: new T.Color(0.6, 3, 1.4) })); leds.position.set(0, 0.02, 0.235); t0.add(leds);
         const glow = new T.Sprite(glowM(0xffc83d, 0.8)); glow.scale.set(2.6, 2.6, 1); t0.add(glow);
-        const L = new T.PointLight(0xffc040, 26, 10, 1.6); t0.add(L);
-        scene.add(t0); F.trophy = t0;
+        const L = new T.PointLight(0xffc040, 26, 10, 1.6);   // follows the router; never hidden (see the bomb light)
+        scene.add(t0, L); F.trophy = t0; F.trophyL = L;
         const bc = new T.Mesh(new T.CylinderGeometry(0.32, 0.32, 40, 16, 1, true), new T.MeshBasicMaterial({ color: new T.Color(2.4, 1.8, 0.5), transparent: true, opacity: 0.18, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
         scene.add(bc); F.beacon = bc;
         if (cap) { const sm = new T.Mesh(new T.SphereGeometry(1.05, 24, 16), new T.MeshBasicMaterial({ color: new T.Color(0.9, 2.2, 3), transparent: true, opacity: 0.2, blending: T.AdditiveBlending, depthWrite: false })); sm.visible = false; scene.add(sm); F.trShield = sm; }
@@ -2463,6 +2493,7 @@ function makeOps(md) {
         const [x, y, z, by] = g.tr; let px = x, py = y + 0.8 + Math.sin(t * 2) * 0.1, pz = z;
         if (by >= 0) { if (by === V.meIdx) { px = F.me.x; pz = F.me.z; py = (F.jh || 0) + 2.6; } else if (F.remote[by]) { const rm = F.remote[by]; px = rm.x; pz = rm.z; py = (rm.jh || 0) + 2.9; } }
         F.trophy.visible = F.beacon.visible = by !== V.meIdx; F.trophy.position.set(px, py, pz); F.trophy.rotation.y += dt * 1.4;
+        if (F.trophyL) { F.trophyL.position.set(px, py, pz); F.trophyL.intensity = F.trophy.visible ? 26 : 0; }
         F.beacon.position.set(px, py + 20, pz); F.beacon.material.opacity = (by >= 0 ? 0.26 : 0.16) + Math.sin(t * 5) * 0.04; F.trW = [px, py, pz]; F.trBy = by;
         if (F.trShield) { const sh = by >= 0 && g.pl && g.pl[by] && g.pl[by][24] ? 1 : 0;
           if (F.shWas && !sh && by >= 0) { const sx = by === V.meIdx ? F.me.x : px, sz = by === V.meIdx ? F.me.z : pz; SFX.shield(0.7 * SFX.fall(Math.hypot(sx - F.me.x, sz - F.me.z), 8)); }
@@ -2679,7 +2710,7 @@ function makeOps(md) {
       F.rackMat.emissiveIntensity = 2.6 + Math.sin(t * 3) * 0.6;
       // payload
       const b = g.bomb || [0];
-      F.bomb.visible = b[0] === 1 || b[0] === 2;
+      F.bomb.visible = b[0] === 1 || b[0] === 2; if (!F.bomb.visible) F.bombLed.intensity = 0; else F.bombLed.position.set(b[1], 0.7, b[2]);
       if (F.bomb.visible) { F.bomb.position.set(b[1], 0, b[2]); const rate = b[3] < 100 ? 8 : 3; const on = b[0] === 1 && Math.floor(t * rate) % 2 === 0; F.bombLed.intensity = on ? 12 : 0; F.bombHalo.visible = on || b[0] === 2; F.bombHalo.material.color.set(b[0] === 2 ? 0x3ddc97 : 0xff2a3c); F.bombScr.material.color.set(b[0] === 2 ? 0x3ddc97 : on ? 0xff2a3c : 0x550010); }
       if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "sine", 0.035); } }
       // glass the host says is broken: shatter what just broke, put back what was replaced
@@ -2712,7 +2743,7 @@ function makeOps(md) {
         F.hbT = (F.hbT || 0) - dt; if (low > 0 && F.hbT <= 0) { SFX.heart(0.45 + low * 0.5); F.hbT = 1.05 - low * 0.4; F.hbP = 1; } F.hbP = Math.max(0, (F.hbP || 0) - dt * 2.4);
         F.deaf = Math.max(0, (F.deaf || 0) - dt / 3.5); const mf = Math.max(F.lowK > 0.03 ? F.lowK * 0.55 : 0, F.deaf > 0.02 ? Math.min(0.8, F.deaf * 0.85) : 0);
         SFX.muffle(mf > 0.02 ? mf : 0); }
-      if (F.post) { F.post.comp.uniforms.hurt.value = Math.min(1, (F.hurtT || 0) * 2.2 + (F.lowK || 0) * (0.16 + 0.2 * (F.hbP || 0))); F.post.render(F.scene, F.cam, t); }
+      if (F.post) { F.post.comp.uniforms.hurt.value = Math.min(1, (F.hurtT || 0) * 2.2 + (F.lowK || 0) * (0.16 + 0.2 * (F.hbP || 0))); F.post.render(F.scene, F.cam, t); if (F.nx) NXS.keep(F.nx); }
       else F.renderer.render(F.scene, F.cam);
     },
     hud(ctx, V, dt, t) {
