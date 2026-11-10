@@ -368,13 +368,13 @@ function gameFrame(dt, t) {
     ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc(x, y, 22 / s, 0, Math.PI * 2); ctx.fill();
   }
   ctx.restore();
-  if (ph === "results" && V.podium) drawPodium(V, t);
 }
 function readyFrame(V, dt, t) {
   const tl = Math.max(0, (V.h.tl || 0) - V.age);
   const key = JSON.stringify(V.h.rr || []) + "|" + V.myRdy + "|" + V.myVote;
   if (key !== V.rrKey || V.prevPh !== "ready") { V.rrKey = key; V.prevPh = "ready"; renderReady(V); }
-  const c = $("#rdyCount"); if (c) c.textContent = V.h.aR ? "Everyone's ready. Starting in " + Math.ceil(tl / 1000) + "s…" : "Starts in " + Math.ceil(tl / 1000) + "s, or when everyone (host too) is ready";
+  const c = $("#rdyClock"); if (c) { c.textContent = fmtTime(tl); c.classList.toggle("go", !!V.h.aR); c.classList.toggle("low", !V.h.aR && tl < 10000); }
+  const cl = $("#rdyLab"); if (cl) cl.textContent = V.h.aR ? "Everyone's ready" : "Starts in";
   $("#hudTimer").textContent = fmtTime(tl); $("#hudTimer").classList.toggle("low", tl < 10000);
   const cv = $("#gameCanvas");
   const cw = parseFloat(cv.style.width) || W, ch = parseFloat(cv.style.height) || H;
@@ -387,156 +387,232 @@ function readyFrame(V, dt, t) {
 }
 function setReady(V, v) { V.myRdy = v; if (APP.S && APP.S.id === V.sid) APP.S.hr = v; setPresence({ rdy: { s: V.sid, v, mv: V.myVote || "" } }); SFX.play(v ? "right" : "pop"); renderReady(V); }
 function setVote(V, id) { V.myVote = V.myVote === id ? "" : id; if (APP.S && APP.S.id === V.sid) APP.S.hv = V.myVote; setPresence({ rdy: { s: V.sid, v: V.myRdy, mv: V.myVote } }); SFX.play("blip"); renderReady(V); }
+// ---------- match screens: lobby, briefing, results ----------
+function mkEl(tag, cls, txt) { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+function nth(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
+// a screenshot of the game fills the screen behind the lobby; the drawn card art shows through if the image is missing
+function scrBackdrop(id) {
+  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg";
+  bg.append(im, mkEl("i")); return bg;
+}
+// small top-down plan of a map (walls, sites, decks) or the outline of a race track, for the vote tiles
+function mapThumb(modId, id) {
+  const S = 64, cv = document.createElement("canvas"); cv.width = cv.height = S * 2; cv.className = "map-thumb"; cv.setAttribute("aria-hidden", "true");
+  const c = cv.getContext("2d"); c.scale(2, 2);
+  try {
+    if (modId === "race" && typeof RC_TRACKS !== "undefined" && RC_TRACKS[id]) {
+      const P = RC_TRACKS[id].ctrl, n = P.length, pts = [];
+      for (let q = 0; q < n; q++) {
+        const a = P[(q + n - 1) % n], b = P[q], d = P[(q + 1) % n], e = P[(q + 2) % n];
+        for (let k = 0; k < 8; k++) { const t = k / 8, t2 = t * t, t3 = t2 * t, f = (m) => 0.5 * (2 * b[m] + (d[m] - a[m]) * t + (2 * a[m] - 5 * b[m] + 4 * d[m] - e[m]) * t2 + (3 * b[m] - a[m] - 3 * d[m] + e[m]) * t3); pts.push([f(0), f(1)]); }
+      }
+      let x0 = 1e9, x1 = -1e9, z0 = 1e9, z1 = -1e9; pts.forEach(([x, z]) => { x0 = Math.min(x0, x); x1 = Math.max(x1, x); z0 = Math.min(z0, z); z1 = Math.max(z1, z); });
+      const k = (S - 14) / Math.max(x1 - x0, z1 - z0, 1), ox = (S - (x1 - x0) * k) / 2 - x0 * k, oz = (S - (z1 - z0) * k) / 2 - z0 * k;
+      c.beginPath(); pts.forEach(([x, z], q) => q ? c.lineTo(ox + x * k, oz + z * k) : c.moveTo(ox + x * k, oz + z * k)); c.closePath(); c.lineJoin = "round";
+      c.strokeStyle = "rgba(255,255,255,.14)"; c.lineWidth = 6; c.stroke(); c.strokeStyle = "#e8eaee"; c.lineWidth = 1.6; c.stroke();
+      c.fillStyle = "#ff6a1a"; c.beginPath(); c.arc(ox + P[0][0] * k, oz + P[0][1] * k, 2.8, 0, 7); c.fill();
+    } else if (typeof OPS_MAPS !== "undefined" && OPS_MAPS[id]) {
+      const rows = OPS_MAPS[id].rows, n = Math.max(rows.length, rows[0].length), k = (S - 8) / n, o = 4;
+      rows.forEach((row, z) => [...row].forEach((ch, x) => {
+        if (ch === "#") c.fillStyle = "rgba(232,234,238,.62)"; else if (ch === "a" || ch === "b") c.fillStyle = "rgba(255,106,26,.6)"; else if (ch >= "1" && ch <= "9") c.fillStyle = "rgba(76,201,240,.42)"; else return;
+        c.fillRect(o + x * k, o + z * k, k + 0.25, k + 0.25);
+      }));
+    }
+  } catch (e) {}
+  return cv;
+}
 function renderReady(V) {
-  const ov = $("#overlay"); ov.textContent = "";
-  const isHost = APP.S && APP.S.id === V.sid;
+  const ov = $("#overlay"), id = V.mod.id;
+  const isHost = APP.S && APP.S.id === V.sid, myKey = NET.myPeerLabel();
   const rr = (V.h.rr || []).slice().filter(r => r && typeof r === "object").sort((a, b) => b.h - a.h || b.v - a.v || String(a.n).localeCompare(String(b.n)));
   const nReady = rr.filter(r => r.v === 1).length;
-  const card = document.createElement("div"); card.className = "card ready-card";
-  const tag = document.createElement("div"); tag.className = "ready-tag"; tag.textContent = "MATCH LOBBY";
-  const h2 = document.createElement("h2"); h2.textContent = V.mod.title;
-  const p = document.createElement("p"); p.className = "ready-sub"; p.textContent = V.mod.tag;
-  const cnt = document.createElement("div"); cnt.className = "ready-count"; cnt.textContent = nReady + " / " + rr.length + " ready";
-  const list = document.createElement("div"); list.className = "ready-list";
+  // the backdrop stays put; only the content is rebuilt when someone readies up or votes
+  let root = ov.querySelector(".mlobby");
+  if (!root) { ov.textContent = ""; root = mkEl("div", "scr mlobby"); root.append(scrBackdrop(id)); ov.append(root); }
+  const sc = mkEl("div", "scr-scroll"), inn = mkEl("div", "ml-in card");
+  // left: the game, the clock and your ready button
+  const left = mkEl("div", "ml-left");
+  left.append(mkEl("span", "scr-eyebrow", "Match lobby · " + (HERO_KIND[id] || "Game night")), mkEl("h2", null, V.mod.title), mkEl("p", "ml-tag", V.mod.blurb || V.mod.tag || ""));
+  const stat = mkEl("div", "ml-stat"), clk = mkEl("div", "ml-clock"), rdy = mkEl("div", "ml-rdy");
+  const cl = mkEl("span", "cap", V.h.aR ? "Everyone's ready" : "Starts in"); cl.id = "rdyLab";
+  const cb = mkEl("b", V.h.aR ? "go" : null, fmtTime(Math.max(0, (V.h.tl || 0) - (V.age || 0)))); cb.id = "rdyClock"; clk.append(cl, cb);
+  const rn = mkEl("b", null, String(nReady)); rn.append(mkEl("small", null, " / " + rr.length));
+  const pips = mkEl("div", "ml-pips"); rr.forEach(r => pips.append(mkEl("i", r.v === 1 ? "on" : r.v === -2 ? "wait" : null)));
+  rdy.append(mkEl("span", "cap", "Ready"), rn, pips); stat.append(clk, rdy);
+  const act = mkEl("div", "ml-actions");
+  const rb = mkEl("button", "btn primary big ready-btn" + (V.myRdy ? " on" : ""), V.myRdy ? "✓ Ready" : "I'm ready"); rb.type = "button";
+  rb.addEventListener("click", () => setReady(V, V.myRdy ? 0 : 1));
+  act.append(rb);
+  if (isHost) {
+    const go = mkEl("button", "btn", "Force start (" + nReady + " ready)"); go.type = "button";
+    go.addEventListener("click", () => { if (APP.S && APP.S.ph === "ready") APP.S.go = 1; });
+    const cancel = mkEl("button", "btn ghost", "Cancel"); cancel.type = "button";
+    cancel.addEventListener("click", () => endSession());
+    act.append(go, cancel);
+  } else {
+    const back = mkEl("button", "btn ghost", "Sit this one out"); back.type = "button";
+    back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
+    act.append(back);
+  }
+  const hint = mkEl("p", "ml-hint", "Starts when the clock runs out, or as soon as everyone is ready (host too). Not ready by then? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty seats." : ""));
+  left.append(stat, act, hint);
+  // right: who is here, and the map vote
+  const right = mkEl("div", "ml-right");
+  const ros = mkEl("section", "ml-panel"), rh = mkEl("header"); rh.append(mkEl("span", "cap", "Players"), mkEl("b", null, String(rr.length)));
+  const list = mkEl("div", "ml-roster" + (rr.length > 6 ? " many" : ""));
   rr.forEach(r => {
-    const row = document.createElement("div"); row.className = "ready-row" + (r.v === 1 ? " ok" : "") + (r.k === NET.myPeerLabel() ? " me" : "");
-    row.append(avatarCanvas(r.c, 28, PALETTE[r.c[1]] || PALETTE[0]));
-    const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.n + (r.h ? " · host" : ""); row.append(nm);
-    const st = document.createElement("span"); st.className = "st"; st.textContent = r.v === 1 ? "READY" : r.v === -2 ? "JOINING…" : "NOT READY"; row.append(st);
+    const row = mkEl("div", "ml-row" + (r.v === 1 ? " ok" : r.v === -2 ? " wait" : "") + (r.k === myKey ? " me" : ""));
+    const ch = validChar(r.c) || [0, 0, 0, 0, 0], nm = mkEl("span", "nm", String(r.n || "Tech")); if (r.h) nm.append(mkEl("em", null, "Host"));
+    row.append(avatarCanvas(ch, 34, PALETTE[ch[1]] || PALETTE[0]), nm, mkEl("span", "st", r.v === 1 ? "Ready" : r.v === -2 ? "Joining" : "Not ready"));
     list.append(row);
   });
-  // map vote
-  let maps = null;
+  ros.append(rh, list); right.append(ros);
   if (V.mod.mapList) {
-    const ml = V.mod.mapList(), cnt = {}; rr.forEach(r => { if (r.mv) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
-    maps = document.createElement("div"); maps.className = "map-vote";
-    const lab = document.createElement("div"); lab.className = "map-lab"; lab.textContent = (V.mod.id === "race" ? "VOTE FOR A TRACK · NO VOTES = RANDOM" : "VOTE FOR A MAP · NO VOTES = AUTO-PICK BY PLAYER COUNT"); maps.append(lab);
-    const grid = document.createElement("div"); grid.className = "map-grid";
+    const ml = V.mod.mapList(), cnt = {}, race = id === "race"; rr.forEach(r => { if (r.mv) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
+    const mp = mkEl("section", "ml-panel"), mh = mkEl("header"); mh.append(mkEl("span", "cap", race ? "Vote for a track" : "Vote for a map"), mkEl("small", null, race ? "No votes = random" : "No votes = picked by player count"));
+    const grid = mkEl("div", "map-grid");
     ml.forEach(m => {
-      const b = document.createElement("button"); b.type = "button"; b.className = "map-btn" + (V.myVote === m.id ? " on" : "");
-      const t1 = document.createElement("b"); t1.textContent = m.n; const t2 = document.createElement("span"); t2.textContent = m.sub || "";
-      const c = document.createElement("i"); c.textContent = cnt[m.id] ? String(cnt[m.id]) : ""; b.append(t1, t2, c);
+      const on = V.myVote === m.id, n = cnt[m.id] || 0, b = mkEl("button", "map-btn" + (on ? " on" : "")); b.type = "button"; b.setAttribute("aria-pressed", String(on));
+      const tx = mkEl("span", "tx"); tx.append(mkEl("b", null, m.n), mkEl("span", null, m.sub || ""));
+      const vc = mkEl("i", n ? "has" : null, n ? String(n) : ""); vc.title = n + (n === 1 ? " vote" : " votes");
+      b.append(mapThumb(id, m.id), tx, vc);
       b.addEventListener("click", () => setVote(V, m.id)); grid.append(b);
     });
-    maps.append(grid);
+    mp.append(mh, grid); right.append(mp);
   }
-  const act = document.createElement("div"); act.className = "res-actions";
-  const rb = document.createElement("button"); rb.className = "btn primary ready-btn" + (V.myRdy ? " on" : ""); rb.textContent = V.myRdy ? "✓ Ready" : "I'm ready";
-  rb.addEventListener("click", () => setReady(V, V.myRdy ? 0 : 1));
-  if (isHost) {
-    const go = document.createElement("button"); go.className = "btn"; go.textContent = "Force start (" + nReady + " ready)";
-    go.addEventListener("click", () => { if (APP.S && APP.S.ph === "ready") APP.S.go = 1; });
-    const cancel = document.createElement("button"); cancel.className = "btn"; cancel.textContent = "Cancel";
-    cancel.addEventListener("click", () => endSession());
-    act.append(rb, go, cancel);
-  } else {
-    const back = document.createElement("button"); back.className = "btn"; back.textContent = "Sit this one out";
-    back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
-    act.append(rb, back);
-  }
-  const note = document.createElement("div"); note.className = "res-note"; note.id = "rdyCount";
-  const hint = document.createElement("div"); hint.className = "res-note"; hint.textContent = "Not ready when it starts? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty slots." : "");
-  card.append(tag, h2, p, cnt, list); if (maps) card.append(maps); card.append(act, note, hint);
-  ov.append(card);
+  inn.append(left, right); sc.append(inn);
+  const old = root.querySelector(".scr-scroll"), top = old ? old.scrollTop : 0;
+  if (old) old.replaceWith(sc); else root.append(sc);
+  sc.scrollTop = top;
 }
+// "WASD move" -> key cap + action; anything that does not start with a key stays a plain tip
+const KEY_RX = /^((?:WASD|Space|Shift|Ctrl|Tab|Esc|Click|Right-click|[A-Z]|[0-9])(?:\s*(?:\/|or)?\s*(?:WASD|Space|Shift|Ctrl|Tab|Esc|Click|Right-click|[A-Z]|[0-9])\b)*):?\s+(.+)$/;
 function renderOverlay(V, full) {
   const ov = $("#overlay"), ph = V.h.ph, mod = V.mod;
   if (ph !== "results") $("#mindPanel").hidden = !(ph === "play" && mod.id === "helpdesk" && V.meIdx >= 0);
   if (ph !== "play" && $("#socPanel")) $("#socPanel").hidden = true;
   if (ph === "intro") {
     ov.textContent = "";
-    const card = document.createElement("div"); card.className = "card";
-    const h2 = document.createElement("h2"); h2.textContent = mod.title;
-    const p = document.createElement("p"); p.textContent = mod.blurb;
-    const ul = document.createElement("div"); ul.className = "keys";
-    mod.how.forEach(x => { const s = document.createElement("span"); s.className = "key"; s.style.borderBottomWidth = "1px"; s.textContent = x; ul.append(s); });
-    const keys = document.createElement("div"); keys.className = "keys";
-    mod.keys.forEach(x => { const s = document.createElement("span"); s.className = "key"; s.textContent = x; keys.append(s); });
-    const cnt = document.createElement("div"); cnt.className = "count-ring"; cnt.id = "introCount"; cnt.textContent = "Starting…";
-    card.append(h2, p); if (mod.how && mod.how.length) card.append(ul); card.append(keys, cnt);
-    if (innerHeight > innerWidth && innerWidth < 700) { const tip = document.createElement("p"); tip.style.marginTop = "8px"; tip.textContent = "Tip: turn your phone sideways for a bigger view."; card.append(tip); }
+    const root = mkEl("div", "scr brief"), card = mkEl("div", "br-card card");
+    card.append(mkEl("span", "scr-eyebrow", "Briefing · " + (HERO_KIND[mod.id] || "Game night")), mkEl("h2", null, mod.title), mkEl("p", "br-blurb", mod.blurb));
+    if (mod.how && mod.how.length) { const ol = mkEl("ol", "br-how"); mod.how.forEach(x => ol.append(mkEl("li", null, x))); card.append(ol); }
+    const keys = mkEl("div", "br-keys"), lines = [];
+    (mod.keys || []).forEach(x => { const parts = String(x).split(" · "); if (parts.length > 1 && parts.every(q => KEY_RX.test(q))) lines.push(...parts); else lines.push(String(x)); });
+    lines.forEach(x => { const m = KEY_RX.exec(x), row = mkEl("div", "br-key"); if (m) row.append(mkEl("kbd", null, m[1]), mkEl("span", null, m[2])); else { row.classList.add("tip"); row.textContent = x; } keys.append(row); });
+    if (lines.length) card.append(mkEl("span", "cap", "Controls"), keys);
+    if (innerHeight > innerWidth && innerWidth < 700) card.append(mkEl("p", "br-tip", "Tip: turn your phone sideways for a bigger view."));
+    const foot = mkEl("div", "br-foot"), cnt = mkEl("span", "br-count", "Starting…"); cnt.id = "introCount"; foot.append(cnt);
     if (APP.S && APP.S.id === V.sid) {
-      const b = document.createElement("button"); b.className = "btn primary"; b.style.marginTop = "12px"; b.textContent = "Skip intro";
+      const b = mkEl("button", "btn primary", "Skip intro"); b.type = "button";
       b.addEventListener("click", () => { if (APP.S && APP.S.ph === "intro") APP.S.phT = 0; });
-      card.append(b);
+      foot.append(b);
     }
-    ov.append(card);
+    card.append(foot); root.append(card); ov.append(root);
   } else if (ph === "results") {
     V.shownSaved = V.h.saved;
     if (!full && V.resCard) { const nt = $("#resNote"); if (nt) nt.textContent = savedNote(V.h.saved); return; }
     ov.textContent = "";
-    const card = document.createElement("div"); card.className = "card results-card";
-    const res = V.h.res || [];
-    const win = res[0] && V.ro[res[0].i];
-    const h2 = document.createElement("h2"); h2.textContent = win ? win.n + " wins!" : "Round over";
-    if (V.h.bd && V.h.bd.teams) { const T = V.h.bd.teams, w = T[0].sc === T[1].sc ? -1 : T[0].sc > T[1].sc ? 0 : 1; h2.textContent = w < 0 ? "Draw" : T[w].n + " wins!"; if (w >= 0) h2.style.color = T[w].hex; }
-    const cv = document.createElement("canvas"); cv.className = "podium"; V.podium = cv;
-    const list = document.createElement("div"); list.className = "res-list";
-    res.forEach((o, k) => {
-      const r = V.ro[o.i]; if (!r) return;
-      const row = document.createElement("div"); row.className = "res-row" + (o.i === V.meIdx ? " me" : "");
-      const p = document.createElement("span"); p.className = "p"; p.textContent = String(k + 1);
-      const nm = document.createElement("span"); nm.className = "nm"; nm.textContent = r.n + (r.b ? " (bot)" : "");
-      const s = document.createElement("span"); s.className = "s"; s.textContent = o.l;
-      const g = document.createElement("span"); g.className = "g"; g.textContent = r.b || !o.pt ? "" : "+" + o.pt;
-      row.append(p, avatarCanvas(r.c, 30, r.hex), nm, s, g);
-      list.append(row);
-    });
-    const note = document.createElement("div"); note.className = "res-note"; note.id = "resNote"; note.textContent = savedNote(V.h.saved);
-    const act = document.createElement("div"); act.className = "res-actions";
-    if (APP.S && APP.S.id === V.sid) {
-      const again = document.createElement("button"); again.className = "btn primary"; again.textContent = "Play again";
-      again.addEventListener("click", () => { const g = APP.S.game; endSession(); setTimeout(() => startSession(g), 120); });
-      const back = document.createElement("button"); back.className = "btn"; back.textContent = "Back to the NOC";
-      back.addEventListener("click", () => endSession());
-      act.append(again, back);
-    } else {
-      const back = document.createElement("button"); back.className = "btn"; back.textContent = "Back to the NOC";
-      back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
-      act.append(back);
+    const res = (Array.isArray(V.h.res) ? V.h.res : []).filter(o => o && typeof o === "object"), me = V.meIdx;
+    const bd0 = V.h.bd, bd = bd0 && typeof bd0 === "object" && Array.isArray(bd0.rows) && Array.isArray(bd0.cols) ? Object.assign({}, bd0, { rows: bd0.rows.filter(o => o && typeof o === "object" && Array.isArray(o.v)) }) : null;
+    const teams = bd && Array.isArray(bd.teams) && bd.teams.length === 2 && bd.teams.every(t => t && typeof t === "object") ? bd.teams : null;
+    const root = mkEl("div", "scr results"), card = mkEl("div", "rs-card card");
+    // headline: from your own seat when you played, the plain result when you watched
+    const win = res[0] && V.ro[res[0].i], myPlace = res.findIndex(o => o.i === me) + 1;
+    let head = win ? win.n + " wins" : "Match over", tone = "", accent = "";
+    const meta = [];
+    if (teams) {
+      const T = teams, w = T[0].sc === T[1].sc ? -1 : T[0].sc > T[1].sc ? 0 : 1, mine = (bd.rows.find(o => o.i === me) || {}).tm;
+      if (w < 0) head = "Draw";
+      else if (mine === 0 || mine === 1) { head = mine === w ? "Victory" : "Defeat"; tone = mine === w ? "win" : "loss"; meta.push(T[w].n + " wins"); }
+      else head = T[w].n + " wins";
+      if (w >= 0) accent = T[w].hex;
+    } else if (win && myPlace === 1) { head = "Victory"; tone = "win"; if (res.length > 1) meta.push("First of " + res.length); }
+    else if (win && myPlace > 1) meta.push("You finished " + nth(myPlace) + " of " + res.length);
+    if (bd && bd.sub) { let sb = String(bd.sub).replace(/^Rounds \d+ – \d+ · /, ""); if (sb.startsWith(mod.title + " · ")) sb = sb.slice(mod.title.length + 3); if (sb) meta.push(sb); }
+    const hd = mkEl("header", "rs-head"), hl = mkEl("div", "rs-title");
+    const h2 = mkEl("h2", tone || null, head); if (!tone && accent) h2.style.color = accent;
+    hl.append(mkEl("span", "scr-eyebrow", "Match complete · " + mod.title), h2);
+    if (meta.length) hl.append(mkEl("p", "rs-sub", meta.join("  ·  ")));
+    hd.append(hl);
+    if (accent) card.style.setProperty("--acc", accent);
+    if (teams) {
+      const sc = mkEl("div", "rs-score");
+      teams.forEach((t, k) => { const d = mkEl("div", "t" + (k ? " r" : "")); d.style.setProperty("--c", t.hex); d.append(mkEl("span", null, t.n), mkEl("b", null, String(t.sc))); if (k) sc.append(mkEl("i", null, ":")); sc.append(d); });
+      hd.append(sc);
     }
-    const cnt = document.createElement("span"); cnt.className = "res-note"; cnt.id = "resCount";
-    act.append(cnt);
-    const bd = V.h.bd;
-    let sub = null;
-    if (bd && bd.rows) {
-      list.textContent = ""; list.className = "res-board";
-      if (bd.sub) { sub = document.createElement("div"); sub.className = "res-sub"; sub.textContent = bd.sub; }
-      const ptOf = {}; res.forEach(o => ptOf[o.i] = o.pt);
-      const tbl = document.createElement("table"); tbl.className = "sb";
-      const head = (label, hex, sc) => {
-        const tr = document.createElement("tr"); tr.className = "sb-h";
-        const th0 = document.createElement("th"); th0.colSpan = 2; th0.className = "sb-name";
-        if (hex) { th0.style.color = hex; th0.textContent = label + (sc != null ? "  " + sc : ""); } else th0.textContent = "Player";
+    // the strip under the headline: podium for free-for-all and races, awards for team games
+    const strip = mkEl("div", "rs-strip");
+    const pod = (label, i, stat, cls) => {
+      const r = V.ro[i]; if (!r) return;
+      const c = mkEl("div", "rs-pod" + (cls ? " " + cls : "") + (i === me ? " me" : "")), tx = mkEl("div", "tx");
+      tx.append(mkEl("span", "cap", label), mkEl("b", null, r.n), mkEl("span", "st", stat || ""));
+      c.append(avatarCanvas(r.c, 56, r.hex), tx); strip.append(c);
+    };
+    if (teams) {
+      const col = (name) => bd.cols.indexOf(name), val = (rw, name) => { const k = col(name); return k < 0 ? 0 : parseFloat(rw.v[k]) || 0; };
+      const best = (name) => { let b = null; bd.rows.forEach(rw => { const v = val(rw, name); if (v > 0 && (!b || v > b.v)) b = { i: rw.i, v }; }); return b; };
+      // one card per player: someone who takes several awards gets them listed together
+      const aw = [], give = (label, i, stat) => { const e = aw.find(q => q.i === i); if (e) { e.labels.push(label); if (stat) e.stats.push(stat); } else aw.push({ i, labels: [label], stats: stat ? [stat] : [] }); };
+      const mv = bd.rows.find(rw => rw.i === bd.mvp), k = best("K"), d = best("DMG"), o = best("OBJ");
+      if (mv) give("MVP", mv.i, val(mv, "K") + " K · " + val(mv, "D") + " D · " + val(mv, "A") + " A");
+      if (k) give("Most eliminations", k.i, mv && mv.i === k.i ? "" : k.v + (k.v === 1 ? " elimination" : " eliminations"));
+      if (d) give("Most damage", d.i, d.v + " damage");
+      if (o) give("Objective", o.i, o.v + (o.v === 1 ? " plant or defuse" : " plants and defuses"));
+      aw.forEach((e, q) => pod(e.labels.join(" · "), e.i, e.stats.join(" · "), q === 0 && mv ? "p1" : ""));
+    } else res.slice(0, 3).forEach((o, k) => pod(["1st place", "2nd place", "3rd place"][k], o.i, o.l, "p" + (k + 1)));
+    let list;
+    if (bd) {
+      list = mkEl("div", "rs-board"); const ptOf = {}; res.forEach(o => ptOf[o.i] = o.pt);
+      const tbl = mkEl("table", "sb");
+      const head2 = (label, hex, score) => {
+        const tr = mkEl("tr", "sb-h" + (hex ? " tm" : "")); if (hex) tr.style.setProperty("--c", hex);
+        const th0 = mkEl("th", "sb-name", hex ? label : "Player"); th0.colSpan = 3; if (hex && score != null) th0.append(mkEl("b", null, String(score)));
         tr.append(th0);
-        bd.cols.forEach((c, k) => { const th = document.createElement("th"); th.textContent = c; th.title = (bd.tips && bd.tips[k]) || ""; tr.append(th); });
-        const thp = document.createElement("th"); thp.textContent = "PTS"; thp.title = "League points"; tr.append(thp);
-        tbl.append(tr);
+        bd.cols.forEach((c, k) => { const th = mkEl("th", null, c); th.title = (bd.tips && bd.tips[k]) || ""; tr.append(th); });
+        const thp = mkEl("th", null, "PTS"); thp.title = "League points"; tr.append(thp); tbl.append(tr);
       };
-      let lastTm = null;
+      let lastTm = null, rank = 0;
       bd.rows.forEach(rw => {
         const r = V.ro[rw.i]; if (!r) return;
-        if (bd.teams && rw.tm !== lastTm) { lastTm = rw.tm; const t = bd.teams[rw.tm]; head(t.n, t.hex, t.sc); }
-        else if (!bd.teams && lastTm === null) { lastTm = 0; head("", null, null); }
-        const tr = document.createElement("tr"); if (rw.i === V.meIdx) tr.className = "me";
-        const tdA = document.createElement("td"); tdA.className = "sb-av"; tdA.append(avatarCanvas(r.c, 26, r.hex));
-        const tdN = document.createElement("td"); tdN.className = "sb-name"; tdN.textContent = r.n + (r.b ? " (bot)" : "");
-        if (bd.teams) tdN.style.color = bd.teams[rw.tm].hex;
-        if (rw.i === bd.mvp) { const m = document.createElement("span"); m.className = "mvp"; m.textContent = "MVP"; tdN.append(m); }
-        tr.append(tdA, tdN);
-        rw.v.forEach(x => { const td = document.createElement("td"); td.textContent = String(x); tr.append(td); });
-        const tdP = document.createElement("td"); tdP.className = "sb-pt"; tdP.textContent = r.b || !ptOf[rw.i] ? "" : "+" + ptOf[rw.i]; tr.append(tdP);
+        const tm = teams ? teams[rw.tm] : null; if (teams && !tm) return;
+        if (tm && rw.tm !== lastTm) { lastTm = rw.tm; rank = 0; head2(tm.n, tm.hex, tm.sc); }
+        else if (!teams && lastTm === null) { lastTm = 0; head2("", null, null); }
+        const tr = mkEl("tr", rw.i === me ? "me" : null); tr.style.setProperty("--c", tm ? tm.hex : r.hex);
+        const tdA = mkEl("td", "sb-av"); tdA.append(avatarCanvas(r.c, 26, r.hex));
+        const tdN = mkEl("td", "sb-name", r.n); if (r.b) tdN.append(mkEl("em", null, "Bot")); if (rw.i === bd.mvp) tdN.append(mkEl("span", "mvp", "MVP"));
+        tr.append(mkEl("td", "sb-rk", String(++rank)), tdA, tdN);
+        rw.v.forEach(x => tr.append(mkEl("td", null, String(x))));
+        tr.append(mkEl("td", "sb-pt", r.b || !ptOf[rw.i] ? "" : "+" + ptOf[rw.i]));
         tbl.append(tr);
       });
       list.append(tbl);
+    } else {
+      list = mkEl("div", "res-list");
+      res.forEach((o, k) => {
+        const r = V.ro[o.i]; if (!r) return;
+        const row = mkEl("div", "res-row" + (o.i === me ? " me" : ""));
+        row.append(mkEl("span", "p", String(k + 1)), avatarCanvas(r.c, 30, r.hex), mkEl("span", "nm", r.n + (r.b ? " (bot)" : "")), mkEl("span", "s", o.l), mkEl("span", "g", r.b || !o.pt ? "" : "+" + o.pt));
+        list.append(row);
+      });
     }
-    card.append(h2);
-    if (sub) card.append(sub);
-    card.append(cv, list, note, act);
-    ov.append(card);
+    const foot = mkEl("footer", "rs-foot"), notes = mkEl("div", "rs-notes"), act = mkEl("div", "res-actions");
+    const cnt = mkEl("span", "res-note cnt"); cnt.id = "resCount";
+    const note = mkEl("span", "res-note", savedNote(V.h.saved)); note.id = "resNote"; notes.append(cnt, note);
+    if (APP.S && APP.S.id === V.sid) {
+      const again = mkEl("button", "btn primary", "Play again"); again.type = "button";
+      again.addEventListener("click", () => { const g = APP.S.game; endSession(); setTimeout(() => startSession(g), 120); });
+      const back = mkEl("button", "btn", "Back to the NOC"); back.type = "button";
+      back.addEventListener("click", () => endSession());
+      act.append(again, back);
+    } else {
+      const back = mkEl("button", "btn", "Back to the NOC"); back.type = "button";
+      back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
+      act.append(back);
+    }
+    foot.append(notes, act);
+    card.append(hd); if (strip.childElementCount) card.append(strip); card.append(list, foot);
+    root.append(card); ov.append(root);
     V.resCard = card;
-    const top = res.slice(0, 3).map(o => o.i);
-    V.podiumTop = top;
     FX.clear();
   } else {
     ov.textContent = "";
@@ -544,34 +620,6 @@ function renderOverlay(V, full) {
 }
 function savedNote(s) {
   return s === "yes" ? "Saved to the scoreboard." : s === "solo" ? "Saved. Records count; league points need 2+ players." : s === "saving" ? "Saving to the scoreboard…" : s === "fail" ? "This match couldn't be saved." : s === "practice" ? "Practice match. Scores count when 2 or more people play." : "";
-}
-const CONFETTI = [];
-function drawPodium(V, t) {
-  const cv = V.podium; if (!cv.isConnected) return;
-  const w = cv.clientWidth || 560, h = cv.clientHeight || 230;
-  const ctx = fitCanvas(cv, w, h);
-  ctx.clearRect(0, 0, w, h);
-  const top = V.podiumTop || [];
-  const slots = [[0, 0.5, 0.42], [1, 0.22, 0.28], [2, 0.78, 0.18]]; // [rankIndex, x, height]
-  for (const [ri, fx, fh] of slots) {
-    const i = top[ri]; if (i == null) continue;
-    const r = V.ro[i]; const x = w * fx, bw = Math.min(140, w * 0.26), bh = h * fh, by = h - bh;
-    const grd = ctx.createLinearGradient(0, by, 0, h); grd.addColorStop(0, r.hex); grd.addColorStop(1, shade(r.hex, -0.5));
-    ctx.fillStyle = grd; ctx.beginPath(); ctx.roundRect(x - bw / 2, by, bw, bh + 10, 10); ctx.fill();
-    ctx.fillStyle = "rgba(8,9,11,.55)"; ctx.font = "700 " + Math.round(Math.min(34, bh * 0.5)) + "px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-    ctx.fillText(String(ri + 1), x, by + bh / 2 + 4);
-    const jump = ri === 0 ? Math.abs(Math.sin(t * 5)) * 12 : Math.abs(Math.sin(t * 3 + ri)) * 4;
-    drawChar(ctx, r.c, x, by - 34 - jump, 58, { t, mood: ri === 0 ? "happy" : "", phase: ri, color: r.hex });
-    if (ri === 0) { star(ctx, x - 40, by - 80 - jump * 0.5, 9, 4, 5, "#ffd23f"); star(ctx, x + 42, by - 70 - jump * 0.3, 7, 3, 5, "#ffd23f"); }
-  }
-  if (!reducedMotion) {
-    if (CONFETTI.length < 70) CONFETTI.push({ x: Math.random() * w, y: -10, vy: 40 + Math.random() * 60, vx: (Math.random() - 0.5) * 30, c: PALETTE[rint(0, 9)], r: Math.random() * 6, s: 4 + Math.random() * 4 });
-    for (const p of CONFETTI) {
-      p.y += p.vy / 60; p.x += p.vx / 60; p.r += 0.1;
-      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.fillStyle = p.c; ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); ctx.restore();
-      if (p.y > h + 10) { p.y = -10; p.x = Math.random() * w; }
-    }
-  }
 }
 
 // ---------- lobby ----------
@@ -791,7 +839,7 @@ function renderBoard() {
     APP.matches.slice(0, 6).forEach(m => {
       const li = document.createElement("li");
       const w = m.ps.find(p => p.pl === 1);
-      const a = document.createElement("span"); a.textContent = GAMES[m.g].title + " · " + (w ? cleanNick(w.n) + " won" : "done");
+      const a = document.createElement("span"); a.textContent = GAMES[m.g].title + " · " + (w ? cleanNick(w.n) + (m.solo ? " vs bots" : " won") : "done");
       const b = document.createElement("span"); b.textContent = (m.day === today ? "" : m.day.slice(5).replace("-", "/") + " ") + clockStr(m.at);
       li.append(a, b); ul.append(li);
     });
