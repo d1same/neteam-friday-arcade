@@ -3109,6 +3109,9 @@ const GUNS = {
       U.vm = smg ? [0.16, -0.2, -0.52] : lmg ? [0.18, -0.225, -0.5] : [0.17, -0.215, -0.5];
     }
     g.traverse(o => { if (o.isMesh) o.castShadow = false; });
+    U.proc = g.children.slice();
+    const sk = id === "pistol" || id === "deagle" ? "pistol" : id === "sniper" || id === "scout" ? "sniper" : null;
+    if (sk) this.scan(sk).then(sc => { if (sc) this.fit(g, sc, sk, id, T); });
     if (opt.arms !== false) {
       const R = this.arm(T, opt.hex), L = this.arm(T, opt.hex); g.add(R, L); U.armR = R; U.armL = L;
       U.rElbow = [0.13, -0.3, 0.52]; U.lElbow = [-0.3, -0.3, 0.42];
@@ -3116,6 +3119,35 @@ const GUNS = {
     }
     return g;
   },
+  // photo-scanned CC0 models (Poly Haven, see models/CREDITS.txt) replace the hand-built pistol and bolt rifle once they have loaded
+  _sc: {},
+  scan(k) {
+    if (this._sc[k]) return this._sc[k];
+    return this._sc[k] = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/gun-" + k + ".glb", (g) => res(g.scene), null, () => res(null)); } catch (e) { res(null); } })).catch(() => null);
+  },
+  fit(g, src, k, id, T) {
+    const U = g.userData; U.proc.forEach(c => { c.visible = false; });
+    const root = new T.Group(), part = (n) => { const q = new T.Group(), o = src.getObjectByName(n); if (o) { const c = o.clone(true); c.traverse(m => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } }); q.add(c); } root.add(q); return q; };
+    // scans have the barrel along +X: turn it to -Z, then seat the grip on the model origin
+    root.rotation.y = Math.PI / 2;
+    const C = GUNS.SCAN[id] || GUNS.SCAN[k], hold = new T.Group(); hold.add(root); hold.scale.setScalar(C.s); hold.position.set(0, C.y, C.z); g.add(hold);
+    if (k === "pistol") {
+      part("pistol_a"); part("hammer_a"); part("trigger_a");
+      const sl = part("slide_a"), mg = part("magazine_loaded"); mg.children.forEach(c => c.position.set(C.mag[0], C.mag[1], 0));
+      U.slide = GUNS.proxy(T, g, sl, C.s, 0); U.mag = GUNS.proxy(T, g, mg, C.s, 1);
+    } else {
+      part("rifle_7_62"); part("_trigger"); part("_scope"); if (id === "sniper") part("_wrap");
+      U.bolt = GUNS.proxy(T, g, part("bolt_a"), C.s, 0); U.mag = null;
+    }
+  },
+  // stand-in object the pose code moves (z = back along the barrel, y = down for a magazine); it forwards that to the scanned part
+  proxy(T, g, q, s, isMag) {
+    const p = new T.Group(); g.add(p);
+    const upd = () => { q.position.set(-p.position.z / s, isMag ? p.position.y / s : 0, 0); q.visible = p.visible; };
+    p.updateMatrix = function () { upd(); T.Object3D.prototype.updateMatrix.call(this); };
+    return p;
+  },
+  SCAN: { pistol: { s: 1.6, y: -0.06, z: 0.04, mag: [-0.02, -0.01] }, deagle: { s: 1.8, y: -0.075, z: 0.035, mag: [-0.02, -0.01] }, sniper: { s: 1.05, y: -0.025, z: -0.31 }, scout: { s: 0.95, y: -0.02, z: -0.28 } },
   // per-frame pose of the first-person weapon: recoil, slide / bolt, reload with the off hand, pump and bolt cycles
   pose(g, st) {
     const U = g.userData, ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
