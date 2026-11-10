@@ -62,7 +62,7 @@ const SFX = {
   noiseBuf(a) { if (this._nb && this._nb.sampleRate === a.sampleRate) return this._nb; const n = a.sampleRate * 1.5, b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; return (this._nb = b); },
   // ---- the mix: everything goes through one master bus (a limiter keeps bursts of gunfire from clipping) and a shared
   // reverb whose size follows the place you are in (SFX.space). `wet` scales how much of a sound reaches the reverb.
-  vol: typeof store("nfa-vol") === "number" ? store("nfa-vol") : 0.9, _bus: null, _space: "room",
+  vol: typeof store("nfa-vol") === "number" ? store("nfa-vol") : 1, _bus: null, _space: "room",
   setVol(v) { this.vol = Math.max(0, Math.min(1, v)); store("nfa-vol", this.vol); const B = this._bus; if (B && this.on) B.master.gain.setTargetAtTime(this.vol, B.a.currentTime, 0.05); },
   // [where the soft clipper starts to bend (linear, 0..1), gain into it]
   MIX: [0.7, 1],
