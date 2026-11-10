@@ -740,6 +740,7 @@ function makeOps(md) {
       const F = V.fps; if (!F) return; F.gone = true;
       (F.unbind || []).forEach(f => f());
       if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
+      SFX.amb(null);
       if (F.post) try { F.post.dispose(); } catch (e) {}
       if (F.nx) try { F.nx.dispose(); } catch (e) {}
       if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
@@ -1118,7 +1119,7 @@ function makeOps(md) {
         }
       }
       F.shotN++; F.lastShot = [F.shotN, +lastEnd[0].toFixed(2), +lastEnd[1].toFixed(2), +lastEnd[2].toFixed(2), F.cur];
-      this.shell(V);
+      this.shell(V); if (!W0.laser) SFX.casing(0.5, W0.pel ? 1 : 0);
       if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.tone(headAny ? 2400 : 1700, 0.06, "square", 0.05); if (headAny) SFX.tone(3200, 0.08, "triangle", 0.05, 0, 0.05); }
       Object.keys(dmgAcc).forEach(k => this.pop(F, Math.round(dmgAcc[k]), !!headIdx[k]));
       if (W0.scope) F.scoped = false;
@@ -1542,6 +1543,8 @@ function makeOps(md) {
       });
       const flash = new T.PointLight(0xffd59a, 0, 9, 2); flash.position.set(0.22, -0.12, -0.9); cam.add(flash); F.flash = flash;
       F.tracers = []; F.parts = [];
+      // the sound of the place: reverb size, floor underfoot and a bed of ambience
+      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof" }[th] || "office"); }
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
       // bullet holes: one mesh holding a ring of small quads, oldest overwritten first
       { const N = GFX.lowEnd() ? 60 : 180, g = new T.BufferGeometry(), uv = new Float32Array(N * 12); for (let i = 0; i < N; i++) uv.set([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], i * 12);
@@ -1776,6 +1779,7 @@ function makeOps(md) {
       const c = [end[0] + n[0] * 0.012, end[1] + n[1] * 0.012, end[2] + n[2] * 0.012], P = K.m.geometry.attributes.position, o = (K.n++ % K.N) * 6;
       const pt = (i, su, sv) => P.setXYZ(o + i, c[0] + U[0] * su + W2[0] * sv, c[1] + U[1] * su + W2[1] * sv, c[2] + U[2] * su + W2[2] * sv);
       pt(0, -1, -1); pt(1, 1, -1); pt(2, 1, 1); pt(3, -1, -1); pt(4, 1, 1); pt(5, -1, 1); P.needsUpdate = true;
+      { const d = Math.hypot(end[0] - F.me.x, end[2] - F.me.z); if (d < 26) SFX.impact(!n[1] && SFX.floor === "metal" ? 1 : 0, (1 - d / 26) * 0.55, this.panOf(F, end[0], end[2], d)); }
       if (!GFX.lowEnd() && F.vfx.length < 90) this.puff(V, c[0] + n[0] * 0.06, c[1] + n[1] * 0.06, c[2] + n[2] * 0.06, OPS_M.theme === "desert" ? 0xc7a777 : 0x9c9c9a, 1, 0.13, 0.42, 0.12);
     },
     burst(V, at, hex, n, spd) {
@@ -1917,6 +1921,7 @@ function makeOps(md) {
     },
     render3d(V, dt, t) {
       const F = V.fps, T = THREE, g = V.g || {};
+      SFX.sync();
       GFX.fitStage(F, F.cam);
       const fov = F.scoped ? 22 : 74; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
       // players
@@ -2002,7 +2007,9 @@ function makeOps(md) {
             const ga = a + Math.PI, sx = av.x - Math.sin(ga) * 0.62 + Math.cos(ga) * 0.36, sz = av.z - Math.cos(ga) * 0.62 - Math.sin(ga) * 0.36;
             const W1 = OW[shot[4]] || OW[0];
             if (!W1.melee && !W1.rocket) { this.addTracer(V, [sx, 0.97 + (av.jh || 0), sz], [shot[1], shot[2], shot[3]], W1.laser ? r.hex : wcol, true, W1.laser);
-              if (!W1.laser) { const dx = shot[1] - sx, dy = shot[2] - 0.97, dz = shot[3] - sz, dl = Math.hypot(dx, dy, dz) || 1; this.impact(V, [shot[1], shot[2], shot[3]], [dx / dl, dy / dl, dz / dl]); } }
+              if (!W1.laser) { const dx = shot[1] - sx, dy = shot[2] - 0.97, dz = shot[3] - sz, dl = Math.hypot(dx, dy, dz) || 1; this.impact(V, [shot[1], shot[2], shot[3]], [dx / dl, dy / dl, dz / dl]);
+                // a round that passes close to your head cracks past
+                const mp = V.g.pl && V.g.pl[V.meIdx]; if (mp && mp[1]) { const ex = F.me.x - sx, ey = (F.eyeH || EYE) - 0.97, ez = F.me.z - sz, u = (ex * dx + ey * dy + ez * dz) / (dl * dl); if (u > 0.08 && u < 0.97) { const px = ex - dx * u, py = ey - dy * u, pz = ez - dz * u; if (px * px + py * py + pz * pz < 1.7) SFX.whiz(this.panOf(F, sx + dx * u, sz + dz * u, 1)); } } } }
             else if (W1.melee) av.flT = 0;
             const d = Math.hypot(av.x - F.me.x, av.z - F.me.z);
             const pan = this.panOf(F, av.x, av.z, d);
@@ -2102,7 +2109,7 @@ function makeOps(md) {
       (g.kf || []).forEach(k => {
         if (k[4] <= F.kfSeen) return; F.kfSeen = k[4];
         F.toasts.push({ k, life: 5 });
-        if (k[0] === me && k[1] !== me) { FX.text(W / 2, H / 2 - 70, (k[3] ? "HEADSHOT · " : "") + "ELIMINATED " + (V.ro[k[1]] ? V.ro[k[1]].n : ""), k[3] ? "#ffd23f" : "#3ddc97", 1.1); SFX.play("right"); }
+        if (k[0] === me && k[1] !== me) { FX.text(W / 2, H / 2 - 70, (k[3] ? "HEADSHOT · " : "") + "ELIMINATED " + (V.ro[k[1]] ? V.ro[k[1]].n : ""), k[3] ? "#ffd23f" : "#3ddc97", 1.1); SFX.kill(!!k[3]); }
         if (k[1] === me) SFX.play("fall");
       });
       if (F.toasts.length > 5) F.toasts.splice(0, F.toasts.length - 5);
