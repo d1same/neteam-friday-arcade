@@ -15,8 +15,9 @@ const PORT = +process.env.PORT || 4802;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
 const DB_FILE = path.join(DATA_DIR, "arcade-db.json");
 const PUBLIC = path.join(__dirname, "public");
-const ALLOWED = /^(matches|players)\/[A-Za-z0-9_-]{1,80}$/;
-const SUB_PATH = /^(matches|players)(\/[A-Za-z0-9_-]{1,80})?$/;
+const ALLOWED = /^(matches|players)\/[A-Za-z0-9_-]{1,80}$/;          // what browsers may write
+const STORED = /^(matches|players|stats)\/[A-Za-z0-9_-]{1,80}$/;     // stats/<uid> = all-time totals, kept by the server only
+const SUB_PATH = /^(matches|players|stats)(\/[A-Za-z0-9_-]{1,80})?$/;
 const UID = /^(?!__proto__$|constructor$|prototype$)[A-Za-z0-9_-]{1,80}$/;
 const MAX_PRESENCE = 32 * 1024;
 const MAX_CLIENTS = +process.env.MAX_CLIENTS || 200;       // sockets in total
@@ -39,14 +40,14 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 let db = {};
 try {
   const j = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
-  if (j && typeof j === "object" && !Array.isArray(j)) { for (const k of Object.keys(j)) if (ALLOWED.test(k) && j[k] && typeof j[k] === "object") db[k] = j[k]; }
+  if (j && typeof j === "object" && !Array.isArray(j)) { for (const k of Object.keys(j)) if (STORED.test(k) && j[k] && typeof j[k] === "object") db[k] = j[k]; }
   console.log("Loaded", Object.keys(db).length, "records from", DB_FILE);
 } catch (e) {
   if (e.code !== "ENOENT") {
     // a damaged file is kept aside (never overwritten by the next save), and the last good backup is loaded instead
     console.error("Could not read db:", e.message);
     try { fs.copyFileSync(DB_FILE, DB_FILE + ".corrupt-" + Date.now()); } catch (e2) {}
-    try { const j = JSON.parse(fs.readFileSync(DB_FILE + ".bak", "utf8")); if (j && typeof j === "object" && !Array.isArray(j)) { for (const k of Object.keys(j)) if (ALLOWED.test(k) && j[k] && typeof j[k] === "object") db[k] = j[k]; console.log("Loaded", Object.keys(db).length, "records from the backup"); } } catch (e3) {}
+    try { const j = JSON.parse(fs.readFileSync(DB_FILE + ".bak", "utf8")); if (j && typeof j === "object" && !Array.isArray(j)) { for (const k of Object.keys(j)) if (STORED.test(k) && j[k] && typeof j[k] === "object") db[k] = j[k]; console.log("Loaded", Object.keys(db).length, "records from the backup"); } } catch (e3) {}
   }
 }
 let saveT = null, saving = false, saveAgain = false, lastBak = 0;
@@ -76,6 +77,20 @@ function cleanChar(c) {
 }
 function dayOf(ts) { const d = new Date(ts); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
 // a finished match as the host's browser reports it. League points are worked out here from the places, not taken on trust.
+const STAT_KEYS = [["k", 5000], ["d", 5000], ["hs", 5000], ["kn", 5000], ["as", 5000], ["dmg", 1000000], ["obj", 500], ["hold", 100000], ["mvp", 1], ["bl", 3600000]];
+// all-time totals per person, added to on every saved match and never pruned (the match list itself keeps only the newest 5000)
+function addStats(doc) {
+  for (const p of doc.ps) {
+    const key = "stats/" + p.u; if (!db[key] && count("stats/") >= MAX_PLAYERS) continue;
+    const o = db[key] || (db[key] = { u: p.u, games: 0, wins: 0, pts: 0, k: 0, d: 0, hs: 0, kn: 0, as: 0, dmg: 0, obj: 0, hold: 0, mvp: 0, bk: 0, g: {} });
+    o.n = p.n; o.c = p.c; o.games++; o.last = doc.at; o.g[doc.g] = (o.g[doc.g] || 0) + 1;
+    if (!doc.solo) { o.pts += p.pt || 0; if (p.pl === 1) o.wins++; }
+    const st = p.st; if (!st) continue;
+    for (const k of ["k", "d", "hs", "kn", "as", "dmg", "obj", "hold", "mvp"]) if (st[k]) o[k] = (o[k] || 0) + st[k];
+    if (st.k > (o.bk || 0)) o.bk = st.k;   // most kills in one match
+    if (st.bl > 0) { const bl = o.bl || (o.bl = {}); const t = doc.g + ":" + (st.tr || ""); if (!bl[doc.g] || st.bl < bl[doc.g]) bl[doc.g] = st.bl; }   // best race lap
+  }
+}
 function cleanMatch(d) {
   if (!d || typeof d !== "object" || typeof d.g !== "string" || !/^[a-z0-9_-]{1,24}$/i.test(d.g)) return null;
   if (!Array.isArray(d.ps) || d.ps.length < 1 || d.ps.length > 16) return null;
@@ -85,7 +100,10 @@ function cleanMatch(d) {
     if (!p || typeof p !== "object" || typeof p.u !== "string" || !UID.test(p.u) || seenU.has(p.u)) return null;
     if (!Number.isInteger(p.pl) || p.pl < 1 || p.pl > 16 || seenPl.has(p.pl)) return null;
     seenU.add(p.u); seenPl.add(p.pl);
-    ps.push({ u: p.u, n: cleanText(p.n, 14) || "Tech", c: cleanChar(p.c), pl: p.pl, pt: 0, sc: Number.isFinite(p.sc) ? Math.max(-1e9, Math.min(1e9, p.sc)) : null });
+    const o = { u: p.u, n: cleanText(p.n, 14) || "Tech", c: cleanChar(p.c), pl: p.pl, pt: 0, sc: Number.isFinite(p.sc) ? Math.max(-1e9, Math.min(1e9, p.sc)) : null };
+    // this player's numbers from the match (kills, headshots, knife kills...): whole numbers in a sane range, unknown keys dropped
+    if (p.st && typeof p.st === "object" && !Array.isArray(p.st)) { const st = {}; for (const [k, max] of STAT_KEYS) { const v = p.st[k]; if (Number.isInteger(v) && v >= 0 && v <= max) st[k] = v; } if (Object.keys(st).length) o.st = st; }
+    ps.push(o);
   }
   const solo = ps.length < 2;
   if (!solo) ps.forEach(p => { p.pt = PLACE_POINTS[p.pl - 1] || 1; });
@@ -294,7 +312,7 @@ function onMessage(ws, c, raw) {
       const h = c.presence && c.presence.h, doc = cleanMatch(m.data);
       if (!doc || !h || typeof h !== "object" || h.game !== doc.g) return;
       if (nowT - c.lastMatch < MATCH_GAP_MS) return;
-      c.lastMatch = nowT; db[m.path] = doc; pruneMatches();
+      c.lastMatch = nowT; db[m.path] = doc; pruneMatches(); addStats(doc); for (const p of doc.ps) notify("stats/" + p.u);
     } else {
       // your own profile only
       if (!c.by || id !== c.by) return;
@@ -326,6 +344,10 @@ setInterval(() => {
   for (const ws of clients.keys()) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch (e) {} }
   const nowT = Date.now(); for (const [k, r] of retired) if (r.until < nowT) retired.delete(k);
 }, 15000);
+if (!count("stats/") && count("matches/")) {
+  Object.keys(db).filter(k => k.startsWith("matches/")).map(k => db[k]).filter(m => m && Array.isArray(m.ps)).sort((a, b) => (a.at || 0) - (b.at || 0)).forEach(m => { try { addStats(m); } catch (e) {} });
+  console.log("Built all-time stats for", count("stats/"), "players from saved matches");
+}
 server.listen(PORT, () => console.log("Neteam Friday Arcade on http://0.0.0.0:" + PORT));
 function shutdown() { clearTimeout(saveT); try { fs.writeFileSync(DB_FILE, JSON.stringify(db)); } catch (e) {} process.exit(0); }
 process.on("SIGTERM", shutdown); process.on("SIGINT", shutdown);

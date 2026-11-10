@@ -511,6 +511,8 @@ function makeOps(md) {
     },
     say(S, a) { const g = S.g; g.ann = a.concat([++g.aseq]); },
     seat: true,
+    // one player's numbers for the all-time Hall of Fame
+    stats(S, i) { const p = S.g.P[i]; return { k: p.k, d: p.d, hs: p.hsk, kn: p.knk || 0, as: p.as, dmg: Math.round(p.dmg), obj: p.pln + p.dfs, hold: Math.floor(p.hold || 0), mvp: S.board && S.board.mvp === i ? 1 : 0 }; },
     // hand bot i's place to the first person waiting to join (keeps the bot's side and colour)
     takeSeat(S, i) {
       const q = S.joinQ && S.joinQ.shift(); if (!q) return false; const r = S.ro[i], p = S.g.P[i];
@@ -583,7 +585,7 @@ function makeOps(md) {
         q.hp = 0; q.alive = 0; q.d++; q.actT = 0; q.rT = 3; q.dieT = g.t;
         // a fall or your own grenade still counts as a kill for the enemy who hurt you most this life
         if (from < 0 || from === tgt) { let bj = -1, bv = 0; for (const j in q.hb) if (+j !== tgt && q.hb[j] > bv && g.P[j] && this.enemy(S, +j, tgt)) { bv = q.hb[j]; bj = +j; } if (bj >= 0) from = bj; }
-        if (from >= 0 && from !== tgt) { const f = g.P[from]; f.k++; if (head) f.hsk++; f.cr = Math.min(16000, f.cr + (W0.kill || 300)); }
+        if (from >= 0 && from !== tgt) { const f = g.P[from]; f.k++; if (head) f.hsk++; if (W0.melee && wi >= 0) f.knk = (f.knk || 0) + 1; f.cr = Math.min(16000, f.cr + (W0.kill || 300)); }
         // assist: anyone else who did 40+ damage to this life
         for (const j in q.hb) if (+j !== from && q.hb[j] >= 40 && g.P[j]) g.P[j].as++;
         q.hb = {};

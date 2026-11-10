@@ -137,7 +137,7 @@ const race = {
   id: "race", title: "Neteam Grand Prix", tag: "3D street race · six NYC circuits", custom3d: true,
   blurb: "3 laps. Grab data packets for EMPs, shockwaves and coffee spills.",
   how: [],
-  keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera"],
+  keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera", "B look back"],
   rec: { label: "Best lap", better: "min", fmt: v => (v / 1000).toFixed(2) + " s" },
   GRID: 4, LIMIT: 300, GRACE: 25,
   fill(n) { return Math.max(6, Math.min(8, n)); },
@@ -818,9 +818,11 @@ const race = {
     F.shake = Math.max(0, (F.shake || 0) - dt);
     const spd = Math.abs(tv || 0), fast = clamp((spd - 36) / 24, 0, 1), sh = F.shake * 0.5 + fast * fast * 0.035;
     if (F.nx && F.post && F.post.comp.u.uSpd) F.post.comp.u.uSpd.value = lerp(F.post.comp.u.uSpd.value, fast, 0.08);
-    const camX = tx - Math.sin(ca) * dist + (F.cam === 2 ? Math.sin(ca) * 0.6 : 0), camZ = tz - Math.cos(ca) * dist + (F.cam === 2 ? Math.cos(ca) * 0.6 : 0);
+    // hold B to look back (the camera swings in front of the car)
+    const cs = (KEYS.has("KeyB") || F.lookBack) ? -1 : 1;
+    const camX = tx - cs * Math.sin(ca) * dist + (F.cam === 2 ? cs * Math.sin(ca) * 0.6 : 0), camZ = tz - cs * Math.cos(ca) * dist + (F.cam === 2 ? cs * Math.cos(ca) * 0.6 : 0);
     F.cam3.position.set(camX + (Math.random() - 0.5) * sh, hgt + (Math.random() - 0.5) * sh, camZ + (Math.random() - 0.5) * sh);
-    F.cam3.lookAt(tx + Math.sin(ca) * 8, F.cam === 2 ? 1.3 : 1.2, tz + Math.cos(ca) * 8);
+    F.cam3.lookAt(tx + cs * Math.sin(ca) * 8, F.cam === 2 ? 1.3 : 1.2, tz + cs * Math.cos(ca) * 8);
     const fov = 66 + clamp(Math.abs(tv || 0) / RC_BOOST, 0, 1.1) * 16; F.cam3.fov = lerp(F.cam3.fov, fov, 0.08); F.cam3.updateProjectionMatrix();
     if (me >= 0 && F.cars[me]) F.cars[me].spr.visible = F.cam !== 2;
     // speed streaks: points hanging in the air that you rush past

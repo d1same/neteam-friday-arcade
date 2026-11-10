@@ -204,7 +204,7 @@ function finishSession() {
   if (humans.length >= 1 && NET.db) {
     const doc = {
       g: S.game, at: Date.now(), day: dayKey(), nb: S.ro.filter(r => r.b).length, solo: solo ? 1 : 0,
-      ps: humans.map(o => { const r = S.ro[o.i]; return { u: r.u, n: r.n, c: r.c, pl: o.hp, pt: solo ? 0 : o.pt, sc: o.rec == null ? null : o.rec }; }),
+      ps: humans.map(o => { const r = S.ro[o.i]; let st; try { st = mod.stats ? mod.stats(S, o.i) : undefined; } catch (e) {} return { u: r.u, n: r.n, c: r.c, pl: o.hp, pt: solo ? 0 : o.pt, sc: o.rec == null ? null : o.rec, st }; }),
     };
     if (solo) S.res.forEach(o => { o.pt = 0; });
     S.saved = "saving"; S.solo = solo;
@@ -738,7 +738,7 @@ function renderMe() {
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
 // homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
-const SHOT_V = 4;
+const SHOT_V = 5;
 // map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
 const MAP_SHOT_V = 1;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
@@ -834,68 +834,51 @@ function computeRecords() {
   });
   return out;
 }
+function onStats(snap) {
+  APP.stats = snap.docs.map(d => d.data()).filter(o => o && typeof o === "object" && typeof o.u === "string");
+  renderBoard();
+}
+// the Hall of Fame: all-time leaders among everyone who has played on this server (real people only; the server adds them up)
+const HOF = [
+  ["Most kills", o => o.k, v => v.toLocaleString()],
+  ["Most headshots", o => o.hs, v => v.toLocaleString()],
+  ["Most knife kills", o => o.kn, v => v.toLocaleString()],
+  ["Best K/D", o => (o.k >= 20 ? o.k / Math.max(1, o.d) : 0), v => v.toFixed(2), "20+ kills"],
+  ["Most wins", o => o.wins, v => String(v), "with 2+ people"],
+  ["Most MVPs", o => o.mvp, v => String(v)],
+  ["Most kills in one match", o => o.bk, v => String(v)],
+  ["Most damage", o => o.dmg, v => v >= 10000 ? Math.round(v / 1000) + "k" : v.toLocaleString()],
+  ["Plants and defuses", o => o.obj, v => String(v)],
+  ["Golden Router time", o => o.hold, v => v >= 60 ? Math.floor(v / 60) + "m " + (v % 60) + "s" : v + "s"],
+  ["Matches played", o => o.games, v => String(v)],
+];
 function renderBoard() {
   const body = $("#boardBody"); body.textContent = "";
-  const today = dayKey();
-  const todays = APP.matches.filter(m => m.day === today);
-  $("#boardSub").textContent = todays.length ? todays.length + " match" + (todays.length > 1 ? "es" : "") + " today" : "";
-  $$(".tabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === APP.tab)));
   const recs = computeRecords(); APP.recs = recs; APP.heroSel = null; renderHero();
   GAME_ORDER.forEach(id => {
     const mod = GAMES[id], best = recs[id];
     const recEl = $('.game-card[data-g="' + id + '"] .rec');
     if (recEl) { recEl.textContent = ""; if (best) { const b = document.createElement("b"); b.textContent = mod.rec.fmt(best.v); recEl.append("Record ", b); } else recEl.textContent = "No record yet"; }
   });
-  if (APP.tab === "records") {
-    const box = document.createElement("div"); box.className = "records";
-    GAME_ORDER.forEach(id => {
-      const mod = GAMES[id], best = recs[id];
-      const row = document.createElement("div"); row.className = "record";
-      row.append(best ? avatarCanvas(validChar(best.p.c) || [0, 0, 0, 0, 0], 38) : avatarCanvas([0, 9, 3, 0, 0], 38));
-      const mid = document.createElement("div"); mid.style.minWidth = "0";
-      const l = document.createElement("div"); l.className = "lbl"; l.textContent = mod.title + " · " + mod.rec.label;
-      const nm = document.createElement("div"); nm.style.fontWeight = "700"; nm.textContent = best ? cleanNick(best.p.n) : "Up for grabs";
-      mid.append(l, nm);
-      const v = document.createElement("div"); v.className = "val"; v.textContent = best ? mod.rec.fmt(best.v) : "—";
-      row.append(mid, v); box.append(row);
-    });
-    body.append(box);
-  } else {
-    const rows = aggregate(APP.tab === "today" ? todays : APP.matches);
-    if (!rows.length) {
-      const e = document.createElement("div"); e.className = "empty";
-      e.textContent = APP.tab === "today" ? "No league games yet today. Play with 2+ people to earn points." : "No matches yet. Every match with 2+ people adds points here.";
-      body.append(e);
-    } else {
-      const box = document.createElement("div"); box.className = "rows";
-      rows.slice(0, 12).forEach((r, k) => {
-        const row = document.createElement("div"); row.className = "row" + (k === 0 ? " first" : "");
-        const rk = document.createElement("span"); rk.className = "rank"; rk.textContent = String(k + 1);
-        const who = document.createElement("div"); who.className = "who";
-        const b = document.createElement("b"); b.textContent = (r.n || "Tech") + (r.u === NET.uid ? " (you)" : "");
-        const sm = document.createElement("small"); sm.textContent = r.wins + " win" + (r.wins === 1 ? "" : "s") + " · " + r.games + " played" + (k === 0 && APP.tab === "today" ? " · MVP of the day" : "");
-        who.append(b, sm);
-        const pts = document.createElement("div"); pts.className = "pts"; pts.textContent = String(r.pts);
-        const ps = document.createElement("small"); ps.textContent = "PTS"; pts.append(ps);
-        row.append(rk, avatarCanvas(r.c || [0, 0, 0, 0, 0], 38), who, pts);
-        box.append(row);
-      });
-      body.append(box);
-    }
-  }
-  const feed = $("#feed"); feed.textContent = "";
-  if (APP.matches.length) {
-    const h4 = document.createElement("h4"); h4.textContent = "Recent matches";
-    const ul = document.createElement("ul");
-    APP.matches.slice(0, 6).forEach(m => {
-      const li = document.createElement("li");
-      const w = m.ps.find(p => p.pl === 1);
-      const a = document.createElement("span"); a.textContent = GAMES[m.g].title + " · " + (w ? cleanNick(w.n) + (m.solo ? " vs bots" : " won") : "done");
-      const b = document.createElement("span"); b.textContent = (m.day === today ? "" : m.day.slice(5).replace("-", "/") + " ") + clockStr(m.at);
-      li.append(a, b); ul.append(li);
-    });
-    feed.append(h4, ul);
-  }
+  const all = APP.stats || [];
+  $("#boardSub").textContent = all.length ? all.length + " player" + (all.length > 1 ? "s" : "") : "";
+  const box = mkEl("div", "records hof");
+  HOF.forEach(([label, val, fmt, note]) => {
+    const rows = all.map(o => ({ o, v: +val(o) || 0 })).filter(r => r.v > 0).sort((a, b) => b.v - a.v);
+    const top = rows[0], row = mkEl("div", "record");
+    row.append(avatarCanvas(top ? validChar(top.o.c) || [0, 0, 0, 0, 0] : [0, 9, 3, 0, 0], 38));
+    const mid = mkEl("div"); mid.style.minWidth = "0";
+    mid.append(mkEl("div", "lbl", label + (note ? " · " + note : "")), Object.assign(mkEl("div", null, top ? cleanNick(top.o.n) || "Tech" : "Up for grabs"), { style: "font-weight:700" }));
+    // runners-up, and where you stand if you're not in the top three
+    const more = rows.slice(1, 3).map((r, k) => (k + 2) + ". " + (cleanNick(r.o.n) || "Tech") + " " + fmt(r.v));
+    const mine = rows.findIndex(r => r.o.u === NET.uid);
+    if (mine > 2) more.push("You #" + (mine + 1) + " · " + fmt(rows[mine].v));
+    if (more.length) mid.append(mkEl("small", "hof-more", more.join("  ·  ")));
+    row.append(mid, mkEl("div", "val", top ? fmt(top.v) : "—"));
+    if (top && top.o.u === NET.uid) row.classList.add("mine");
+    box.append(row);
+  });
+  body.append(box);
 }
 
 // ---------- character editor ----------
@@ -994,7 +977,6 @@ function bindEvents() {
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
   $("#sndTestBtn").addEventListener("click", () => soundTest());
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
-  $$(".tabs button").forEach(b => b.addEventListener("click", () => { APP.tab = b.dataset.tab; renderBoard(); }));
   $("#fsBtn").addEventListener("click", toggleFullscreen);
   $("#leaveBtn").addEventListener("click", () => {
     if (APP.S && APP.V && APP.S.id === APP.V.sid) { endSession(); toast("You ended the game for everyone."); }
@@ -1095,6 +1077,7 @@ async function boot() {
       try { NET.db.collection("matches").onSnapshot(onMatches, () => {}); } catch (e) {}
     });
   } catch (e) { try { NET.db.collection("matches").onSnapshot(onMatches, () => {}); } catch (e2) {} }
+  try { NET.db.collection("stats").onSnapshot(onStats, () => {}); } catch (e) {}
   updateLobby();
   if (!APP.me.nick) setTimeout(openEditor, 400);
 }

@@ -166,6 +166,8 @@ body.playing #gameView input, body.playing #gameView textarea { -webkit-user-sel
 .records { display: grid; gap: 8px; }
 .record { display: grid; grid-template-columns: 38px minmax(0,1fr) auto; gap: 10px; align-items: center; padding: 8px 10px 8px 8px; border-radius: 12px; background: var(--panel-2); }
 .record canvas { width: 38px; height: 38px; }
+.hof .record small.hof-more { display: block; font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hof .record.mine { box-shadow: inset 3px 0 0 var(--accent, #ff8a3d); }
 .record .lbl { font-family: var(--f-mono); font-size: 10.5px; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
 .record .val { font-family: var(--f-mono); font-weight: 700; color: var(--bulb); font-variant-numeric: tabular-nums; }
 .feed { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line); }
@@ -575,16 +577,10 @@ footer.foot { margin-top: 26px; color: var(--muted); font-size: 12.5px; text-ali
       </section>
     </div>
 
-    <aside class="panel board" aria-label="Scoreboard">
-      <div class="section-title"><h2>Scoreboard</h2><span class="sub" id="boardSub"></span></div>
-      <div class="tabs" role="tablist">
-        <button role="tab" data-tab="today" aria-selected="true">Today</button>
-        <button role="tab" data-tab="all" aria-selected="false">All time</button>
-        <button role="tab" data-tab="records" aria-selected="false">Records</button>
-      </div>
+    <aside class="panel board" aria-label="Hall of Fame">
+      <div class="section-title"><h2>Hall of Fame</h2><span class="sub" id="boardSub"></span></div>
       <div id="boardBody"></div>
-      <div class="feed" id="feed"></div>
-      <p class="board-note">Points per match: 1st 10 · 2nd 7 · 3rd 5 · 4th 3 · everyone else 1. Placings count people only, so bots never take your points. League points need 2+ people; solo games still set records.</p>
+      <p class="board-note">All time, everyone who has played on this server. Real people only, bots never count. Kills against bots count too; wins need 2+ people.</p>
     </aside>
   </div>
   <footer class="foot">Keep this tab in front while you host a game. Background tabs slow down.</footer>
