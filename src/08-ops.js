@@ -390,7 +390,7 @@ function makeOps(md) {
           let took = false;
           if (w.it === "H") { if (q.hp < 100) { q.hp = Math.min(100, q.hp + 50); took = true; } }
           else if (w.it === "A") { if (q.arm < 100) { q.arm = 100; took = true; } }
-          else { q.w = w.it; if (!q.hasTr) q.cur = w.it; q.pk++; took = true; }
+          else { q.w = w.it; q.cur = w.it; q.pk++; took = true; }
           if (took) { w.rt = w.it === ROCKET ? 22 : 15; break; }
         }
       }
@@ -407,7 +407,7 @@ function makeOps(md) {
       if (tr.idle > 12 && Math.hypot(tr.x - tr.hx, tr.z - tr.hz) > 0.5) { tr.x = tr.hx; tr.z = tr.hz; tr.y = 0; tr.idle = 0; this.say(S, [8]); return; }
       let best = -1, bd = 1.35;
       g.P.forEach((q, j) => { if (!q.alive || q.gone) return; const d = Math.hypot(q.x - tr.x, q.z - tr.z); if (d < bd && Math.abs((q.jh || 0) - tr.y) < 1.4) { bd = d; best = j; } });
-      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; q.cur = KNIFE; this.say(S, [6, best]); }
+      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; this.say(S, [6, best]); }   // the holder keeps every weapon
     },
     propsTick(S, dt) {
       const g = S.g;
@@ -469,7 +469,7 @@ function makeOps(md) {
       }
     },
     enemy(S, i, j) { const P = S.g.P; return i !== j && (team ? P[i].tm !== P[j].tm : true); },
-    owns(S, p, wi) { if (p.hasTr) return wi === KNIFE; if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
+    owns(S, p, wi) { if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
     procAct(S, i, act, dt) {
       const g = S.g, p = g.P[i], b = g.bomb;
       if (!team || g.ph !== "live" || !p.alive || !act) { p.actT = 0; return; }
@@ -574,9 +574,9 @@ function makeOps(md) {
       // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
       const fa = Math.sin(p.a), fc = Math.cos(p.a), wide = (b.alertT = Math.max(0, (b.alertT || 0) - dt)) > 0;
       g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > -0.25) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
-      // Golden Router: go after whoever holds it; the holder only fights when cornered
+      // Golden Router: go after whoever holds it; the holder keeps running but shoots back at anyone who gets close
       if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
-      if (p.hasTr && td > 2.6) tgt = -1;
+      if (p.hasTr && td > 16) tgt = -1;
       if (troph && !p.hasTr && g.tr.by < 0 && td > 7) tgt = -1; // the free router matters more than a far-away fight
       if (tgt >= 0 && p.gr[0] > 0 && td > 7 && td < 20 && Math.random() < dt * 0.22) { const q = g.P[tgt]; p.gr[0]--; this.hostThrow(S, i, 0, Math.atan2(-(q.x - p.x), -(q.z - p.z)), clamp(0.06 + td / 55, 0.1, 0.45), 0); }
       if (tgt !== b.tgt) { b.tgt = tgt; b.react = (b.boss ? 0.25 : 0.4) + Math.random() * 0.35; }
@@ -760,7 +760,7 @@ function makeOps(md) {
       [F.cv, F.setBtn, F.setPanel, F.shop, F.touch].forEach(el => el && el.remove()); GFX.bleed("");
       V.fps = null;
     },
-    owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (pl && pl[22]) return [KNIFE]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
+    owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
     throwNade(V, k) {
       const F = V.fps, pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !pl || !pl[1] || F.shop && !F.shop.hidden) return;
       if (!(pl[18 + k] > 0)) { FX.text(W / 2, H * 0.7, arena ? (k ? "NO SMOKE" : "NO FRAG") : k ? "NO SMOKE · BUY ONE (B)" : "NO FRAG · BUY ONE (B)", "#ff8a3d", 0.9); return; }
@@ -2172,7 +2172,7 @@ function makeOps(md) {
         if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("early"); }
         if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "wrong"); }
         if (a[0] === 4) { F.ann = { big: "GO GO GO", sub: "", col: "#ff8a3d", life: 1.6 }; SFX.play("go"); }
-        if (a[0] === 6) { const mine = a[1] === me; F.ann = { big: mine ? "YOU HAVE THE ROUTER" : ((V.ro[a[1]] || {}).n || "").toUpperCase() + " HAS THE ROUTER", sub: mine ? "Knife only · stay alive" : "Take it from them", col: "#ffd23f", life: 2.6 }; SFX.play(mine ? "right" : "early"); }
+        if (a[0] === 6) { const mine = a[1] === me; F.ann = { big: mine ? "YOU HAVE THE ROUTER" : ((V.ro[a[1]] || {}).n || "").toUpperCase() + " HAS THE ROUTER", sub: mine ? "Keep it · stay alive" : "Take it from them", col: "#ffd23f", life: 2.6 }; SFX.play(mine ? "right" : "early"); }
         if (a[0] === 7) { F.ann = { big: "ROUTER DROPPED", sub: "Grab it!", col: "#ffd23f", life: 2 }; SFX.play("bump"); }
         if (a[0] === 8) { F.ann = { big: "ROUTER RESET", sub: "Back at the center", col: "#ffd23f", life: 2 }; }
       }
@@ -2243,7 +2243,7 @@ function makeOps(md) {
           ctx.save(); ctx.translate(ex, ey); ctx.fillStyle = "#ffd23f"; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, 0); ctx.lineTo(0, 11); ctx.lineTo(-9, 0); ctx.closePath(); ctx.stroke(); ctx.fill();
           ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.lineWidth = 4; ctx.strokeText(Math.round(d) + "m", 0, 22); ctx.fillText(Math.round(d) + "m", 0, 22); ctx.restore();
         }
-        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · KNIFE ONLY · RUN", W / 2, H - 104); }
+        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · STAY ALIVE", W / 2, H - 104); }
       } else {
         const ranked = (g.pl || []).map((p, i) => ({ i, k: p[3], d: p[4] })).sort((a, b) => b.k - a.k || a.d - b.d);
         const lead = ranked[0], myRank = ranked.findIndex(o => o.i === me) + 1;
