@@ -134,7 +134,7 @@ function rcDrive(c, dt, gas, steer, drift, isBot) {
 }
 
 const race = {
-  id: "race", title: "Neteam Grand Prix", tag: "3D street race · night NYC", custom3d: true,
+  id: "race", title: "Neteam Grand Prix", tag: "3D street race · six NYC circuits", custom3d: true,
   blurb: "3 laps. Grab data packets for EMPs, shockwaves and coffee spills.",
   how: [],
   keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera"],

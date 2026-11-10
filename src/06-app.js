@@ -392,7 +392,7 @@ function mkEl(tag, cls, txt) { const e = document.createElement(tag); if (cls) e
 function nth(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 // a screenshot of the game fills the screen behind the lobby; the drawn card art shows through if the image is missing
 function scrBackdrop(id) {
-  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg";
+  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg?v=" + SHOT_V;
   bg.append(im, mkEl("i")); return bg;
 }
 // small top-down plan of a map (walls, sites, decks) or the outline of a race track, for the vote tiles
@@ -690,13 +690,15 @@ function renderMe() {
   paintAvatar($("#meCanvas"), APP.me.c, 34);
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
+// homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
+const SHOT_V = 2;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;
   if (APP.heroSel === id) return; APP.heroSel = id;
   $("#heroTitle").textContent = g.title; $("#heroTag").textContent = g.tag; $("#heroKind").textContent = HERO_KIND[id] || "Game night";
   const ks = $("#heroKeys"); ks.textContent = ""; (g.keys || []).slice(0, 6).forEach(k => { const sp = document.createElement("span"); sp.textContent = k; ks.append(sp); });
-  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg"; im.classList.add("swap"); const pre = new Image();
+  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg?v=" + SHOT_V; im.classList.add("swap"); const pre = new Image();
   pre.onload = () => { im.src = src; im.classList.remove("swap"); }; pre.onerror = () => { im.style.display = "none"; }; pre.src = src;
   const best = (APP.recs || {})[id]; $("#heroRec").textContent = best ? g.rec.fmt(best.v) : "—";
 }
@@ -707,7 +709,7 @@ function buildCards() {
     const b = document.createElement("button"); b.className = "game-card"; b.dataset.g = id; b.type = "button";
     // real in-game screenshot; the drawn card art is the fallback if the image is missing
     const cv = document.createElement("div"); cv.className = "shot";
-    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg";
+    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg?v=" + SHOT_V;
     im.onerror = () => { const c2 = document.createElement("canvas"); cv.replaceWith(c2); drawCards(); };
     const kind = document.createElement("span"); kind.className = "kind"; kind.textContent = HERO_KIND[id] || "3D";
     cv.append(im, kind);
