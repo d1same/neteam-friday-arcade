@@ -1044,11 +1044,11 @@ const SFX = {
   // recorded samples (CC0, see sfx/CREDITS.txt); every caller falls back to the synth until a sample has loaded
   // menus (real switches), announcements (war drums, crowd), hits, cases, air and electricity: see sfx/CREDITS.txt
   NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1 laser1 laser2 land1 eng-idle.wav eng-mid.wav shot-lmg shot-scout far-pistol far-smg far-rifle far-carbine far-sniper far-shotgun far-heavy far-lmg far-scout bolt-up bolt-back bolt-fwd bolt-down clip1 clip2 bullet1 rl-ar gun-pistol gun-heavy gun-smg gun-rifle gun-carbine gun-sniper gun-shotgun gun-lmg gun-scout gunm-pistol gunm-heavy gunm-smg gunm-rifle gunm-carbine gunm-sniper gunm-shotgun gunm-lmg gunm-scout fb-hit fb-tick fb-flesh fb-head fb-ping fb-kill fb-killhead fb-win fb-lose imp-metal1 imp-metal2 imp-metal3 imp-metal4 imp-metal5 imp-metal6 imp-metal7 ric1 ric2 ric3 ric4 imp-wood1 flyby1 crack1",
-  S: {}, _ld: 0,
+  S: {}, _ld: 0, SV: 15,   // bump when recordings are replaced under the same name (the server caches /sfx for 7 days)
   load() {
     const a = this.ctx; if (!a || this._ld) return; this._ld = 1;
     ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall " + this.NEW).split(" ").forEach((n) => {
-      fetch("sfx/" + (n.includes(".") ? n : n + ".mp3")).then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n.replace(/\.wav$/, "")] = buf; }, () => {})).catch(() => {});
+      fetch("sfx/" + (n.includes(".") ? n : n + ".mp3") + "?v=" + this.SV).then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n.replace(/\.wav$/, "")] = buf; }, () => {})).catch(() => {});
     });
   },
   // play a sample: far 0..1 muffles it; returns false when it is not loaded so the caller can synthesise instead
