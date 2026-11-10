@@ -322,7 +322,7 @@ function gameFrame(dt, t) {
   const mod = V.mod, ph = V.h.ph;
   if (ph !== V.prevPh) {
     if (ph === "play") { SFX.play("go"); }
-    if (ph === "results") { const me = (V.h.res || []).find(o => o.i === V.meIdx); SFX.play(me && me.hp === 1 ? "win" : "pop"); }
+    if (ph === "results") { const me = (V.h.res || []).find(o => o.i === V.meIdx); SFX.play(me && me.hp === 1 ? "win" : "count"); }
     V.prevPh = ph;
     renderOverlay(V, true);
   } else if (ph === "results" && V.h.saved !== V.shownSaved) renderOverlay(V, false);
@@ -392,7 +392,7 @@ function mkEl(tag, cls, txt) { const e = document.createElement(tag); if (cls) e
 function nth(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 // a screenshot of the game fills the screen behind the lobby; the drawn card art shows through if the image is missing
 function scrBackdrop(id) {
-  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg";
+  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg?v=" + SHOT_V;
   bg.append(im, mkEl("i")); return bg;
 }
 // small top-down plan of a map (walls, sites, decks) or the outline of a race track, for the vote tiles
@@ -690,13 +690,15 @@ function renderMe() {
   paintAvatar($("#meCanvas"), APP.me.c, 34);
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
+// homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
+const SHOT_V = 3;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;
   if (APP.heroSel === id) return; APP.heroSel = id;
   $("#heroTitle").textContent = g.title; $("#heroTag").textContent = g.tag; $("#heroKind").textContent = HERO_KIND[id] || "Game night";
   const ks = $("#heroKeys"); ks.textContent = ""; (g.keys || []).slice(0, 6).forEach(k => { const sp = document.createElement("span"); sp.textContent = k; ks.append(sp); });
-  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg"; im.classList.add("swap"); const pre = new Image();
+  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg?v=" + SHOT_V; im.classList.add("swap"); const pre = new Image();
   pre.onload = () => { im.src = src; im.classList.remove("swap"); }; pre.onerror = () => { im.style.display = "none"; }; pre.src = src;
   const best = (APP.recs || {})[id]; $("#heroRec").textContent = best ? g.rec.fmt(best.v) : "—";
 }
@@ -707,7 +709,7 @@ function buildCards() {
     const b = document.createElement("button"); b.className = "game-card"; b.dataset.g = id; b.type = "button";
     // real in-game screenshot; the drawn card art is the fallback if the image is missing
     const cv = document.createElement("div"); cv.className = "shot";
-    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg";
+    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg?v=" + SHOT_V;
     im.onerror = () => { const c2 = document.createElement("canvas"); cv.replaceWith(c2); drawCards(); };
     const kind = document.createElement("span"); kind.className = "kind"; kind.textContent = HERO_KIND[id] || "3D";
     cv.append(im, kind);
@@ -950,6 +952,7 @@ function bindEvents() {
   });
   $("#dashBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); pendingDash = true; });
   addEventListener("pointerdown", () => SFX.ensure(), { once: true });
+  addEventListener("keydown", (e) => { if (e.code === "F8" && !e.repeat) { e.preventDefault(); NX.perfSet(!NX.perfOn()); const c = document.querySelector("[data-fps]"); if (c) c.checked = NX.perfOn(); } });
   addEventListener("keydown", (e) => {
     if (e.target && (e.target.tagName === "INPUT" || $("#editor").open)) return;
     if (APP.view !== "game") return;
@@ -978,13 +981,31 @@ function bindEvents() {
   $("#stagebox").addEventListener("pointerdown", (e) => { const V = APP.V; if (V && V.mod.id === "alert" && e.target.id !== "leaveBtn" && !e.target.closest(".card") && !e.target.closest("#socPanel")) { if (e.target !== cv) alert.tap(V); } });
 }
 
+// ---------- sound test: every sound in the game on a button (Settings in a match, or open the site with #sounds) ----------
+function soundTest() {
+  let d = $("#sndTest");
+  if (!d) {
+    d = document.createElement("div"); d.id = "sndTest"; d.className = "snd-test";
+    d.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Sound test</h4></div><button type="button" class="set-x" aria-label="Close">✕</button></header><p>Press a sound to hear it. Tell us the names of the ones that are wrong.</p><div class="snd-grid"></div>';
+    const grid = d.querySelector(".snd-grid");
+    SFX.LIST().forEach(([name, fn]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.addEventListener("click", () => { if (!SFX.on) { toast("Sound is off. Turn it on with the speaker button."); return; } SFX.ensure(); try { fn(); } catch (e) { console.error(e); } }); grid.appendChild(b); });
+    d.querySelector(".set-x").addEventListener("click", () => { d.hidden = true; if (location.hash === "#sounds") history.replaceState(null, "", location.pathname + location.search); });
+    ["mousedown", "pointerdown", "click"].forEach(ev => d.addEventListener(ev, (e) => e.stopPropagation()));
+  }
+  const host = APP.view === "game" ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
+  d.hidden = false; if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) { }
+  SFX.ensure(); SFX.load();
+}
+addEventListener("hashchange", () => { if (location.hash === "#sounds") soundTest(); });
+
 // ---------- main loop ----------
 let lastT = now();
 function frame() {
   const tn = now(), dt = Math.min(0.05, (tn - lastT) / 1000); lastT = tn;
   const t = tn / 1000;
+  const inGame = APP.view === "game";
   try {
-    if (APP.view === "game") gameFrame(dt, t);
+    if (inGame) gameFrame(dt, t);
     else {
       drawStage(t);
       const host = findHost();
@@ -992,12 +1013,16 @@ function frame() {
     }
     edPreview(t);
   } catch (e) { console.error(e); }
+  // frame rate display (F8) and the display's refresh rate for dynamic resolution
+  try { NX.perfFrame(tn - (frame.prev || tn), now() - tn, inGame ? $("#gameView") : document.body, inGame); } catch (e) { }
+  frame.prev = tn;
   requestAnimationFrame(frame);
 }
 
 async function boot() {
   APP.peerMap = {};
   renderMe(); buildCards(); bindEvents(); renderBoard(); updateLobby();
+  if (location.hash === "#sounds") soundTest();
   requestAnimationFrame(frame);
   await NET.init();
   // a stored character from the shared store wins if this browser has none

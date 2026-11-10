@@ -177,6 +177,31 @@ void main(){ vec2 inv = uP.xy; vec3 lw = vec3( 0.299, 0.587, 0.114 );
       cu.uA.value.set(L.bloom, L.vig, tier.grain ? L.grain : 0, L.ca); cu.uB.value.set(L.contrast, L.sat, L.ao, (t || 0) % 97); cu.uTint.value.set(L.tint[0], L.tint[1], L.tint[2]);
       if (P.fxaa) { NXS.blit(r, P.comp.q, P.ldr); P.fxaa.u.t.value = P.ldr.texture; P.fxaa.u.uP.value.set(1 / P.w, 1 / P.h, tier.grain ? L.grain : 0, (t || 0) % 97); NXS.blit(r, P.fxaa.q, null); }
       else NXS.blit(r, P.comp.q, null);
+      NX.perfEnd(r, P.w, P.h, P.drs ? NX.drs.k : 1);
+    };
+    // ---- warm-up, behind the loading screen. Everything the match can ever show is drawn once, hidden and off-screen
+    // things included, so the graphics card compiles every shader and takes every texture now instead of freezing the
+    // picture the first time each one appears in play. Lights stay exactly as they are: their number is part of every shader.
+    P.warm = (scene, cam) => {
+      const hid = [], cull = [], lit = [];
+      const walk = (o, shown) => {
+        const vis = shown && o.visible;
+        if (o.isLight) { if (!vis && o.visible) { o.visible = false; lit.push(o); } return; }
+        if (!o.visible) { o.visible = true; hid.push(o); }
+        if (o.frustumCulled) { o.frustumCulled = false; cull.push(o); }
+        for (let i = 0; i < o.children.length; i++) walk(o.children[i], vis);
+      };
+      const t0 = performance.now(), n0 = renderer.info.programs ? renderer.info.programs.length : 0;
+      try {
+        walk(scene, true);
+        if (S && S.shadow) NXS.shadowPass(S);
+        P.render(scene, cam, 0);
+        if (S) NXS.keep(S);
+      } catch (e) { console.warn("[nx] warm-up", e); }
+      hid.forEach(o => { o.visible = false; }); lit.forEach(o => { o.visible = true; }); cull.forEach(o => { o.frustumCulled = true; });
+      try { renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); } catch (e) { }
+      P.frame = 0; P.last = 0; NX.drsReset();
+      console.info("[nx] warm-up " + Math.round(performance.now() - t0) + " ms, " + ((renderer.info.programs ? renderer.info.programs.length : 0) - n0) + " shaders, " + hid.length + " hidden things shown");
     };
     P.dispose = () => { [P.scene, P.aoA, P.aoB, P.ldr, P.shA, P.shB].concat(P.D, P.U, P.expo).forEach(x => { if (x) x.dispose(); }); if (P.scene.depthTexture) P.scene.depthTexture.dispose(); [P.pre, P.down, P.up, P.adapt, P.ao, P.aoBlur, P.comp, P.fxaa, P.shMask, P.shBlur].forEach(x => { if (x) x.m.dispose(); }); };
     return P;

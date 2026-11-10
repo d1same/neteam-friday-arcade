@@ -303,9 +303,18 @@ void main(){ vec3 d = normalize( vDir );
     const cast = S.shadow && opt && opt.cast;
     obj.traverse(o => { if (!o.isMesh || o.userData.nxStatic) return; const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) if (m && m.isMeshStandardMaterial && !m.userData.nx) NX.patchDynamic(m, S); if (cast) o.castShadow = true; if (S.shadow && o.castShadow && !o.userData.nxCast) { o.layers.enable(2); o.userData.nxCast = 1; } });
   },
+  keep(S) { const ps = S.renderer.info.programs; if (ps && ps.length !== S.pn) { for (let i = 0; i < ps.length; i++) if (!ps[i].nxKeep) { ps[i].nxKeep = 1; ps[i].usedTimes++; } S.pn = ps.length; } },
   update(S, dt, t) {
     if (S.gone) return; S.frame++;
-    if (S.frame % 24 === 1) NXS.adopt(S, S.scene);   // catches anything the game created since the last look (new props, effects, late models)
+    NX.perfBegin(S.renderer);
+    // anything the game put into the scene since the last frame (effects, thrown things) gets the engine's lighting before
+    // it is first drawn: drawn once without it, the graphics card would compile a shader that is never used again
+    { const ch = S.scene.children, seen = S.seen || (S.seen = new WeakSet()); for (let i = 0; i < ch.length; i++) { const o = ch[i]; if (!seen.has(o)) { seen.add(o); if (o !== S.group) NXS.adopt(S, o); } } }
+    if (S.frame % 24 === 1) NXS.adopt(S, S.scene);   // and a full look now and then for things attached deeper down (late models)
+    // Effects make a material per particle and throw it away afterwards. When the last one of a kind went, three.js
+    // deleted the compiled shader with it and the next shot or puff of smoke compiled it again: a freeze every time.
+    // Every shader this match has needed is now kept until the match ends.
+    NXS.keep(S);
     if (S.shadow && (S.tier.shadow >= 2048 || (S.frame & 1))) NXS.shadowPass(S);
   },
   dispose(S) {

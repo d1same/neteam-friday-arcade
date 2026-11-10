@@ -205,7 +205,7 @@ const GUNS = {
   _sc: {},
   scan(k) {
     if (this._sc[k]) return this._sc[k];
-    return this._sc[k] = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/gun-" + k + ".glb", (g) => res(g.scene), null, () => res(null)); } catch (e) { res(null); } })).catch(() => null);
+    return this._sc[k] = GFX.track(GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/gun-" + k + ".glb", (g) => res(g.scene), null, () => res(null)); } catch (e) { res(null); } })).catch(() => null));
   },
   fit(g, src, k, id, T) {
     const U = g.userData; U.proc.forEach(c => { c.visible = false; });

@@ -432,6 +432,20 @@ dialog.editor { border: 1px solid var(--line); border-radius: 12px; padding: 0; 
 @media (max-height: 500px) { .ops-touch { gap: 5px; } .ops-touch button { min-width: 46px; height: 38px; font-size: 11px; border-radius: 10px; background: rgba(18,20,23,.45); } .ops-touch .t-fire { height: 52px; font-size: 14px; background: rgba(255,77,94,.45); } }
 .look-btn { position: absolute; z-index: 3; right: 12px; top: 12px; padding: 7px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,.12); background: linear-gradient(180deg, rgba(22,25,30,.88), rgba(8,9,11,.92)); color: var(--text); font-family: var(--f-mono); font-weight: 700; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 7px; }
 .look-btn span { color: var(--bulb); font-size: 14px; }
+.perf-box { position: fixed; left: 10px; top: 50%; transform: translateY(-50%); z-index: 70; pointer-events: none; white-space: pre; font: 600 11px/1.5 var(--f-mono, ui-monospace, monospace); letter-spacing: .02em; color: #d7f5e3; background: rgba(8,10,12,.78); border: 1px solid rgba(255,255,255,.14); border-left: 2px solid #3ddc97; border-radius: 3px; padding: 6px 10px; }
+.perf-box[hidden] { display: none; }
+.snd-test { position: fixed; z-index: 80; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(760px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto; background: #121417; border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 24px 80px rgba(0,0,0,.6); color: var(--text); }
+.snd-test[hidden] { display: none; }
+.snd-test header { display: flex; align-items: flex-end; justify-content: space-between; padding: 18px 22px 12px; border-bottom: 1px solid rgba(255,255,255,.08); }
+.snd-test .set-eyebrow { font-family: var(--f-mono); font-size: 10px; letter-spacing: .26em; text-transform: uppercase; color: var(--muted); }
+.snd-test h4 { margin: 2px 0 0; font-family: var(--f-display); font-size: 24px; letter-spacing: .04em; text-transform: uppercase; }
+.snd-test .set-x { width: 32px; height: 32px; border-radius: 4px; border: 1px solid rgba(255,255,255,.12); background: transparent; color: var(--muted); font-size: 14px; cursor: pointer; }
+.snd-test .set-x:hover { color: var(--text); border-color: var(--bulb); }
+.snd-test p { margin: 12px 22px 0; color: var(--muted); font-size: 13px; }
+.snd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; padding: 14px 22px 22px; }
+.snd-grid button { text-align: left; padding: 9px 12px; border-radius: 4px; border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.04); color: #dfe2e7; font: 600 13px/1.25 inherit; cursor: pointer; }
+.snd-grid button:hover { border-color: var(--bulb); background: rgba(255,138,61,.08); }
+.snd-grid button:active { transform: translateY(1px); }
 .look-btn:hover { border-color: var(--bulb); }
 .look-panel { position: absolute; z-index: 4; right: 12px; top: 54px; width: min(260px, calc(100% - 24px)); background: rgba(18,20,23,.97); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.5); }
 .look-panel[hidden] { display: none; }
@@ -988,7 +1002,7 @@ function paintAvatar(cv, c, px, colorOverride) {
   drawChar(ctx, c, px / 2, px * 0.56, px * 0.62, { shadow: false, bob: false, blink: false, color: colorOverride });
 }
 
-// ---------- sound (synthesised, starts after first interaction) ----------
+// ---------- sound (recorded samples with synthesised fallbacks, starts after first interaction) ----------
 const SFX = {
   on: store("nfa-sound") !== false,
   ctx: null,
@@ -1021,19 +1035,26 @@ const SFX = {
     s.connect(f).connect(g).connect(this.dest(a)); s.start();
   },
   // recorded samples (CC0, see sfx/CREDITS.txt); every caller falls back to the synth until a sample has loaded
+  // menus (real switches), announcements (war drums, crowd), hits, cases, air and electricity: see sfx/CREDITS.txt
+  NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1",
   S: {}, _ld: 0,
   load() {
     const a = this.ctx; if (!a || this._ld) return; this._ld = 1;
-    ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall").split(" ").forEach((n) => {
+    ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall " + this.NEW).split(" ").forEach((n) => {
       fetch("sfx/" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n] = buf; }, () => {})).catch(() => {});
     });
   },
   // play a sample: far 0..1 muffles it; returns false when it is not loaded so the caller can synthesise instead
-  samp(name, vol = 1, pan = 0, rate = 1, far = 0, delay = 0) {
+  samp(name, vol = 1, pan = 0, rate = 1, far = 0, delay = 0, wet = 1) {
     const a = this.ensure(); if (!a) return true; this.load(); const b = this.S[name]; if (!b) return false; if (vol < 0.01) return true;
     const s = a.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; let n = s;
     if (far > 0.05) { const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 14000 * Math.pow(1 - Math.min(far, 0.95), 2) + 500; n = s.connect(f); }
-    n.connect(this.out(a, vol, pan)); s.start(a.currentTime + delay); return true;
+    n.connect(this.out(a, vol, pan, wet)); s.start(a.currentTime + delay); return true;
+  },
+  // a soft dry tap of noise: what a menu or event sound falls back to in the first second, before its recording has loaded
+  tap(vol = 0.3, freq = 1800) {
+    const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, vol * 0.4, 0, 0), s = a.createBufferSource(); s.buffer = this.noiseBuf(a);
+    const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 1.1; const g = a.createGain(); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.07);
   },
   _nb: null,
   noiseBuf(a) { if (this._nb && this._nb.sampleRate === a.sampleRate) return this._nb; const n = a.sampleRate * 1.5, b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; return (this._nb = b); },
@@ -1135,7 +1156,8 @@ const SFX = {
   impact(kind, vol, pan) {
     const a = this.ensure(); if (!a || vol < 0.02) return; const t = a.currentTime; if (t - this._it < 0.045) return; this._it = t;
     if (!this.samp(kind ? "hit-metal" : "hit-wall", vol * (kind ? 0.5 : 0.75), pan, 0.85 + Math.random() * 0.5)) { const o = this.out(a, vol * 0.25, pan), s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = kind ? 3200 : 1300; f.Q.value = 1; const g = a.createGain(); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.1); }
-    if (Math.random() < (kind ? 0.3 : 0.12)) { const o = a.createOscillator(), g = a.createGain(), f0 = 1800 + Math.random() * 2200; o.type = "sine"; o.frequency.setValueAtTime(f0, t + 0.02); o.frequency.exponentialRampToValueAtTime(f0 * (0.35 + Math.random() * 0.2), t + 0.42); g.gain.setValueAtTime(0.0001, t + 0.02); g.gain.exponentialRampToValueAtTime(0.5, t + 0.035); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.44); o.connect(g).connect(this.out(a, vol * 0.1, pan)); o.start(t + 0.02); o.stop(t + 0.46); }
+    // now and then the round sings off the surface: air noise through a narrow filter that falls away (a pure tone here sounded like a cartoon)
+    if (Math.random() < (kind ? 0.2 : 0.07)) { const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(), f0 = 2400 + Math.random() * 2600; s.buffer = this.noiseBuf(a); f.type = "bandpass"; f.Q.value = 22; f.frequency.setValueAtTime(f0, t + 0.02); f.frequency.exponentialRampToValueAtTime(f0 * (0.4 + Math.random() * 0.2), t + 0.4); g.gain.setValueAtTime(0.0001, t + 0.02); g.gain.exponentialRampToValueAtTime(1, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42); s.connect(f).connect(g).connect(this.out(a, vol * 0.5, pan)); s.start(t + 0.02, Math.random(), 0.45); }
   },
   // a round passing close to your head
   whiz(pan) {
@@ -1145,17 +1167,21 @@ const SFX = {
   },
   // a spent case ringing on the floor
   casing(vol = 0.5, big = 0) {
+    { const d = 0.42 + Math.random() * 0.12, pn = (Math.random() - 0.3) * 0.6, r = (big ? 0.8 : 1.25) + Math.random() * 0.3;   // recorded brass on a hard floor: one bounce, then a smaller one
+      if (this.samp("casing" + (1 + (Math.random() * 3 | 0)), vol * 0.2, pn, r, 0, d)) { this.samp("casing" + (1 + (Math.random() * 3 | 0)), vol * 0.09, pn, r * 1.12, 0, d + 0.09 + Math.random() * 0.06); return; } }
     const a = this.ensure(); if (!a) return; const t = a.currentTime + 0.42 + Math.random() * 0.12, o = this.out(a, vol * 0.05, (Math.random() - 0.3) * 0.6);
     [0, 0.07 + Math.random() * 0.05, 0.2].forEach((d, k) => { const os = a.createOscillator(), g = a.createGain(), f = (big ? 1900 : 4300) + Math.random() * 1500; os.type = "sine"; os.frequency.setValueAtTime(f, t + d); g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(1 / (k + 1), t + d + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.09); os.connect(g).connect(o); os.start(t + d); os.stop(t + d + 0.1); });
   },
-  // you dropped someone: a dry thud with a bright ping over it (higher for a headshot)
+  // you dropped someone: a dry recorded thwack over a low thud, with a helmet tick for a headshot
   kill(head) {
+    if (this.samp("thwack1", 0.75, 0, head ? 1.1 : 0.94, 0, 0, 0.15)) { this.samp("thud1", 0.55, 0, 0.9, 0, 0.01, 0); if (head) this.samp("tink1", 0.5, 0, 0.9, 0, 0.02, 0.15); return; }
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.3, 0, 0);
     const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(190, t); th.frequency.exponentialRampToValueAtTime(70, t + 0.12); tg.gain.setValueAtTime(0.9, t); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.18);
     [head ? 1760 : 1175, head ? 2637 : 1568].forEach((f, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = f; g.gain.setValueAtTime(0.0001, t + k * 0.06); g.gain.exponentialRampToValueAtTime(0.5, t + k * 0.06 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + k * 0.06 + 0.3); os.connect(g).connect(o); os.start(t + k * 0.06); os.stop(t + k * 0.06 + 0.32); });
   },
-  // your round landed: a dry tick, brighter and doubled for a head
+  // your round landed: a dry recorded tick, a metal one for a head
   hit(head) {
+    if (this.samp(head ? "tink1" : "tick1", head ? 0.42 : 0.4, 0, 0.94 + Math.random() * 0.12, 0, 0, 0)) return;
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.26, 0, 0);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = head ? 5200 : 3400; f.Q.value = 2.2;
     const g = a.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.06);
@@ -1178,8 +1204,9 @@ const SFX = {
     const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.setValueAtTime(120, t); os.frequency.exponentialRampToValueAtTime(52, t + 0.12); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); os.connect(g).connect(o); os.start(t); os.stop(t + 0.18);
     [[1100, 1.2, 0.8, 0.14], [3100, 2.5, 0.35, 0.3]].forEach(([fr, q, lv, len]) => { const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(fr, t); f.frequency.exponentialRampToValueAtTime(fr * 0.6, t + len); f.Q.value = q; const ng = a.createGain(); ng.gain.setValueAtTime(lv, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + len); s.connect(f).connect(ng).connect(o); s.start(t, Math.random(), len + 0.02); });
   },
-  // a crowd going up: a swell of voices with a few whistles
+  // a crowd going up (recorded)
   cheer(vol = 0.5) {
+    if (this.samp("crowd1", Math.min(1, vol * 1.1), 0, 0.96 + Math.random() * 0.08, 0, 0, 0.5)) return;
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, vol * 0.35, 0, 0.6);
     [[700, 0.6], [1250, 0.8], [2100, 0.9]].forEach(([fr, q], k) => { const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); s.loop = true; s.playbackRate.value = 0.7 + k * 0.2; const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = fr; f.Q.value = q;
       const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7 / (k + 1), t + 0.5 + k * 0.15); g.gain.setTargetAtTime(0.0001, t + 1.4, 0.7); s.connect(f).connect(g).connect(o); s.start(t, Math.random()); s.stop(t + 4.5); });
@@ -1218,7 +1245,7 @@ const SFX = {
       const sg = a.createGain(); sg.gain.value = 0.85; src.connect(lp).connect(sg).connect(o); src.start(t);
       const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(92, t); th.frequency.exponentialRampToValueAtTime(48, t + 0.09);
       tg.gain.setValueAtTime(0.0001, t); tg.gain.exponentialRampToValueAtTime(fl === "sand" ? 0.3 : 0.55, t + 0.008); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.15);
-      if (fl === "metal") { const pg = a.createOscillator(), pgn = a.createGain(); pg.type = "triangle"; pg.frequency.value = 780 + Math.random() * 500; pgn.gain.setValueAtTime(0.0001, t); pgn.gain.exponentialRampToValueAtTime(0.07, t + 0.006); pgn.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); pg.connect(pgn).connect(o); pg.start(t); pg.stop(t + 0.18); }
+      if (fl === "metal") this.samp("metal2", vol * 0.07, pan, 1.5 + Math.random() * 0.5);
       const n = a.createBufferSource(); n.buffer = this.noiseBuf(a); const bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 700 + Math.random() * 300; bp.Q.value = 0.7;
       const ng = a.createGain(); ng.gain.setValueAtTime(0.0001, t + 0.05); ng.gain.exponentialRampToValueAtTime(fl === "sand" ? 0.3 : 0.1, t + 0.075); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
       n.connect(bp).connect(ng).connect(o); n.start(t + 0.05, Math.random(), 0.16);
@@ -1250,7 +1277,7 @@ const SFX = {
     const a = this.ensure(); if (!a || !this.on || vol < 0.01) return; const t = a.currentTime, o = this.out(a, 0.3 * vol, pan);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); s.loop = true; const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(5200, t); f.frequency.exponentialRampToValueAtTime(2200, t + 2.2); f.Q.value = 0.6;
     const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6); s.connect(f).connect(g).connect(o); s.start(t); s.stop(t + 2.7);
-    this.tone(180, 0.08, "square", 0.05 * vol);
+    this.samp("air1", 0.5 * vol, pan, 0.8);   // the pop of the canister
   },
   // prop breaking: 0 wood/cardboard crunch, 1 glass + electrical pop
   crash(kind = 0, vol = 0.6, pan = 0) {
@@ -1276,24 +1303,53 @@ const SFX = {
     return ok;
   },
   clank(vol = 0.3, pan = 0) { const a = this.ensure(); if (!a) return; if (this.samp(Math.random() < 0.5 ? "click1" : "click2", vol * 1.6, pan, 0.9 + Math.random() * 0.2)) return; const t = a.currentTime, o = this.out(a, vol * 0.3, pan); [1200, 1850, 2600].forEach((fq, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = fq * (0.97 + Math.random() * 0.06); g.gain.setValueAtTime(0.5 / (k + 1), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12 + k * 0.03); os.connect(g).connect(o); os.start(t); os.stop(t + 0.25); }); },
+  // ---- named event sounds. Menus are real switches and clicks, announcements are war drums and a crowd: no beeps or
+  // jingles. Until a recording has loaded (the first second) a soft tap of noise stands in.
   play(name) {
     if (!this.on) return;
+    const u = (n, vol, rate, delay, wet) => this.samp(n, vol, 0, rate || 1, 0, delay || 0, wet || 0) || (delay ? 0 : this.tap(vol * 0.6));
     switch (name) {
-      case "blip": this.tone(660, 0.07, "square", 0.05); break;
-      case "pop": this.tone(420, 0.09, "sine", 0.12, 380); break;
-      case "count": this.tone(440, 0.14, "square", 0.06); break;
-      case "go": this.tone(880, 0.25, "square", 0.07); this.tone(1320, 0.25, "square", 0.04, 0, 0.05); break;
-      case "start": [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.12, "square", 0.05, 0, i * 0.08)); break;
-      case "win": [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.tone(f, 0.16, "triangle", 0.09, 0, i * 0.11)); break;
-      case "right": this.tone(740, 0.08, "triangle", 0.09); this.tone(1110, 0.12, "triangle", 0.08, 0, 0.06); break;
-      case "wrong": this.tone(220, 0.22, "sawtooth", 0.05, -90); break;
-      case "bump": this.tone(160, 0.12, "sine", 0.16, -60); this.noise(0.08, 0.05, 1200); break;
-      case "dash": this.noise(0.18, 0.06, 2400); break;
-      case "fall": this.tone(600, 0.6, "sine", 0.08, -520); break;
-      case "boom": this.noise(0.4, 0.14, 700); this.tone(90, 0.3, "sine", 0.15, -40); break;
-      case "join": this.tone(587, 0.08, "triangle", 0.07); this.tone(880, 0.1, "triangle", 0.06, 0, 0.07); break;
-      case "early": this.tone(180, 0.35, "square", 0.06, -60); break;
+      case "blip": u("ui-tick", 0.55); break;
+      case "pop": u("ui-off", 0.5); break;
+      case "right": u("ui-on", 0.6); break;
+      case "join": u("ui-on", 0.45, 1.2); break;
+      case "wrong": case "early": u("ui-deny", 0.65); break;
+      case "count": u("drum1", 0.85, 1, 0, 0.15); break;
+      case "go": u("drum-go", 1, 1, 0, 0.2); break;
+      case "start": u("ui-on", 0.55); u("drum1", 0.75, 1, 0.09, 0.15); break;
+      case "win": u("drum-win", 1, 1, 0, 0.2); this.samp("crowd1", 0.45, 0, 1, 0, 0.3, 0.4); break;
+      case "lose": u("drum-low", 0.95, 1, 0, 0.2); this.samp("power-down", 0.3, 0, 0.9, 0, 0.12, 0.3); break;
+      case "alarm": u("drum-low", 0.8, 1.15, 0, 0.2); u("ui-deny", 0.5, 1, 0.05); break;
+      case "pickup": u("pickup1", 0.4, 0.9 + Math.random() * 0.15); break;
+      case "bump": this.samp("thud1", 0.75, 0, 0.9 + Math.random() * 0.2) || this.tap(0.4, 500); break;
+      case "dash": this.samp("air1", 0.5, 0, 1.1) || this.tap(0.3, 3000); break;
+      case "fall": this.samp("fall1", 0.6) || this.tap(0.4, 700); break;
+      case "boom": this.blast(0.8, 0, 0, 0.25); break;
     }
+  },
+  // ---- one-shots that used to be beeps
+  // jump pad: a burst of compressed air and the deck kicking
+  pad(vol = 0.6) { if (!this.samp("air1", vol * 0.8, 0, 0.75 + Math.random() * 0.1, 0, 0, 0.4)) this.whoosh(vol, 0, 1); this.samp("thud1", vol * 0.5, 0, 1.25, 0, 0, 0.2); },
+  // something hard meeting metal: a hook that found nothing, a car nudging a barrier
+  clack(vol = 0.4, pan = 0, rate = 1) { this.samp("metal2", vol, pan, rate * (0.92 + Math.random() * 0.16)) || this.tap(vol * 0.6, 2600); },
+  // an electric discharge: sharp crack for a shot or a spark, the longer one for an EMP or a bolt landing
+  zap(vol = 0.5, pan = 0, long = 0) { this.samp(long ? "zap2" : "zap1", vol * (long ? 0.9 : 0.7), pan, 0.92 + Math.random() * 0.16, 0, 0, 0.6) || this.tap(vol * 0.6, 5200); if (long) this.samp("zap1", vol * 0.5, pan, 0.8, 0, 0, 0.6); },
+  // steam letting go (an overheated gun), a shield coming up, something powering down
+  steam(vol = 0.5) { this.samp("steam1", vol * 0.6, 0, 1, 0, 0, 0.3) || this.hiss(vol * 0.5, 0); },
+  shield(vol = 0.5) { this.samp("shield1", vol * 0.7, 0, 1, 0, 0, 0.4) || this.whoosh(vol * 0.6, 0, 1); },
+  // names for the sound test (Settings): what each one is and how to play it
+  LIST() {
+    const s = this, p = (n) => () => s.play(n);
+    return [["Menu tick", p("blip")], ["Menu confirm / ready", p("right")], ["Menu back / not ready", p("pop")], ["Denied / warning", p("wrong")], ["Someone joined", p("join")],
+      ["Countdown beat", p("count")], ["Go", p("go")], ["Game starting", p("start")], ["Victory", p("win")], ["Defeat", p("lose")], ["Payload planted", p("alarm")], ["Pickup", p("pickup")],
+      ["Hit marker", () => s.hit(0)], ["Headshot marker", () => s.hit(1)], ["Kill", () => s.kill(0)], ["Headshot kill", () => s.kill(1)], ["You are hit", () => s.hurt(30)], ["Heartbeat", () => s.heart(0.8)],
+      ["Pistol", () => s.shot("pistol")], ["SMG", () => s.shot("smg")], ["Rifle", () => s.shot("rifle")], ["Carbine", () => s.shot("carbine")], ["Heavy pistol", () => s.shot("heavy")], ["Shotgun", () => s.shot("shotgun")], ["Sniper", () => s.shot("sniper")], ["Laser shot", () => { s.shot("sniper"); s.zap(0.6); }], ["Distant shot", () => s.shot("rifle", 0.7, 0.4, 0.9)],
+      ["Reload rifle", () => s.reload("rifle", 2.4)], ["Reload pistol", () => s.reload("pistol", 1.6)], ["Reload shotgun", () => s.reload("shotgun", 3)], ["Empty click / pickup clank", () => s.clank(0.5)], ["Shell case", () => s.casing(1)],
+      ["Footstep", () => s.step(0.9, 0, 0)], ["Bullet on wall", () => s.impact(0, 0.8, 0)], ["Bullet on metal", () => s.impact(1, 0.8, 0)], ["Bullet passing", () => s.whiz(0.3)], ["Knife swing", () => s.swish(0.6)],
+      ["Grenade", () => s.blast(0.9, 0, 0, 0)], ["Big explosion", () => s.blast(1, 0, 1, 0)], ["Far explosion", () => s.blast(0.7, 0.3, 0, 0.8)], ["Smoke grenade", () => s.hiss(0.7, 0)], ["Crate breaks", () => s.crash(0, 0.7)], ["Glass breaks", () => s.crash(1, 0.7)],
+      ["Jump pad", () => s.pad(0.7)], ["Hook misses", () => s.clack(0.4, 0, 1.3)], ["Fall / you died", p("fall")], ["Body bump", p("bump")],
+      ["Car scrape", () => s.scrape(0.7, 0)], ["Nitro", () => s.whoosh(0.9, 0, 1)], ["EMP / bolt lands", () => s.zap(0.7, 0, 1)], ["Spark", () => s.zap(0.5)], ["Gun overheats", () => s.steam(0.7)], ["Shield", () => s.shield(0.7)], ["Crowd", () => s.cheer(0.8)],
+      ["Engine: idle to full and back (3 s)", () => { const e = s.engine(1); if (!e) return; const t0 = performance.now(), iv = setInterval(() => { const k = (performance.now() - t0) / 3000; if (k >= 1) { clearInterval(iv); e.stop(); return; } const r = k < 0.6 ? k / 0.6 : 1 - (k - 0.6) / 0.4; e.set(0.1 + r * 0.9, k < 0.6 ? 1 : 0.1, 0.5, 0, 1); }, 30); }]];
   },
 };
 
@@ -3185,12 +3241,17 @@ const GFX = {
     mat.customProgramCacheKey = () => "paint" + (tex ? 1 : 0) + (shade ? shade.join("_") : "");
     mat.needsUpdate = true;
   },
+  // model files still on their way. A match waits for them (briefly) so soldiers and guns are there, lit and compiled,
+  // when the loading screen lifts, instead of popping in with a freeze a few seconds into the round
+  pending: 0,
+  track(p) { GFX.pending++; const done = () => { GFX.pending--; }; p.then(done, done); return p; },
+  whenLoaded(maxMs) { return new Promise((res) => { const t0 = performance.now(); let calm = 0; const tick = () => { calm = GFX.pending > 0 ? 0 : calm + 1; if (calm >= 2 || performance.now() - t0 > maxMs) res(); else setTimeout(tick, 40); }; tick(); }); },
   operator() {
     if (GFX._op) return GFX._op;
-    GFX._op = new Promise((res) => {
+    GFX._op = GFX.track(new Promise((res) => {
       const go = () => { try { new THREE_EXTRAS.GLTFLoader().load("models/operator.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } };
       if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js?v=2"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
-    });
+    }));
     return GFX._op;
   },
   // realistic rigged CC0 soldier (see models/CREDITS.txt) with walk and run clips.
@@ -3198,7 +3259,7 @@ const GFX = {
   soldier(lite) {
     const k = lite ? 1 : 0, C = GFX._sol || (GFX._sol = []); if (C[k]) return C[k];
     const load = (f) => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/" + f, (g) => res(g), null, () => res(null)); } catch (e) { res(null); } });
-    return C[k] = GFX.operator().then(() => load(lite ? "trooper-lod.glb?v=1" : "trooper.glb")).then((g) => g || !lite ? g : load("trooper.glb"));
+    return C[k] = GFX.track(GFX.operator().then(() => load(lite ? "trooper-lod.glb?v=1" : "trooper.glb")).then((g) => g || !lite ? g : load("trooper.glb")));
   },
   // a cloud of glowing points drawn in one call (sparks, chips of light): emit() adds one, update() moves and fades them all
   cloud(scene, N, size) {
@@ -3214,11 +3275,17 @@ const GFX = {
       } };
   },
   // quality: phones get a lighter pipeline
-  // render resolution: the device's native pixel density times the player's scale (Settings), capped for safety
-  pxRatio() { const g = store("nfa-gfx") || {}, rs = clamp(+g.rs || (this.lowEnd() ? 0.75 : 1), 0.5, 1.5); return Math.min(3, (devicePixelRatio || 1) * rs); },
+  // render resolution: the device's native pixel density times the player's scale (Settings). A 4K or high-density
+  // laptop screen has four times the pixels of a 1080p one, far more than an office graphics card can shade, so the
+  // picture is capped per quality level (about 1600x900, 1920x1080, 2560x1440, 4K) and the screen scales it up.
+  pxRatio(w, h) {
+    const g = store("nfa-gfx") || {}, rs = clamp(+g.rs || (this.lowEnd() ? 0.75 : 1), 0.5, 1.5); let pr = Math.min(3, (devicePixelRatio || 1) * rs);
+    if (w > 0 && h > 0) { const cap = Math.sqrt([1.45e6, 2.1e6, 3.7e6, 8.3e6][NX.tier().i] / (w * h)) * Math.max(1, rs); if (pr > cap) pr = Math.max(0.5, cap); }
+    return pr;
+  },
   // size the 3D canvas to fill the whole stage (the 16:10 HUD canvas floats centred on top of it)
   fitStage(F, cam) {
-    const box = $("#stagebox"), gc = $("#gameCanvas"), w = box.clientWidth || 960, h = box.clientHeight || 600, pr = this.pxRatio();
+    const box = $("#stagebox"), gc = $("#gameCanvas"), w = box.clientWidth || 960, h = box.clientHeight || 600, pr = this.pxRatio(w, h);
     if (F.w !== w || F.h !== h || F.pr !== pr) { F.w = w; F.h = h; F.pr = pr; F.renderer.setPixelRatio(pr); F.renderer.setSize(w, h, false); Object.assign(F.cv.style, { width: w + "px", height: h + "px", left: "0px", top: "0px", borderRadius: "0" }); cam.aspect = w / h; cam.updateProjectionMatrix(); }
     const gw = parseFloat(gc.style.width) || 960, gh = parseFloat(gc.style.height) || 600; F.gw = gw; F.gh = gh; pinToStage(F, gw, gh);
   },
@@ -3517,7 +3584,7 @@ const GUNS = {
   _sc: {},
   scan(k) {
     if (this._sc[k]) return this._sc[k];
-    return this._sc[k] = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/gun-" + k + ".glb", (g) => res(g.scene), null, () => res(null)); } catch (e) { res(null); } })).catch(() => null);
+    return this._sc[k] = GFX.track(GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/gun-" + k + ".glb", (g) => res(g.scene), null, () => res(null)); } catch (e) { res(null); } })).catch(() => null));
   },
   fit(g, src, k, id, T) {
     const U = g.userData; U.proc.forEach(c => { c.visible = false; });
@@ -3646,22 +3713,95 @@ const NX = {
   },
   tier() {
     const g = store("nfa-gfx") || {}, q = g.q || "auto", named = ["low", "medium", "high", "ultra"].indexOf(q);
-    const i = named >= 0 ? named : NX.autoTier();
+    // Auto corrects itself: a PC that could not hold its level last game (see drsTick) starts one lower on this card
+    const adj = named < 0 && g.adjGpu === NX.gpu() ? Math.min(0, +g.adj || 0) : 0;
+    const i = named >= 0 ? named : Math.max(0, NX.autoTier() + adj);
     return Object.assign({ i, auto: named < 0 }, NX.TIERS[i]);
   },
+  // ---- the display's refresh interval. Frames can never come faster than the display shows them, so a 30 Hz screen
+  // (Remote Desktop, some docks and TVs) must not be mistaken for a slow graphics card. The shortest steady average seen
+  // is the display; menus are light enough to trust in both directions, a match can only confirm a faster display.
+  hz: { ms: 16.67, acc: 0, n: 0, known: false },
+  hzTick(dtMs, light) {
+    const H = NX.hz; if (!(dtMs > 1) || dtMs > 120) { H.acc = 0; H.n = 0; return; }
+    H.acc += dtMs; if (++H.n < 24) return; const a = H.acc / H.n; H.acc = 0; H.n = 0;
+    if (!H.known || a < H.ms) { if (light || a < H.ms) { H.ms = a; H.known = true; } }
+    else if (light) H.ms += (a - H.ms) * 0.25;
+  },
+  // the frame time dynamic resolution aims for: 60 a second, or the display's own rate when that is slower
+  frameGoal() { return Math.min(42, Math.max(16.67, NX.hz.ms)); },
   // dynamic resolution: when frames take too long the picture is drawn a little smaller and scaled up, and it grows back
   // when there is room. Frame times are locked to the display's refresh, so "room" can only be found by trying: a step up
   // that drops frames is taken back and the next try waits twice as long.
-  drs: { k: 1, acc: 0, n: 0, hold: 4, cool: 6, up: 0 },
-  drsReset() { const D = NX.drs; D.k = 1; D.acc = 0; D.n = 0; D.hold = 4; D.cool = 6; D.up = 0; },
+  drs: { k: 1, acc: 0, n: 0, hold: 4, cool: 6, up: 0, sum: 0, cnt: 0, told: false },
+  drsReset() { const D = NX.drs; D.k = 1; D.acc = 0; D.n = 0; D.hold = 4; D.cool = 6; D.up = 0; D.sum = 0; D.cnt = 0; D.told = false; },
   drsTick(dtMs) {
     const D = NX.drs; if (!(dtMs > 0) || dtMs > 250) return D.k; D.acc += dtMs; D.n++; if (D.n < 30) return D.k;
-    const avg = D.acc / D.n; D.acc = 0; D.n = 0;
-    if (avg > 20.5 && D.k > 0.5) { if (D.up) D.cool = Math.min(64, D.cool * 2); D.up = 0; D.k = Math.max(0.5, D.k * (avg > 30 ? 0.8 : 0.9)); D.hold = D.cool; }
+    const avg = D.acc / D.n, goal = NX.frameGoal(); D.acc = 0; D.n = 0;
+    if (avg > goal * 1.23 && D.k > 0.5) { if (D.up) D.cool = Math.min(64, D.cool * 2); D.up = 0; D.k = Math.max(0.5, D.k * (avg > goal * 1.8 ? 0.8 : 0.9)); D.hold = D.cool; }
     else if (D.hold > 0) D.hold--;
-    else if (avg < 17.6 && D.k < 1) { D.k = Math.min(1, D.k + 0.1); D.up = 1; D.hold = 2; }
+    else if (avg < goal * 1.056 && D.k < 1) { D.k = Math.min(1, D.k + 0.1); D.up = 1; D.hold = 2; }
     else D.up = 0;
+    // Auto level: half a minute spent mostly at a much smaller picture means this level is too heavy for this card.
+    // A level lower at full size looks better and runs smoother, so the next game starts one lower.
+    D.sum += D.k; D.cnt++;
+    if (!D.told && D.cnt >= 50 && D.sum / D.cnt < 0.72) {
+      D.told = true; const g = store("nfa-gfx") || {}, T = NX.tier();
+      if (T.auto && T.i > 0) {
+        store("nfa-gfx", Object.assign(g, { adj: (g.adjGpu === NX.gpu() ? Math.min(0, +g.adj || 0) : 0) - 1, adjGpu: NX.gpu() }));
+        if (typeof toast === "function") toast("This PC is struggling at " + (T.name === "medium" ? "Medium" : T.name === "high" ? "High" : "Ultra") + " graphics. The next game starts one level lower (Settings to change).", 6000);
+      }
+    }
     return D.k;
+  },
+
+  // ---- frame rate display (F8, or the switch in Settings): what this PC really gets, half a second at a time
+  perf: { on: null, el: null, ts: [], hist: [], js: 0, draw: 0, n: 0, t0: 0, gl: null, ext: null, q: null, pend: [], gAcc: 0, gN: 0, gpuMs: -1, d0: 0, calls: 0, tris: 0, res: "", k: 1, live: 0 },
+  perfOn() { const P = NX.perf; if (P.on === null) P.on = (store("nfa-gfx") || {}).fps === 1 || /[#?&]fps\b/.test(location.href); return P.on; },
+  perfSet(on) { const P = NX.perf; P.on = !!on; store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { fps: on ? 1 : 0 })); if (P.el) P.el.hidden = !on; P.ts.length = 0; P.hist.length = 0; },
+  gpuName() { return NX.gpu().replace(/^ANGLE \((?:[^,]+, )?/, "").replace(/ \(0x[0-9a-f]+\).*$/i, "").replace(/ Direct3D.*$| OpenGL.*$|, .*$/i, "").replace(/\)$/, "").slice(0, 60) || "unknown graphics card"; },
+  // once per animation frame from the page loop. jsMs = time the game's own code took this frame (drawing included)
+  perfFrame(dtMs, jsMs, host, inGame) {
+    NX.hzTick(dtMs, !inGame);
+    const P = NX.perf; if (!NX.perfOn()) return;
+    if (!P.el) { P.el = document.createElement("div"); P.el.className = "perf-box"; P.el.setAttribute("aria-hidden", "true"); }
+    if (P.el.parentNode !== host) host.appendChild(P.el);
+    if (dtMs > 0 && dtMs < 2000) P.ts.push(dtMs); P.js += jsMs; P.n++;
+    const now = performance.now(); if (now - P.t0 < 500 || !P.ts.length) return; P.t0 = now;
+    const N = P.ts.length, avg = P.ts.reduce((a, b) => a + b, 0) / N;
+    P.hist = P.hist.concat(P.ts).slice(-480); const s = P.hist.slice().sort((a, b) => a - b), low = s[Math.min(s.length - 1, Math.floor(s.length * 0.99))];
+    const T = NX.tier(), lvl = ({ low: "Performance", medium: "Medium", high: "High", ultra: "Ultra" })[T.name] + (T.auto ? " (auto)" : "");
+    const rows = [Math.round(1000 / avg) + " FPS   " + avg.toFixed(1) + " ms   slowest " + Math.round(low) + " ms"];
+    if (inGame && now - P.live < 1500) {
+      if (P.gN) { P.gpuMs = P.gAcc / P.gN; P.gAcc = 0; P.gN = 0; }
+      rows.push("script " + (P.js / P.n).toFixed(1) + " ms (drawing " + (P.draw / P.n).toFixed(1) + ")" + (P.gpuMs >= 0 ? "   graphics card " + P.gpuMs.toFixed(1) + " ms" : ""));
+      rows.push(P.res + "   " + Math.round(T.scale * 100) + "% x " + P.k.toFixed(2) + "   " + lvl);
+      rows.push(P.calls + " draw calls   " + (P.tris > 9999 ? Math.round(P.tris / 1000) + "k" : P.tris) + " triangles");
+    } else rows.push("graphics: " + lvl);
+    rows.push(NX.gpuName() + "   display " + Math.round(1000 / NX.hz.ms) + " Hz");
+    P.el.textContent = rows.join("\n"); P.el.hidden = false;
+    P.ts.length = 0; P.js = 0; P.draw = 0; P.n = 0;
+  },
+  // around one frame's drawing (called by the post chain): draw-call counts and, where the browser offers it, real graphics card time
+  perfBegin(r) {
+    const P = NX.perf;
+    if (!P.on) { if (!r.info.autoReset) r.info.autoReset = true; return; }
+    r.info.autoReset = false; r.info.reset(); P.d0 = performance.now();
+    const gl = r.getContext();
+    if (P.gl !== gl) { P.gl = gl; P.q = null; P.pend = []; P.gpuMs = -1; P.gAcc = 0; P.gN = 0; try { P.ext = gl.getExtension("EXT_disjoint_timer_query_webgl2"); } catch (e) { P.ext = null; } }
+    if (P.ext && !P.q && P.pend.length < 4) { try { P.q = gl.createQuery(); gl.beginQuery(P.ext.TIME_ELAPSED_EXT, P.q); } catch (e) { P.q = null; P.ext = null; } }
+  },
+  perfEnd(r, w, h, k) {
+    const P = NX.perf; if (!P.on || !P.d0) return;
+    const gl = r.getContext(); P.draw += performance.now() - P.d0; P.d0 = 0; P.live = performance.now();
+    P.calls = r.info.render.calls; P.tris = r.info.render.triangles; P.res = w + " x " + h; P.k = k;
+    if (!P.ext || P.gl !== gl) return;
+    try {
+      if (P.q) { gl.endQuery(P.ext.TIME_ELAPSED_EXT); P.pend.push(P.q); P.q = null; }
+      while (P.pend.length && gl.getQueryParameter(P.pend[0], gl.QUERY_RESULT_AVAILABLE)) {
+        const q = P.pend.shift(); if (!gl.getParameter(P.ext.GPU_DISJOINT_EXT)) { P.gAcc += gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6; P.gN++; } gl.deleteQuery(q);
+      }
+    } catch (e) { P.ext = null; }
   },
 
   // ---- loading. Everything a map needs is counted so the loading screen can show real progress.
@@ -5391,9 +5531,18 @@ void main(){ vec3 d = normalize( vDir );
     const cast = S.shadow && opt && opt.cast;
     obj.traverse(o => { if (!o.isMesh || o.userData.nxStatic) return; const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) if (m && m.isMeshStandardMaterial && !m.userData.nx) NX.patchDynamic(m, S); if (cast) o.castShadow = true; if (S.shadow && o.castShadow && !o.userData.nxCast) { o.layers.enable(2); o.userData.nxCast = 1; } });
   },
+  keep(S) { const ps = S.renderer.info.programs; if (ps && ps.length !== S.pn) { for (let i = 0; i < ps.length; i++) if (!ps[i].nxKeep) { ps[i].nxKeep = 1; ps[i].usedTimes++; } S.pn = ps.length; } },
   update(S, dt, t) {
     if (S.gone) return; S.frame++;
-    if (S.frame % 24 === 1) NXS.adopt(S, S.scene);   // catches anything the game created since the last look (new props, effects, late models)
+    NX.perfBegin(S.renderer);
+    // anything the game put into the scene since the last frame (effects, thrown things) gets the engine's lighting before
+    // it is first drawn: drawn once without it, the graphics card would compile a shader that is never used again
+    { const ch = S.scene.children, seen = S.seen || (S.seen = new WeakSet()); for (let i = 0; i < ch.length; i++) { const o = ch[i]; if (!seen.has(o)) { seen.add(o); if (o !== S.group) NXS.adopt(S, o); } } }
+    if (S.frame % 24 === 1) NXS.adopt(S, S.scene);   // and a full look now and then for things attached deeper down (late models)
+    // Effects make a material per particle and throw it away afterwards. When the last one of a kind went, three.js
+    // deleted the compiled shader with it and the next shot or puff of smoke compiled it again: a freeze every time.
+    // Every shader this match has needed is now kept until the match ends.
+    NXS.keep(S);
     if (S.shadow && (S.tier.shadow >= 2048 || (S.frame & 1))) NXS.shadowPass(S);
   },
   dispose(S) {
@@ -5808,6 +5957,31 @@ void main(){ vec2 inv = uP.xy; vec3 lw = vec3( 0.299, 0.587, 0.114 );
       cu.uA.value.set(L.bloom, L.vig, tier.grain ? L.grain : 0, L.ca); cu.uB.value.set(L.contrast, L.sat, L.ao, (t || 0) % 97); cu.uTint.value.set(L.tint[0], L.tint[1], L.tint[2]);
       if (P.fxaa) { NXS.blit(r, P.comp.q, P.ldr); P.fxaa.u.t.value = P.ldr.texture; P.fxaa.u.uP.value.set(1 / P.w, 1 / P.h, tier.grain ? L.grain : 0, (t || 0) % 97); NXS.blit(r, P.fxaa.q, null); }
       else NXS.blit(r, P.comp.q, null);
+      NX.perfEnd(r, P.w, P.h, P.drs ? NX.drs.k : 1);
+    };
+    // ---- warm-up, behind the loading screen. Everything the match can ever show is drawn once, hidden and off-screen
+    // things included, so the graphics card compiles every shader and takes every texture now instead of freezing the
+    // picture the first time each one appears in play. Lights stay exactly as they are: their number is part of every shader.
+    P.warm = (scene, cam) => {
+      const hid = [], cull = [], lit = [];
+      const walk = (o, shown) => {
+        const vis = shown && o.visible;
+        if (o.isLight) { if (!vis && o.visible) { o.visible = false; lit.push(o); } return; }
+        if (!o.visible) { o.visible = true; hid.push(o); }
+        if (o.frustumCulled) { o.frustumCulled = false; cull.push(o); }
+        for (let i = 0; i < o.children.length; i++) walk(o.children[i], vis);
+      };
+      const t0 = performance.now(), n0 = renderer.info.programs ? renderer.info.programs.length : 0;
+      try {
+        walk(scene, true);
+        if (S && S.shadow) NXS.shadowPass(S);
+        P.render(scene, cam, 0);
+        if (S) NXS.keep(S);
+      } catch (e) { console.warn("[nx] warm-up", e); }
+      hid.forEach(o => { o.visible = false; }); lit.forEach(o => { o.visible = true; }); cull.forEach(o => { o.frustumCulled = true; });
+      try { renderer.setRenderTarget(null); renderer.setClearColor(0x000000, 1); renderer.clear(); } catch (e) { }
+      P.frame = 0; P.last = 0; NX.drsReset();
+      console.info("[nx] warm-up " + Math.round(performance.now() - t0) + " ms, " + ((renderer.info.programs ? renderer.info.programs.length : 0) - n0) + " shaders, " + hid.length + " hidden things shown");
     };
     P.dispose = () => { [P.scene, P.aoA, P.aoB, P.ldr, P.shA, P.shB].concat(P.D, P.U, P.expo).forEach(x => { if (x) x.dispose(); }); if (P.scene.depthTexture) P.scene.depthTexture.dispose(); [P.pre, P.down, P.up, P.adapt, P.ao, P.aoBlur, P.comp, P.fxaa, P.shMask, P.shBlur].forEach(x => { if (x) x.m.dispose(); }); };
     return P;
@@ -6206,7 +6380,7 @@ function makeOps(md) {
           let took = false;
           if (w.it === "H") { if (q.hp < 100) { q.hp = Math.min(100, q.hp + 50); took = true; } }
           else if (w.it === "A") { if (q.arm < 100) { q.arm = 100; took = true; } }
-          else { q.w = w.it; if (!q.hasTr) q.cur = w.it; q.pk++; took = true; }
+          else { q.w = w.it; q.cur = w.it; q.pk++; took = true; }
           if (took) { w.rt = w.it === ROCKET ? 22 : 15; break; }
         }
       }
@@ -6223,7 +6397,7 @@ function makeOps(md) {
       if (tr.idle > 12 && Math.hypot(tr.x - tr.hx, tr.z - tr.hz) > 0.5) { tr.x = tr.hx; tr.z = tr.hz; tr.y = 0; tr.idle = 0; this.say(S, [8]); return; }
       let best = -1, bd = 1.35;
       g.P.forEach((q, j) => { if (!q.alive || q.gone) return; const d = Math.hypot(q.x - tr.x, q.z - tr.z); if (d < bd && Math.abs((q.jh || 0) - tr.y) < 1.4) { bd = d; best = j; } });
-      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; q.cur = KNIFE; this.say(S, [6, best]); }
+      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; this.say(S, [6, best]); }   // the holder keeps every weapon
     },
     propsTick(S, dt) {
       const g = S.g;
@@ -6285,7 +6459,7 @@ function makeOps(md) {
       }
     },
     enemy(S, i, j) { const P = S.g.P; return i !== j && (team ? P[i].tm !== P[j].tm : true); },
-    owns(S, p, wi) { if (p.hasTr) return wi === KNIFE; if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
+    owns(S, p, wi) { if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
     procAct(S, i, act, dt) {
       const g = S.g, p = g.P[i], b = g.bomb;
       if (!team || g.ph !== "live" || !p.alive || !act) { p.actT = 0; return; }
@@ -6390,9 +6564,9 @@ function makeOps(md) {
       // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
       const fa = Math.sin(p.a), fc = Math.cos(p.a), wide = (b.alertT = Math.max(0, (b.alertT || 0) - dt)) > 0;
       g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > -0.25) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
-      // Golden Router: go after whoever holds it; the holder only fights when cornered
+      // Golden Router: go after whoever holds it; the holder keeps running but shoots back at anyone who gets close
       if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
-      if (p.hasTr && td > 2.6) tgt = -1;
+      if (p.hasTr && td > 16) tgt = -1;
       if (troph && !p.hasTr && g.tr.by < 0 && td > 7) tgt = -1; // the free router matters more than a far-away fight
       if (tgt >= 0 && p.gr[0] > 0 && td > 7 && td < 20 && Math.random() < dt * 0.22) { const q = g.P[tgt]; p.gr[0]--; this.hostThrow(S, i, 0, Math.atan2(-(q.x - p.x), -(q.z - p.z)), clamp(0.06 + td / 55, 0.1, 0.45), 0); }
       if (tgt !== b.tgt) { b.tgt = tgt; b.react = (b.boss ? 0.25 : 0.4) + Math.random() * 0.35; }
@@ -6576,7 +6750,7 @@ function makeOps(md) {
       [F.cv, F.setBtn, F.setPanel, F.shop, F.touch].forEach(el => el && el.remove()); GFX.bleed("");
       V.fps = null;
     },
-    owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (pl && pl[22]) return [KNIFE]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
+    owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
     throwNade(V, k) {
       const F = V.fps, pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !pl || !pl[1] || F.shop && !F.shop.hidden) return;
       if (!(pl[18 + k] > 0)) { FX.text(W / 2, H * 0.7, arena ? (k ? "NO SMOKE" : "NO FRAG") : k ? "NO SMOKE · BUY ONE (B)" : "NO FRAG · BUY ONE (B)", "#ff8a3d", 0.9); return; }
@@ -6735,9 +6909,11 @@ function makeOps(md) {
         '<label class="sw"><span>Invert left/right</span><input type="checkbox" data-k="ix"><i></i></label></section>' +
         '<section><h5>Video</h5>' +
         '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto (fits this PC)</option><option value="ultra">Ultra</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Performance</option></select></label>' +
-        '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label></section>' +
+        '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label>' +
+        '<label class="sw"><span>Show frame rate <small>key F8</small></span><input type="checkbox" data-fps><i></i></label></section>' +
         '<section><h5>Sound</h5>' +
-        '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label></section>' +
+        '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label>' +
+        '<button type="button" class="btn" data-sndtest>Sound test</button></section>' +
         '<section><h5>Accessibility</h5>' +
         '<label class="sw"><span>Color-blind team colors <small>orange ▲ vs blue ■</small></span><input type="checkbox" data-cb><i></i></label></section>' +
         '</div>' +
@@ -6745,6 +6921,8 @@ function makeOps(md) {
         '<footer><span class="hint">Saved on this device.</span><button type="button" class="btn primary" data-close>Done</button></footer>';
       const snd = sp.querySelector("[data-snd]"); snd.checked = SFX.on;
       snd.addEventListener("change", () => { SFX.on = snd.checked; store("nfa-sound", SFX.on); const sbn = $("#soundBtn"); if (sbn) sbn.textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
+      sp.querySelector("[data-sndtest]").addEventListener("click", () => { sp.hidden = true; soundTest(); });
+      const fpx = sp.querySelector("[data-fps]"); fpx.checked = NX.perfOn(); fpx.addEventListener("change", () => NX.perfSet(fpx.checked));
       const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
       cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
       const rsI = sp.querySelector("[data-rs]"), rsV = sp.querySelector("[data-rv]"), rsShow = () => { rsV.textContent = rsI.value + "%"; };
@@ -6832,7 +7010,7 @@ function makeOps(md) {
         if (onG) {
           F.jh = gNow; F.vy = 0;
           if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.step(0.25, 0, true); }
-          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.tone(380, 0.25, "triangle", 0.06, 700); F.padT = 0.4; }
+          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.pad(0.7); F.padT = 0.4; }
         }
         F.wantJump = false;
         if (!onG || F.vy > 0) {
@@ -6880,7 +7058,7 @@ function makeOps(md) {
         best = i; bd = d;
       });
       F.shotN++; F.lastShot = [F.shotN, +(me.x + fx).toFixed(2), 1.1, +(me.z + fz).toFixed(2), KNIFE];
-      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.thud ? SFX.thud() : SFX.tone(140, 0.09, "square", 0.08); }
+      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.samp("thwack1", 0.7, 0, 0.9) || SFX.tap(0.5, 400); }
     },
     // grappling hook (Laser Arena): latch onto a wall or deck in front of you
     hook(V, on) {
@@ -6888,9 +7066,9 @@ function makeOps(md) {
       const EY = F.eyeH || EYE, cp = Math.cos(me.p), dir = [-Math.sin(me.a) * cp, Math.sin(me.p), -Math.cos(me.a) * cp], h = Math.hypot(dir[0], dir[2]) || 1e-6, R = 34;
       let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, R) / h; const wallT = t, floorT = dir[1] < -1e-4 ? EY / -dir[1] : 1e9;
       t = oRayDecks([me.x, EY, me.z], dir, Math.min(t, floorT));
-      if (t >= floorT - 1e-3) { SFX.tone(220, 0.08, "square", 0.04); return; }
+      if (t >= floorT - 1e-3) { SFX.clack(0.3, 0, 1.3); return; }
       const y = EY + dir[1] * t, hitWall = t >= wallT - 1e-3 && t < R / h - 0.01;
-      if (t >= R - 0.01 || (hitWall && y > (OPS_M.wallH || OWH)) || (dir[1] < -0.2 && t < 3)) { SFX.tone(220, 0.08, "square", 0.04); return; }
+      if (t >= R - 0.01 || (hitWall && y > (OPS_M.wallH || OWH)) || (dir[1] < -0.2 && t < 3)) { SFX.clack(0.3, 0, 1.3); return; }
       F.hk = [me.x + dir[0] * t, y, me.z + dir[2] * t]; F.hkT = 0; SFX.clank(0.8); SFX.swish(0.6);
     },
     fireRocket(V) {
@@ -6903,7 +7081,7 @@ function makeOps(md) {
     fire(V) {
       const F = V.fps, me = F.me, W0 = OW[F.cur];
       if (W0.rocket) return this.fireRocket(V);
-      SFX.shot(W0.snd, 1); if (W0.laser) SFX.tone(1400, 0.22, "sawtooth", 0.05, -1100);
+      SFX.shot(W0.snd, 1); if (W0.laser) SFX.zap(0.6);
       F.kick = 1; if (F.flash) F.flash.intensity = W0.pel ? 22 : 14;
       let spread = W0.laser ? 0 : (W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom) * (F.cr > 0.5 ? 0.65 : 1) + (F.inAir ? 0.09 : 0);
       if (W0.scope && !F.scoped) spread = 0.07 + (F.moving ? W0.mv : 0);
@@ -7413,8 +7591,43 @@ function makeOps(md) {
         scene.traverse(o => { if (o.isMesh && !o.userData.nxStatic && o.material && o.material.isMeshStandardMaterial && !(o.geometry && o.geometry.type === "PlaneGeometry")) o.castShadow = true; });
         F.guns.forEach(gm => gm.traverse(o => { if (o.isMesh) o.castShadow = false; }));
         F.nx.adopt(scene);
+        // soldiers and guns are still loading: wait for them, then prepare every shader behind the loading screen
+        GFX.whenLoaded(7000).then(() => { if (F.gone || APP.V !== V || V.fps !== F) return; F.ready = true; this.warmUp(V); });
+        return;
       }
       F.ready = true;
+    },
+    // ---- one hidden frame with a sample of every effect in it, so the first shot, hit, kill and blast of the match do
+    // not freeze the picture while the graphics card compiles their shaders (see NXP warm)
+    warmUp(V) {
+      const F = V.fps, T = THREE; if (!F || !F.post || !F.post.warm) return;
+      const snd = SFX.on, sh = F.shake, hu = F.hurtT, x = F.me.x, z = F.me.z, y = oHAt(x, z) + 1.2, sc0 = F.scorch.length, tmp = new T.Group(); SFX.on = false;
+      try {
+        this.addTracer(V, [x, y, z], [x + 1, y, z + 1], "#ffd59a", 1, 0); this.addTracer(V, [x, y, z], [x - 1, y, z + 1], "#ff3b4e", 0, 1);
+        this.burst(V, [x, y, z], "#ffb347", 2, 1); this.burst(V, [x, y, z], "#ff3b4e", 2, 1, 1);
+        this.puff(V, x, y, z, 0x8f8a80, 1, 1); this.dustTex(F);
+        this.explode(V, x, z, 0, 0);
+        if (F.propMats) this.chips(V, [x, y, z], 0);
+        // kinds of material that only thrown and dropped things use
+        const g = F.box1;
+        [new T.MeshBasicMaterial({ color: 0xffffff }), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, side: T.DoubleSide }),
+          new T.MeshStandardMaterial({ color: 0x808080 }), new T.MeshStandardMaterial({ color: 0x808080, transparent: true })].forEach(m => { const o = new T.Mesh(g, m); o.scale.setScalar(0.01); tmp.add(o); });
+        [new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true, depthWrite: false }), new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true })].forEach(m => { const o = new T.Sprite(m); o.scale.setScalar(0.01); tmp.add(o); });
+        // the guns other players carry are built when first seen: one of each kind of build
+        { const pw = OW.find(w => !w.melee); if (pw) { const a = GUNS.lite(pw, T); a.scale.setScalar(0.01); tmp.add(a); if (!F.crowd) { const b = GUNS.build(pw, T, { arms: false }); b.scale.setScalar(0.01); tmp.add(b); } } }
+        tmp.position.set(x, y, z); F.scene.add(tmp);
+      } catch (e) { console.warn("[nx] effect samples", e); }
+      if (F.nx) F.nx.adopt(F.scene);
+      F.post.warm(F.scene, F.cam);
+      // the samples have done their job: gone before the first real frame
+      try {
+        F.scene.remove(tmp); tmp.children.forEach(o => { if (o.isMesh || o.isSprite) o.material.dispose(); });
+        for (const o of F.vfx) o.life = 0; this.vfxTick(F, 0);
+        for (const o of F.tracers) { F.scene.remove(o.m); o.m.material.dispose(); } F.tracers = [];
+        while (F.scorch.length > sc0) { const o = F.scorch.pop(); F.scene.remove(o); o.material.dispose(); }
+        (F.sparkC || []).forEach(c => c.update(10, 9));
+      } catch (e) { console.warn("[nx] effect samples", e); }
+      F.boomL.intensity = 0; F.shake = sh; F.hurtT = hu; SFX.on = snd;
     },
     // ---- breakable props (client art + effects)
     buildProps(V, scene, mStd) {
@@ -7932,7 +8145,7 @@ function makeOps(md) {
       const b = g.bomb || [0];
       F.bomb.visible = b[0] === 1 || b[0] === 2;
       if (F.bomb.visible) { F.bomb.position.set(b[1], 0, b[2]); const rate = b[3] < 100 ? 8 : 3; const on = b[0] === 1 && Math.floor(t * rate) % 2 === 0; F.bombLed.intensity = on ? 12 : 0; F.bombHalo.visible = on || b[0] === 2; F.bombHalo.material.color.set(b[0] === 2 ? 0x3ddc97 : 0xff2a3c); F.bombScr.material.color.set(b[0] === 2 ? 0x3ddc97 : on ? 0xff2a3c : 0x550010); }
-      if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "square", 0.025); } }
+      if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "sine", 0.035); } }
       // props and explosions from the host
       if (typeof g.pr === "string" && F.propM) for (let k = 0; k < F.propM.length; k++) {
         const al = g.pr.charCodeAt(k) === 49; OPS_PALIVE[k] = al ? 1 : 0;
@@ -7985,11 +8198,11 @@ function makeOps(md) {
       if (g.ann && g.ann[g.ann.length - 1] !== F.annSeen) {
         F.annSeen = g.ann[g.ann.length - 1]; const a = g.ann;
         if (a[0] === 1) F.ann = { big: "ROUND " + a[1], sub: team ? (tm === 0 ? "ATTACK" : "DEFEND") : "", col: "#f5f1e6", life: 3 };
-        if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("early"); }
-        if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "wrong"); }
+        if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("alarm"); }
+        if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "lose"); }
         if (a[0] === 4) { F.ann = { big: "GO GO GO", sub: "", col: "#ff8a3d", life: 1.6 }; SFX.play("go"); }
-        if (a[0] === 6) { const mine = a[1] === me; F.ann = { big: mine ? "YOU HAVE THE ROUTER" : ((V.ro[a[1]] || {}).n || "").toUpperCase() + " HAS THE ROUTER", sub: mine ? "Knife only · stay alive" : "Take it from them", col: "#ffd23f", life: 2.6 }; SFX.play(mine ? "right" : "early"); }
-        if (a[0] === 7) { F.ann = { big: "ROUTER DROPPED", sub: "Grab it!", col: "#ffd23f", life: 2 }; SFX.play("bump"); }
+        if (a[0] === 6) { const mine = a[1] === me; F.ann = { big: mine ? "YOU HAVE THE ROUTER" : ((V.ro[a[1]] || {}).n || "").toUpperCase() + " HAS THE ROUTER", sub: mine ? "Keep it · stay alive" : "Take it from them", col: "#ffd23f", life: 2.6 }; SFX.play(mine ? "start" : "alarm"); }
+        if (a[0] === 7) { F.ann = { big: "ROUTER DROPPED", sub: "Grab it!", col: "#ffd23f", life: 2 }; SFX.clack(0.7, 0, 0.7); }
         if (a[0] === 8) { F.ann = { big: "ROUTER RESET", sub: "Back at the center", col: "#ffd23f", life: 2 }; }
       }
       if (pl) { if (pl[0] < F.lastHp && pl[1]) { const n = F.lastHp - pl[0]; F.hurtT = 0.45; SFX.hurt(n); F.hurtN = { n, life: 1 }; const la = F.lastAttacker; let side = Math.random() < 0.5 ? -1 : 1;
@@ -8059,7 +8272,7 @@ function makeOps(md) {
           ctx.save(); ctx.translate(ex, ey); ctx.fillStyle = "#ffd23f"; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, 0); ctx.lineTo(0, 11); ctx.lineTo(-9, 0); ctx.closePath(); ctx.stroke(); ctx.fill();
           ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.lineWidth = 4; ctx.strokeText(Math.round(d) + "m", 0, 22); ctx.fillText(Math.round(d) + "m", 0, 22); ctx.restore();
         }
-        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · KNIFE ONLY · RUN", W / 2, H - 104); }
+        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · STAY ALIVE", W / 2, H - 104); }
       } else {
         const ranked = (g.pl || []).map((p, i) => ({ i, k: p[3], d: p[4] })).sort((a, b) => b.k - a.k || a.d - b.d);
         const lead = ranked[0], myRank = ranked.findIndex(o => o.i === me) + 1;
@@ -8362,7 +8575,7 @@ function rcDrive(c, dt, gas, steer, drift, isBot) {
 }
 
 const race = {
-  id: "race", title: "Neteam Grand Prix", tag: "3D street race · night NYC", custom3d: true,
+  id: "race", title: "Neteam Grand Prix", tag: "3D street race · six NYC circuits", custom3d: true,
   blurb: "3 laps. Grab data packets for EMPs, shockwaves and coffee spills.",
   how: [],
   keys: ["W gas", "S brake", "A / D steer", "Space drift", "Click / Q shoot", "E use item", "R reset", "C camera"],
@@ -8642,6 +8855,28 @@ const race = {
     P.setXYZ(o, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 1, a[0] + nx, y, a[1] + nz); P.setXYZ(o + 2, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 3, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 4, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 5, b[0] - nx, y, b[1] - nz); P.needsUpdate = true;
   },
   // sparks: one cloud of points for the whole race (dozens fly whenever a bolt lands, and each used to be drawn on its own)
+  // one hidden frame with a sample of every weapon and crash effect in it, so the first drift, bolt or blast of the race
+  // does not freeze the picture while the graphics card compiles its shader
+  warmUp(V) {
+    const F = V.fps, T = THREE; if (!F || !F.post || !F.post.warm) return;
+    const snd = SFX.on, sh = F.shake, p = rcAt(0, 0), x = p[0], z = p[1], tmp = new T.Group(); SFX.on = false; F.wfx = F.wfx || [];
+    try {
+      this.boom(V, x, z); this.sparks(V, x, z, 0xffb347, 2);
+      const box = new T.BoxGeometry(1, 1, 1), smoke = this.smokeTex(F), glow = GFX.glowTex();
+      [new T.MeshBasicMaterial({ color: 0xffffff }), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }), new T.MeshStandardMaterial({ color: 0x808080 }), F.spillM].forEach(m => { if (!m) return; const o = new T.Mesh(box, m); o.scale.setScalar(0.01); tmp.add(o); });
+      [new T.SpriteMaterial({ map: glow, transparent: true, depthWrite: false }), new T.SpriteMaterial({ map: smoke, transparent: true, depthWrite: false }), new T.SpriteMaterial({ map: smoke, transparent: true, depthWrite: false, fog: false })].forEach(m => { const o = new T.Sprite(m); o.scale.setScalar(0.01); tmp.add(o); });
+      tmp.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(0, 0, 0), new T.Vector3(0.01, 0, 0)]), new T.LineBasicMaterial({ color: 0xffffff, transparent: true })));
+      tmp.position.set(x, 1, z); F.scene.add(tmp);
+    } catch (e) { console.warn("[nx] effect samples", e); }
+    if (F.nx) F.nx.adopt(F.scene);
+    F.post.warm(F.scene, F.cam3);
+    try {
+      F.scene.remove(tmp); tmp.children.forEach(o => { if (o.material !== F.spillM) o.material.dispose(); });
+      for (const o of F.wfx) { F.scene.remove(o.m); o.m.material.dispose(); } F.wfx = [];
+      if (F.spk) F.spk.update(10, 14);
+    } catch (e) { console.warn("[nx] effect samples", e); }
+    if (F.boomL) F.boomL.intensity = 0; F.shake = sh; SFX.on = snd;
+  },
   sparks(V, x, z, col, n) {
     const F = V.fps, K = F.spk || (F.spk = GFX.cloud(F.scene, 480, 0.13)), c = (GFX._bc || (GFX._bc = new THREE.Color())).set(col).multiplyScalar(4);
     for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, sp = 3 + Math.random() * 7; K.emit(x, 1, z, Math.cos(a) * sp, 1 + Math.random() * 5, Math.sin(a) * sp, 0.3 + Math.random() * 0.3, c.r, c.g, c.b); }
@@ -8659,7 +8894,7 @@ const race = {
   reset(V) {
     const F = V.fps; if (!F || !F.me) return;
     const c = F.me, n = rcNearest(c.x, c.z, c.i), p = rcAt(n.i, 0);
-    c.x = p[0]; c.z = p[1]; c.a = rcHead(n.i); c.v = Math.min(c.v, 8); c.slip = 0; c.dc = 0; SFX.play("pop");
+    c.x = p[0]; c.z = p[1]; c.a = rcHead(n.i); c.v = Math.min(c.v, 8); c.slip = 0; c.dc = 0; SFX.play("dash");
   },
   clientInput(V, dt, inp) {
     const F = V.fps; if (!F || !F.ready) return null;
@@ -8689,19 +8924,19 @@ const race = {
       if (F.hitSeen == null) F.hitSeen = q[8];
       if (q[8] !== F.hitSeen) {
         F.hitSeen = q[8]; const k = q[9], src = F.remote[q[11]], who = V.ro[q[11]] ? V.ro[q[11]].n : "";
-        if (k === 1) { c.slow = 2.6; F.shake = 0.4; SFX.tone(1400, 0.35, "sawtooth", 0.06, -1200); F.toast = { s: "EMP'D", sub: who, life: 1.4, col: "#4cc9f0" }; }
+        if (k === 1) { c.slow = 2.6; F.shake = 0.4; SFX.zap(0.8, 0, 1); SFX.samp("power-down", 0.35, 0, 1.15); F.toast = { s: "EMP'D", sub: who, life: 1.4, col: "#4cc9f0" }; }
         if (k === 2) { c.spin = 0.9; c.spinDir = Math.random() < 0.5 ? -1 : 1; c.v *= 0.5; F.shake = 0.3; SFX.play("bump"); F.toast = { s: "SPILL!", sub: who, life: 1.2, col: "#d08a4a" }; }
-        if (k === 7) { c.slow = Math.max(c.slow || 0, 0.5); c.v *= 0.85; F.shake = Math.max(F.shake, 0.22); SFX.tone(900, 0.12, "square", 0.05, -600); F.toast = { s: "ZAPPED", sub: who, life: 0.9, col: "#4cc9f0" }; F.zapT = 0.35; }
+        if (k === 7) { c.slow = Math.max(c.slow || 0, 0.5); c.v *= 0.85; F.shake = Math.max(F.shake, 0.22); SFX.zap(0.65); F.toast = { s: "ZAPPED", sub: who, life: 0.9, col: "#4cc9f0" }; F.zapT = 0.35; }
         if (k === 8) { c.spin = 1.1; c.spinDir = Math.random() < 0.5 ? -1 : 1; c.v *= 0.35; F.shake = 1; F.toast = { s: "PACKET BOMB!", sub: who, life: 1.4, col: "#ffb347" }; }
         if (k === 9) { F.blindT = 2.6; c.slow = Math.max(c.slow || 0, 0.4); F.toast = { s: "SMOKED", sub: who, life: 1.2, col: "#c9ced8" }; }
         if (k === 3) { c.slow = 0.9; c.v *= 0.55; F.shake = 0.6; SFX.play("boom"); if (src) { const dx = c.x - src.x, dz = c.z - src.z, d = Math.hypot(dx, dz) || 1; c.x += dx / d * 2.5; c.z += dz / d * 2.5; } F.toast = { s: "PUNCHED", sub: who, life: 1.2, col: "#ff6a1a" }; }
       }
       if (F.boSeen == null) F.boSeen = q[12];
       if (q[12] !== F.boSeen) { F.boSeen = q[12]; c.bo = Math.max(c.bo || 0, 2.2); c.boEv = (c.boEv || 0) + 1; }
-      if (q[7] && q[7] !== F.lastIt) SFX.play("right"); F.lastIt = q[7];
+      if (q[7] && q[7] !== F.lastIt) SFX.play("pickup"); F.lastIt = q[7];
     }
     if (F.firing && go && !fin && q && !q[14] && performance.now() - F.fireAt > 320) { F.fireAt = performance.now(); F.sq.fire = ++F.fireSeq; }
-    if (q && q[14] && F.firing && !F.ohWarn) { F.ohWarn = 1; SFX.tone(220, 0.2, "square", 0.05, -80); } if (q && !q[14]) F.ohWarn = 0;
+    if (q && q[14] && F.firing && !F.ohWarn) { F.ohWarn = 1; SFX.steam(0.7); } if (q && !q[14]) F.ohWarn = 0;
     const ev = c.boEv || 0;
     // slipstream: tucked in behind another car you gain on it
     { let tow = 0; const sa = Math.sin(c.a), ca = Math.cos(c.a); if (c.v > 24 && go) Object.keys(F.remote).forEach(k => { if (+k === me) return; const o = F.remote[k], dx = o.x - c.x, dz = o.z - c.z, fw = dx * sa + dz * ca; if (fw > 3 && fw < 22 && Math.abs(dx * ca - dz * sa) < 2.2) tow = Math.max(tow, 1 - (fw - 3) / 19); });
@@ -8874,7 +9109,8 @@ const race = {
       this.buildDyn(V, scene);
       scene.traverse(o => { if (o.isMesh && !o.userData.nxStatic && o.material && o.material.isMeshStandardMaterial && !(o.geometry && o.geometry.type === "PlaneGeometry")) o.castShadow = true; });
       S.adopt(scene);
-      F.ready = true;
+      // wait for the driver models, then prepare every shader behind the loading screen (see NXP warm)
+      return GFX.whenLoaded(7000).then(() => { if (V.fps !== F || APP.V !== V) return; this.warmUp(V); F.ready = true; });
     }).catch((e) => { console.error("[nx] race build failed", e); F.failed = true; });
   },
   // ---- everything that moves: cars, pickups, spills, effects
@@ -8994,16 +9230,16 @@ const race = {
       if (k === 1 && b) { // lightning bolt from shooter to target
         const pts = []; for (let s2 = 0; s2 <= 10; s2++) { const f = s2 / 10; pts.push(new T.Vector3(lerp(a.x, b.x, f) + (s2 % 10 ? (Math.random() - 0.5) * 1.6 : 0), 1.4 + (s2 % 10 ? (Math.random() - 0.5) * 1.2 : 0), lerp(a.z, b.z, f) + (s2 % 10 ? (Math.random() - 0.5) * 1.6 : 0))); }
         const ln = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: new T.Color(1.2, 3, 4), transparent: true }));
-        F.scene.add(ln); F.fx.push({ m: ln, life: 0.35, kind: "line" }); b.zapT = 2.4; SFX.tone(1800, 0.25, "sawtooth", 0.05 * vol, -1500);
+        F.scene.add(ln); F.fx.push({ m: ln, life: 0.35, kind: "line" }); b.zapT = 2.4; SFX.zap(0.8 * vol, 0, 1);
       }
       if (k === 3) { const ring = new T.Mesh(F.ringG, new T.MeshBasicMaterial({ color: new T.Color(3, 1.2, 0.3), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); ring.position.set(a.x, 0.3, a.z); F.scene.add(ring); F.fx.push({ m: ring, life: 0.5, kind: "ring" }); SFX.noise(0.3, 0.12 * vol, 500); SFX.tone(70, 0.3, "sine", 0.15 * vol, -30); F.shake = Math.max(F.shake || 0, 0.25 * vol); }
-      if (k === 2) SFX.tone(300, 0.15, "sine", 0.06 * vol, -150);
-      if (k === 7) { SFX.tone(1500, 0.09, "sawtooth", 0.05 * vol, -900); SFX.tone(2400, 0.05, "square", 0.025 * vol, -1200); a.flashT = 0.08; }
-      if (k === 10 || k === 12) { const ev2 = g.ev.find(e => e[0] === n); if (ev2 && ev2[4] != null) this.sparks(V, ev2[4], ev2[5], k === 10 ? 0x9fe8ff : 0xffd59a, k === 10 ? 18 : 8); if (k === 10) SFX.tone(600, 0.1, "square", 0.05 * vol, -300); }
+      if (k === 2) SFX.samp("thud1", 0.4 * vol, 0, 1.5);
+      if (k === 7) { SFX.shot("smg", 0.5 * vol, 0, clamp(1 - vol, 0, 0.9)); a.flashT = 0.08; }
+      if (k === 10 || k === 12) { const ev2 = g.ev.find(e => e[0] === n); if (ev2 && ev2[4] != null) this.sparks(V, ev2[4], ev2[5], k === 10 ? 0x9fe8ff : 0xffd59a, k === 10 ? 18 : 8); if (k === 10) SFX.zap(0.55 * vol); }
       if (k === 11) { const ev2 = g.ev.find(e => e[0] === n); if (ev2 && ev2[4] != null) this.boom(V, ev2[4], ev2[5]); }
       if (k === 13) SFX.swish(0.6 * vol);
       if (k === 14) SFX.hiss(vol, 0);
-      if (k === 4 || k === 6) SFX.tone(k === 6 ? 900 : 600, 0.25, "triangle", 0.06 * vol, 500);
+      if (k === 4) SFX.shield(0.6 * vol); if (k === 6) { SFX.clack(0.6 * vol, 0, 0.8); SFX.zap(0.35 * vol); }
     });
     for (const o of F.fx) { o.life -= dt; if (o.kind === "ring") { const s2 = 1 + (0.5 - o.life) * 22; o.m.scale.set(s2, 1, s2); } o.m.material.opacity = Math.max(0, o.life * 2.5); if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); if (o.kind === "line") o.m.geometry.dispose(); } }
     F.fx = F.fx.filter(o => o.life > 0);
@@ -9092,9 +9328,9 @@ const race = {
       const sumPrev = q[1] ? null : 0;
       ctx.fillText("BEST " + (q[4] ? (q[4] / 1000).toFixed(2) : "--.--"), W - 28, 68);
       // lap toasts
-      if (q[1] > F.lastLd && !done) { F.toast = { s: q[1] === RC_LAPS - 1 ? "FINAL LAP" : "LAP " + (q[1] + 1), sub: q[6] ? (q[6] / 1000).toFixed(2) + " s" : "", life: 2.2, col: q[1] === RC_LAPS - 1 ? "#ff6b57" : "#ffd23f" }; SFX.play("right"); }
+      if (q[1] > F.lastLd && !done) { F.toast = { s: q[1] === RC_LAPS - 1 ? "FINAL LAP" : "LAP " + (q[1] + 1), sub: q[6] ? (q[6] / 1000).toFixed(2) + " s" : "", life: 2.2, col: q[1] === RC_LAPS - 1 ? "#ff6b57" : "#ffd23f" }; SFX.play("count"); }
       F.lastLd = q[1];
-      if (done && !F.finShown) { F.finShown = true; SFX.cheer(done === 1 ? 1 : 0.6); F.toast = { s: done === 1 ? "WINNER!" : "FINISHED " + done + (["", "ST", "ND", "RD"][done] || "TH"), sub: (q[3] / 1000).toFixed(2) + " s", life: 4, col: done === 1 ? "#ffd23f" : "#3ddc97" }; SFX.play(done === 1 ? "win" : "right"); }
+      if (done && !F.finShown) { F.finShown = true; SFX.samp("applause1", done === 1 ? 0.7 : 0.45, 0, 1, 0, 0.25, 0.5); F.toast = { s: done === 1 ? "WINNER!" : "FINISHED " + done + (["", "ST", "ND", "RD"][done] || "TH"), sub: (q[3] / 1000).toFixed(2) + " s", life: 4, col: done === 1 ? "#ffd23f" : "#3ddc97" }; SFX.play(done === 1 ? "win" : "count"); }
       // wrong way
       if (F.lastDist != null && q[0] < F.lastDist - 1 && !done) F.wrongT = Math.min(2, F.wrongT + dt * 3); else F.wrongT = Math.max(0, F.wrongT - dt);
       F.lastDist = q[0];
@@ -9636,7 +9872,7 @@ function gameFrame(dt, t) {
   const mod = V.mod, ph = V.h.ph;
   if (ph !== V.prevPh) {
     if (ph === "play") { SFX.play("go"); }
-    if (ph === "results") { const me = (V.h.res || []).find(o => o.i === V.meIdx); SFX.play(me && me.hp === 1 ? "win" : "pop"); }
+    if (ph === "results") { const me = (V.h.res || []).find(o => o.i === V.meIdx); SFX.play(me && me.hp === 1 ? "win" : "count"); }
     V.prevPh = ph;
     renderOverlay(V, true);
   } else if (ph === "results" && V.h.saved !== V.shownSaved) renderOverlay(V, false);
@@ -9706,7 +9942,7 @@ function mkEl(tag, cls, txt) { const e = document.createElement(tag); if (cls) e
 function nth(n) { const s = ["th", "st", "nd", "rd"], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); }
 // a screenshot of the game fills the screen behind the lobby; the drawn card art shows through if the image is missing
 function scrBackdrop(id) {
-  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg";
+  const bg = mkEl("div", "scr-bg"), im = new Image(); im.alt = ""; im.decoding = "async"; im.onerror = () => im.remove(); im.src = "models/shot-" + id + ".jpg?v=" + SHOT_V;
   bg.append(im, mkEl("i")); return bg;
 }
 // small top-down plan of a map (walls, sites, decks) or the outline of a race track, for the vote tiles
@@ -10004,13 +10240,15 @@ function renderMe() {
   paintAvatar($("#meCanvas"), APP.me.c, 34);
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
+// homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
+const SHOT_V = 3;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;
   if (APP.heroSel === id) return; APP.heroSel = id;
   $("#heroTitle").textContent = g.title; $("#heroTag").textContent = g.tag; $("#heroKind").textContent = HERO_KIND[id] || "Game night";
   const ks = $("#heroKeys"); ks.textContent = ""; (g.keys || []).slice(0, 6).forEach(k => { const sp = document.createElement("span"); sp.textContent = k; ks.append(sp); });
-  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg"; im.classList.add("swap"); const pre = new Image();
+  const im = $("#heroImg"), src = "models/shot-" + id + ".jpg?v=" + SHOT_V; im.classList.add("swap"); const pre = new Image();
   pre.onload = () => { im.src = src; im.classList.remove("swap"); }; pre.onerror = () => { im.style.display = "none"; }; pre.src = src;
   const best = (APP.recs || {})[id]; $("#heroRec").textContent = best ? g.rec.fmt(best.v) : "—";
 }
@@ -10021,7 +10259,7 @@ function buildCards() {
     const b = document.createElement("button"); b.className = "game-card"; b.dataset.g = id; b.type = "button";
     // real in-game screenshot; the drawn card art is the fallback if the image is missing
     const cv = document.createElement("div"); cv.className = "shot";
-    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg";
+    const im = document.createElement("img"); im.alt = ""; im.loading = "lazy"; im.src = "models/shot-" + id + ".jpg?v=" + SHOT_V;
     im.onerror = () => { const c2 = document.createElement("canvas"); cv.replaceWith(c2); drawCards(); };
     const kind = document.createElement("span"); kind.className = "kind"; kind.textContent = HERO_KIND[id] || "3D";
     cv.append(im, kind);
@@ -10264,6 +10502,7 @@ function bindEvents() {
   });
   $("#dashBtn").addEventListener("pointerdown", (e) => { e.preventDefault(); pendingDash = true; });
   addEventListener("pointerdown", () => SFX.ensure(), { once: true });
+  addEventListener("keydown", (e) => { if (e.code === "F8" && !e.repeat) { e.preventDefault(); NX.perfSet(!NX.perfOn()); const c = document.querySelector("[data-fps]"); if (c) c.checked = NX.perfOn(); } });
   addEventListener("keydown", (e) => {
     if (e.target && (e.target.tagName === "INPUT" || $("#editor").open)) return;
     if (APP.view !== "game") return;
@@ -10292,13 +10531,31 @@ function bindEvents() {
   $("#stagebox").addEventListener("pointerdown", (e) => { const V = APP.V; if (V && V.mod.id === "alert" && e.target.id !== "leaveBtn" && !e.target.closest(".card") && !e.target.closest("#socPanel")) { if (e.target !== cv) alert.tap(V); } });
 }
 
+// ---------- sound test: every sound in the game on a button (Settings in a match, or open the site with #sounds) ----------
+function soundTest() {
+  let d = $("#sndTest");
+  if (!d) {
+    d = document.createElement("div"); d.id = "sndTest"; d.className = "snd-test";
+    d.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Sound test</h4></div><button type="button" class="set-x" aria-label="Close">✕</button></header><p>Press a sound to hear it. Tell us the names of the ones that are wrong.</p><div class="snd-grid"></div>';
+    const grid = d.querySelector(".snd-grid");
+    SFX.LIST().forEach(([name, fn]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.addEventListener("click", () => { if (!SFX.on) { toast("Sound is off. Turn it on with the speaker button."); return; } SFX.ensure(); try { fn(); } catch (e) { console.error(e); } }); grid.appendChild(b); });
+    d.querySelector(".set-x").addEventListener("click", () => { d.hidden = true; if (location.hash === "#sounds") history.replaceState(null, "", location.pathname + location.search); });
+    ["mousedown", "pointerdown", "click"].forEach(ev => d.addEventListener(ev, (e) => e.stopPropagation()));
+  }
+  const host = APP.view === "game" ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
+  d.hidden = false; if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) { }
+  SFX.ensure(); SFX.load();
+}
+addEventListener("hashchange", () => { if (location.hash === "#sounds") soundTest(); });
+
 // ---------- main loop ----------
 let lastT = now();
 function frame() {
   const tn = now(), dt = Math.min(0.05, (tn - lastT) / 1000); lastT = tn;
   const t = tn / 1000;
+  const inGame = APP.view === "game";
   try {
-    if (APP.view === "game") gameFrame(dt, t);
+    if (inGame) gameFrame(dt, t);
     else {
       drawStage(t);
       const host = findHost();
@@ -10306,12 +10563,16 @@ function frame() {
     }
     edPreview(t);
   } catch (e) { console.error(e); }
+  // frame rate display (F8) and the display's refresh rate for dynamic resolution
+  try { NX.perfFrame(tn - (frame.prev || tn), now() - tn, inGame ? $("#gameView") : document.body, inGame); } catch (e) { }
+  frame.prev = tn;
   requestAnimationFrame(frame);
 }
 
 async function boot() {
   APP.peerMap = {};
   renderMe(); buildCards(); bindEvents(); renderBoard(); updateLobby();
+  if (location.hash === "#sounds") soundTest();
   requestAnimationFrame(frame);
   await NET.init();
   // a stored character from the shared store wins if this browser has none

@@ -390,7 +390,7 @@ function makeOps(md) {
           let took = false;
           if (w.it === "H") { if (q.hp < 100) { q.hp = Math.min(100, q.hp + 50); took = true; } }
           else if (w.it === "A") { if (q.arm < 100) { q.arm = 100; took = true; } }
-          else { q.w = w.it; if (!q.hasTr) q.cur = w.it; q.pk++; took = true; }
+          else { q.w = w.it; q.cur = w.it; q.pk++; took = true; }
           if (took) { w.rt = w.it === ROCKET ? 22 : 15; break; }
         }
       }
@@ -407,7 +407,7 @@ function makeOps(md) {
       if (tr.idle > 12 && Math.hypot(tr.x - tr.hx, tr.z - tr.hz) > 0.5) { tr.x = tr.hx; tr.z = tr.hz; tr.y = 0; tr.idle = 0; this.say(S, [8]); return; }
       let best = -1, bd = 1.35;
       g.P.forEach((q, j) => { if (!q.alive || q.gone) return; const d = Math.hypot(q.x - tr.x, q.z - tr.z); if (d < bd && Math.abs((q.jh || 0) - tr.y) < 1.4) { bd = d; best = j; } });
-      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; q.cur = KNIFE; this.say(S, [6, best]); }
+      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; this.say(S, [6, best]); }   // the holder keeps every weapon
     },
     propsTick(S, dt) {
       const g = S.g;
@@ -469,7 +469,7 @@ function makeOps(md) {
       }
     },
     enemy(S, i, j) { const P = S.g.P; return i !== j && (team ? P[i].tm !== P[j].tm : true); },
-    owns(S, p, wi) { if (p.hasTr) return wi === KNIFE; if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
+    owns(S, p, wi) { if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
     procAct(S, i, act, dt) {
       const g = S.g, p = g.P[i], b = g.bomb;
       if (!team || g.ph !== "live" || !p.alive || !act) { p.actT = 0; return; }
@@ -574,9 +574,9 @@ function makeOps(md) {
       // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
       const fa = Math.sin(p.a), fc = Math.cos(p.a), wide = (b.alertT = Math.max(0, (b.alertT || 0) - dt)) > 0;
       g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > -0.25) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
-      // Golden Router: go after whoever holds it; the holder only fights when cornered
+      // Golden Router: go after whoever holds it; the holder keeps running but shoots back at anyone who gets close
       if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
-      if (p.hasTr && td > 2.6) tgt = -1;
+      if (p.hasTr && td > 16) tgt = -1;
       if (troph && !p.hasTr && g.tr.by < 0 && td > 7) tgt = -1; // the free router matters more than a far-away fight
       if (tgt >= 0 && p.gr[0] > 0 && td > 7 && td < 20 && Math.random() < dt * 0.22) { const q = g.P[tgt]; p.gr[0]--; this.hostThrow(S, i, 0, Math.atan2(-(q.x - p.x), -(q.z - p.z)), clamp(0.06 + td / 55, 0.1, 0.45), 0); }
       if (tgt !== b.tgt) { b.tgt = tgt; b.react = (b.boss ? 0.25 : 0.4) + Math.random() * 0.35; }
@@ -760,7 +760,7 @@ function makeOps(md) {
       [F.cv, F.setBtn, F.setPanel, F.shop, F.touch].forEach(el => el && el.remove()); GFX.bleed("");
       V.fps = null;
     },
-    owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (pl && pl[22]) return [KNIFE]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
+    owned(V) { const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (laser) return [LASER]; const o = []; if (pl && pl[12] >= 0) o.push(pl[12]); o.push(pl && pl[15] != null ? pl[15] : 0, KNIFE); return o; },
     throwNade(V, k) {
       const F = V.fps, pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !pl || !pl[1] || F.shop && !F.shop.hidden) return;
       if (!(pl[18 + k] > 0)) { FX.text(W / 2, H * 0.7, arena ? (k ? "NO SMOKE" : "NO FRAG") : k ? "NO SMOKE · BUY ONE (B)" : "NO FRAG · BUY ONE (B)", "#ff8a3d", 0.9); return; }
@@ -919,9 +919,11 @@ function makeOps(md) {
         '<label class="sw"><span>Invert left/right</span><input type="checkbox" data-k="ix"><i></i></label></section>' +
         '<section><h5>Video</h5>' +
         '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto (fits this PC)</option><option value="ultra">Ultra</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Performance</option></select></label>' +
-        '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label></section>' +
+        '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label>' +
+        '<label class="sw"><span>Show frame rate <small>key F8</small></span><input type="checkbox" data-fps><i></i></label></section>' +
         '<section><h5>Sound</h5>' +
-        '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label></section>' +
+        '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label>' +
+        '<button type="button" class="btn" data-sndtest>Sound test</button></section>' +
         '<section><h5>Accessibility</h5>' +
         '<label class="sw"><span>Color-blind team colors <small>orange ▲ vs blue ■</small></span><input type="checkbox" data-cb><i></i></label></section>' +
         '</div>' +
@@ -929,6 +931,8 @@ function makeOps(md) {
         '<footer><span class="hint">Saved on this device.</span><button type="button" class="btn primary" data-close>Done</button></footer>';
       const snd = sp.querySelector("[data-snd]"); snd.checked = SFX.on;
       snd.addEventListener("change", () => { SFX.on = snd.checked; store("nfa-sound", SFX.on); const sbn = $("#soundBtn"); if (sbn) sbn.textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
+      sp.querySelector("[data-sndtest]").addEventListener("click", () => { sp.hidden = true; soundTest(); });
+      const fpx = sp.querySelector("[data-fps]"); fpx.checked = NX.perfOn(); fpx.addEventListener("change", () => NX.perfSet(fpx.checked));
       const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
       cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
       const rsI = sp.querySelector("[data-rs]"), rsV = sp.querySelector("[data-rv]"), rsShow = () => { rsV.textContent = rsI.value + "%"; };
@@ -1016,7 +1020,7 @@ function makeOps(md) {
         if (onG) {
           F.jh = gNow; F.vy = 0;
           if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.step(0.25, 0, true); }
-          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.tone(380, 0.25, "triangle", 0.06, 700); F.padT = 0.4; }
+          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") { F.vy = 13.5; F.vel.x += -sa * 2.5; F.vel.z += -ca * 2.5; SFX.swish(0.9); SFX.pad(0.7); F.padT = 0.4; }
         }
         F.wantJump = false;
         if (!onG || F.vy > 0) {
@@ -1064,7 +1068,7 @@ function makeOps(md) {
         best = i; bd = d;
       });
       F.shotN++; F.lastShot = [F.shotN, +(me.x + fx).toFixed(2), 1.1, +(me.z + fz).toFixed(2), KNIFE];
-      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.thud ? SFX.thud() : SFX.tone(140, 0.09, "square", 0.08); }
+      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.samp("thwack1", 0.7, 0, 0.9) || SFX.tap(0.5, 400); }
     },
     // grappling hook (Laser Arena): latch onto a wall or deck in front of you
     hook(V, on) {
@@ -1072,9 +1076,9 @@ function makeOps(md) {
       const EY = F.eyeH || EYE, cp = Math.cos(me.p), dir = [-Math.sin(me.a) * cp, Math.sin(me.p), -Math.cos(me.a) * cp], h = Math.hypot(dir[0], dir[2]) || 1e-6, R = 34;
       let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, R) / h; const wallT = t, floorT = dir[1] < -1e-4 ? EY / -dir[1] : 1e9;
       t = oRayDecks([me.x, EY, me.z], dir, Math.min(t, floorT));
-      if (t >= floorT - 1e-3) { SFX.tone(220, 0.08, "square", 0.04); return; }
+      if (t >= floorT - 1e-3) { SFX.clack(0.3, 0, 1.3); return; }
       const y = EY + dir[1] * t, hitWall = t >= wallT - 1e-3 && t < R / h - 0.01;
-      if (t >= R - 0.01 || (hitWall && y > (OPS_M.wallH || OWH)) || (dir[1] < -0.2 && t < 3)) { SFX.tone(220, 0.08, "square", 0.04); return; }
+      if (t >= R - 0.01 || (hitWall && y > (OPS_M.wallH || OWH)) || (dir[1] < -0.2 && t < 3)) { SFX.clack(0.3, 0, 1.3); return; }
       F.hk = [me.x + dir[0] * t, y, me.z + dir[2] * t]; F.hkT = 0; SFX.clank(0.8); SFX.swish(0.6);
     },
     fireRocket(V) {
@@ -1087,7 +1091,7 @@ function makeOps(md) {
     fire(V) {
       const F = V.fps, me = F.me, W0 = OW[F.cur];
       if (W0.rocket) return this.fireRocket(V);
-      SFX.shot(W0.snd, 1); if (W0.laser) SFX.tone(1400, 0.22, "sawtooth", 0.05, -1100);
+      SFX.shot(W0.snd, 1); if (W0.laser) SFX.zap(0.6);
       F.kick = 1; if (F.flash) F.flash.intensity = W0.pel ? 22 : 14;
       let spread = W0.laser ? 0 : (W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom) * (F.cr > 0.5 ? 0.65 : 1) + (F.inAir ? 0.09 : 0);
       if (W0.scope && !F.scoped) spread = 0.07 + (F.moving ? W0.mv : 0);
@@ -1597,8 +1601,43 @@ function makeOps(md) {
         scene.traverse(o => { if (o.isMesh && !o.userData.nxStatic && o.material && o.material.isMeshStandardMaterial && !(o.geometry && o.geometry.type === "PlaneGeometry")) o.castShadow = true; });
         F.guns.forEach(gm => gm.traverse(o => { if (o.isMesh) o.castShadow = false; }));
         F.nx.adopt(scene);
+        // soldiers and guns are still loading: wait for them, then prepare every shader behind the loading screen
+        GFX.whenLoaded(7000).then(() => { if (F.gone || APP.V !== V || V.fps !== F) return; F.ready = true; this.warmUp(V); });
+        return;
       }
       F.ready = true;
+    },
+    // ---- one hidden frame with a sample of every effect in it, so the first shot, hit, kill and blast of the match do
+    // not freeze the picture while the graphics card compiles their shaders (see NXP warm)
+    warmUp(V) {
+      const F = V.fps, T = THREE; if (!F || !F.post || !F.post.warm) return;
+      const snd = SFX.on, sh = F.shake, hu = F.hurtT, x = F.me.x, z = F.me.z, y = oHAt(x, z) + 1.2, sc0 = F.scorch.length, tmp = new T.Group(); SFX.on = false;
+      try {
+        this.addTracer(V, [x, y, z], [x + 1, y, z + 1], "#ffd59a", 1, 0); this.addTracer(V, [x, y, z], [x - 1, y, z + 1], "#ff3b4e", 0, 1);
+        this.burst(V, [x, y, z], "#ffb347", 2, 1); this.burst(V, [x, y, z], "#ff3b4e", 2, 1, 1);
+        this.puff(V, x, y, z, 0x8f8a80, 1, 1); this.dustTex(F);
+        this.explode(V, x, z, 0, 0);
+        if (F.propMats) this.chips(V, [x, y, z], 0);
+        // kinds of material that only thrown and dropped things use
+        const g = F.box1;
+        [new T.MeshBasicMaterial({ color: 0xffffff }), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false, side: T.DoubleSide }),
+          new T.MeshStandardMaterial({ color: 0x808080 }), new T.MeshStandardMaterial({ color: 0x808080, transparent: true })].forEach(m => { const o = new T.Mesh(g, m); o.scale.setScalar(0.01); tmp.add(o); });
+        [new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true, depthWrite: false }), new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true })].forEach(m => { const o = new T.Sprite(m); o.scale.setScalar(0.01); tmp.add(o); });
+        // the guns other players carry are built when first seen: one of each kind of build
+        { const pw = OW.find(w => !w.melee); if (pw) { const a = GUNS.lite(pw, T); a.scale.setScalar(0.01); tmp.add(a); if (!F.crowd) { const b = GUNS.build(pw, T, { arms: false }); b.scale.setScalar(0.01); tmp.add(b); } } }
+        tmp.position.set(x, y, z); F.scene.add(tmp);
+      } catch (e) { console.warn("[nx] effect samples", e); }
+      if (F.nx) F.nx.adopt(F.scene);
+      F.post.warm(F.scene, F.cam);
+      // the samples have done their job: gone before the first real frame
+      try {
+        F.scene.remove(tmp); tmp.children.forEach(o => { if (o.isMesh || o.isSprite) o.material.dispose(); });
+        for (const o of F.vfx) o.life = 0; this.vfxTick(F, 0);
+        for (const o of F.tracers) { F.scene.remove(o.m); o.m.material.dispose(); } F.tracers = [];
+        while (F.scorch.length > sc0) { const o = F.scorch.pop(); F.scene.remove(o); o.material.dispose(); }
+        (F.sparkC || []).forEach(c => c.update(10, 9));
+      } catch (e) { console.warn("[nx] effect samples", e); }
+      F.boomL.intensity = 0; F.shake = sh; F.hurtT = hu; SFX.on = snd;
     },
     // ---- breakable props (client art + effects)
     buildProps(V, scene, mStd) {
@@ -2116,7 +2155,7 @@ function makeOps(md) {
       const b = g.bomb || [0];
       F.bomb.visible = b[0] === 1 || b[0] === 2;
       if (F.bomb.visible) { F.bomb.position.set(b[1], 0, b[2]); const rate = b[3] < 100 ? 8 : 3; const on = b[0] === 1 && Math.floor(t * rate) % 2 === 0; F.bombLed.intensity = on ? 12 : 0; F.bombHalo.visible = on || b[0] === 2; F.bombHalo.material.color.set(b[0] === 2 ? 0x3ddc97 : 0xff2a3c); F.bombScr.material.color.set(b[0] === 2 ? 0x3ddc97 : on ? 0xff2a3c : 0x550010); }
-      if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "square", 0.025); } }
+      if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "sine", 0.035); } }
       // props and explosions from the host
       if (typeof g.pr === "string" && F.propM) for (let k = 0; k < F.propM.length; k++) {
         const al = g.pr.charCodeAt(k) === 49; OPS_PALIVE[k] = al ? 1 : 0;
@@ -2169,11 +2208,11 @@ function makeOps(md) {
       if (g.ann && g.ann[g.ann.length - 1] !== F.annSeen) {
         F.annSeen = g.ann[g.ann.length - 1]; const a = g.ann;
         if (a[0] === 1) F.ann = { big: "ROUND " + a[1], sub: team ? (tm === 0 ? "ATTACK" : "DEFEND") : "", col: "#f5f1e6", life: 3 };
-        if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("early"); }
-        if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "wrong"); }
+        if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("alarm"); }
+        if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "lose"); }
         if (a[0] === 4) { F.ann = { big: "GO GO GO", sub: "", col: "#ff8a3d", life: 1.6 }; SFX.play("go"); }
-        if (a[0] === 6) { const mine = a[1] === me; F.ann = { big: mine ? "YOU HAVE THE ROUTER" : ((V.ro[a[1]] || {}).n || "").toUpperCase() + " HAS THE ROUTER", sub: mine ? "Knife only · stay alive" : "Take it from them", col: "#ffd23f", life: 2.6 }; SFX.play(mine ? "right" : "early"); }
-        if (a[0] === 7) { F.ann = { big: "ROUTER DROPPED", sub: "Grab it!", col: "#ffd23f", life: 2 }; SFX.play("bump"); }
+        if (a[0] === 6) { const mine = a[1] === me; F.ann = { big: mine ? "YOU HAVE THE ROUTER" : ((V.ro[a[1]] || {}).n || "").toUpperCase() + " HAS THE ROUTER", sub: mine ? "Keep it · stay alive" : "Take it from them", col: "#ffd23f", life: 2.6 }; SFX.play(mine ? "start" : "alarm"); }
+        if (a[0] === 7) { F.ann = { big: "ROUTER DROPPED", sub: "Grab it!", col: "#ffd23f", life: 2 }; SFX.clack(0.7, 0, 0.7); }
         if (a[0] === 8) { F.ann = { big: "ROUTER RESET", sub: "Back at the center", col: "#ffd23f", life: 2 }; }
       }
       if (pl) { if (pl[0] < F.lastHp && pl[1]) { const n = F.lastHp - pl[0]; F.hurtT = 0.45; SFX.hurt(n); F.hurtN = { n, life: 1 }; const la = F.lastAttacker; let side = Math.random() < 0.5 ? -1 : 1;
@@ -2243,7 +2282,7 @@ function makeOps(md) {
           ctx.save(); ctx.translate(ex, ey); ctx.fillStyle = "#ffd23f"; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, 0); ctx.lineTo(0, 11); ctx.lineTo(-9, 0); ctx.closePath(); ctx.stroke(); ctx.fill();
           ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.lineWidth = 4; ctx.strokeText(Math.round(d) + "m", 0, 22); ctx.fillText(Math.round(d) + "m", 0, 22); ctx.restore();
         }
-        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · KNIFE ONLY · RUN", W / 2, H - 104); }
+        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · STAY ALIVE", W / 2, H - 104); }
       } else {
         const ranked = (g.pl || []).map((p, i) => ({ i, k: p[3], d: p[4] })).sort((a, b) => b.k - a.k || a.d - b.d);
         const lead = ranked[0], myRank = ranked.findIndex(o => o.i === me) + 1;
