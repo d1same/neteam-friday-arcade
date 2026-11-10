@@ -404,6 +404,7 @@ const race = {
       if (o.life <= 0) { F.scene.remove(m); m.material.dispose(); }
     }
     F.wfx = F.wfx.filter(o => o.life > 0);
+    if (F.spk) F.spk.update(dt, 14);
     if (F.boomL) F.boomL.intensity = Math.max(0, F.boomL.intensity - dt * 220);
     F.blindT = Math.max(0, F.blindT - dt); F.zapT = Math.max(0, (F.zapT || 0) - dt);
   },
@@ -412,9 +413,10 @@ const race = {
     const K = F.skid, P = K.m.geometry.attributes.position, o = (K.n++ % K.N) * 6, dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l * 0.13, nz = dx / l * 0.13, y = 0.045;
     P.setXYZ(o, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 1, a[0] + nx, y, a[1] + nz); P.setXYZ(o + 2, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 3, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 4, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 5, b[0] - nx, y, b[1] - nz); P.needsUpdate = true;
   },
+  // sparks: one cloud of points for the whole race (dozens fly whenever a bolt lands, and each used to be drawn on its own)
   sparks(V, x, z, col, n) {
-    const F = V.fps, T = THREE;
-    for (let i = 0; i < n; i++) { const m = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(col).multiplyScalar(2.5), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); m.scale.set(0.15, 0.15, 1); m.position.set(x, 1, z); F.scene.add(m); const a = Math.random() * 6.28, sp = 3 + Math.random() * 7; F.wfx.push({ m, sprite: 1, life: 0.3 + Math.random() * 0.3, max: 0.6, v: [Math.cos(a) * sp, 1 + Math.random() * 5, Math.sin(a) * sp], g: 14, op: 1 }); }
+    const F = V.fps, K = F.spk || (F.spk = GFX.cloud(F.scene, 480, 0.13)), c = (GFX._bc || (GFX._bc = new THREE.Color())).set(col).multiplyScalar(4);
+    for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, sp = 3 + Math.random() * 7; K.emit(x, 1, z, Math.cos(a) * sp, 1 + Math.random() * 5, Math.sin(a) * sp, 0.3 + Math.random() * 0.3, c.r, c.g, c.b); }
   },
   boom(V, x, z) {
     const F = V.fps, T = THREE; if (!F || !F.scene) return; const low = GFX.lowEnd();
@@ -661,19 +663,25 @@ const race = {
       const car = RCCAR.make(T, r.hex, i + 1, i % 3), L0 = RCCAR.L0, L1 = RCCAR.L1; body.add(car.body);
       const hg1 = new T.Sprite(glowM(0x8c8470)); hg1.scale.set(0.7, 0.4, 1); hg1.position.set(-0.6, 0.66, L1 - 0.05); const hg2 = hg1.clone(); hg2.position.x = 0.58;
       const tg = new T.Sprite(glowM(0xb01c28)); tg.scale.set(2.0, 0.5, 1); tg.position.set(0, car.sh.tailY, L0 - 0.12);
-      const beam = new T.Mesh(new T.PlaneGeometry(5, 14), beamM); beam.rotation.set(-Math.PI / 2, 0, Math.PI); beam.position.set(0, 0.04, 9.3);
+      const beam = new T.Object3D(); beam.rotation.set(-Math.PI / 2, 0, Math.PI); beam.position.set(0, 0.04, 9.3);
       body.add(hg1, hg2, tg, beam);
       const wheels = car.wheels.map(w => { grp.add(w.st); return w; });
       // the driver: your character in the cockpit, name tag above
       const spr = new T.Sprite(new T.SpriteMaterial({ map: frenzy.charTex(r.c, r.hex, r.n), transparent: true, alphaTest: 0.02 })); spr.scale.set(1.26, 1.58, 1); spr.position.set(0, car.sh.seatY + 0.5, -0.2); body.add(spr);
       const flame = new T.Group(), flameM = new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(0.6, 2.2, 3.2), transparent: true, blending: T.AdditiveBlending, depthWrite: false }); for (const sd of [-1, 1]) for (let k = 0; k < 2; k++) { const f = new T.Sprite(flameM); f.position.set(sd * 0.3, 0.53, L0 - 0.3 - k * 0.42); f.userData.k = k; flame.add(f); } flame.visible = false; body.add(flame);
-      const glow = new T.Mesh(new T.PlaneGeometry(3, 5.4), new T.MeshBasicMaterial({ map: GFX.glowTex(), color: new T.Color(r.hex).multiplyScalar(0.5), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.05; grp.add(glow);
-      const shad = new T.Mesh(new T.PlaneGeometry(2.7, 5.3), new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false })); shad.rotation.x = -Math.PI / 2; shad.position.y = 0.03; grp.add(shad);
+      const glow = new T.Object3D(); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.05; grp.add(glow);
+      const shad = new T.Object3D(); shad.rotation.x = -Math.PI / 2; shad.position.y = 0.03; grp.add(shad);
       const shield = new T.Mesh(F.shieldGeo || (F.shieldGeo = new T.SphereGeometry(3.1, 24, 16)), new T.MeshBasicMaterial({ color: new T.Color(0.4, 2.2, 1.2), transparent: true, opacity: 0.22, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })); shield.scale.set(0.85, 0.6, 1.1); shield.position.y = 1; shield.visible = false; grp.add(shield);
       const zap = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(0.8, 2.4, 3.4), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); zap.scale.set(5, 3, 1); zap.position.y = 1.2; zap.visible = false; grp.add(zap);
       scene.add(grp);
-      return { grp, body, wheels, flame, spr, sprY: car.sh.seatY + 0.5, shield, zap, zapT: 0, x: 0, z: 0, a: 0, init: false, roll: 0, smokeT: 0, steer: 0, pv: 0, pitch: 0 };
+      return { grp, body, wheels, flame, spr, sprY: car.sh.seatY + 0.5, shield, zap, zapT: 0, x: 0, z: 0, a: 0, init: false, roll: 0, smokeT: 0, steer: 0, pv: 0, pitch: 0, inst: [beam, glow, shad] };
     });
+    // the parts every car has are drawn together, one call per kind however many cars there are: wheels, headlight pools, underglow, contact shadows
+    { const n = V.ro.length, W = RCCAR.wheel(T), im = (geo, mat, cnt, order) => { const m = new T.InstancedMesh(geo, mat, cnt); m.frustumCulled = false; m.renderOrder = order; m.instanceMatrix.setUsage(T.DynamicDrawUsage); scene.add(m); return m; };
+      F.inst = { wheel: im(W.geo, W.mat, n * 4, 0), beam: im(new T.PlaneGeometry(5, 14), beamM, n, 3),
+        glow: im(new T.PlaneGeometry(3, 5.4), new T.MeshBasicMaterial({ map: GFX.glowTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false }), n, 2),
+        shad: im(new T.PlaneGeometry(2.7, 5.3), new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false }), n, 1) };
+      const c = new T.Color(); V.ro.forEach((r, i) => F.inst.glow.setColorAt(i, c.set(r.hex).multiplyScalar(0.5))); F.inst.glow.instanceColor.needsUpdate = true; }
     // speed streaks, skid marks and wet-road spray
     { const N = 64, g = new T.BufferGeometry(); g.setAttribute("position", new T.BufferAttribute(new Float32Array(N * 6), 3));
       const m = new T.LineSegments(g, new T.LineBasicMaterial({ color: new T.Color(1.5, 1.8, 2.3), transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false })); m.frustumCulled = false; m.visible = false; scene.add(m); F.streak = { m, N, p: [] }; }
@@ -736,6 +744,8 @@ const race = {
         [-1, 1].forEach(sd => { const sp = new T.Sprite(F.smokeM.clone()); const ca = Math.cos(car.a), sa = Math.sin(car.a); sp.position.set(car.x - sa * 1.4 + ca * sd * 0.95, 0.4, car.z - ca * 1.4 - sa * sd * 0.95); sp.scale.set(1, 1, 1); F.scene.add(sp); F.smoke.push({ m: sp, life: 0.9 }); });
       }
     });
+    if (F.inst) { const I = F.inst; F.cars.forEach((car, i) => { car.grp.updateWorldMatrix(false, true); car.wheels.forEach((wh, k) => I.wheel.setMatrixAt(i * 4 + k, wh.w.matrixWorld)); I.beam.setMatrixAt(i, car.inst[0].matrixWorld); I.glow.setMatrixAt(i, car.inst[1].matrixWorld); I.shad.setMatrixAt(i, car.inst[2].matrixWorld); });
+      I.wheel.instanceMatrix.needsUpdate = I.beam.instanceMatrix.needsUpdate = I.glow.instanceMatrix.needsUpdate = I.shad.instanceMatrix.needsUpdate = true; }
     // pickups, spills and item effects
     F.boxes.forEach((m, k) => { m.visible = !g.bx || !!g.bx[k]; m.rotation.y = t * 1.6 + k; m.rotation.x = t * 0.9; m.position.y = 1.3 + Math.sin(t * 3 + k) * 0.2; });
     const live = new Set();

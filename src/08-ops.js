@@ -1495,18 +1495,20 @@ function makeOps(md) {
         F.avatars.forEach((av) => {
           try {
             const m = SU.clone(gl.scene); m.scale.multiplyScalar(sc); m.rotation.y = Math.PI; m.position.y = -U.y0 * sc;
-            const main = [];
-            m.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows; const c = o.material.clone(); c.envMapIntensity = 0.6; main.push(c); o.material = c; });
+            const main = [], ms = [];
+            m.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows; const c = o.material.clone(); c.envMapIntensity = 0.6; main.push(c); o.material = c; ms.push(o); });
             av.bd.children.forEach(c => { if (c !== av.gun && c !== av.fl) c.visible = false; });
             av.bd.add(m);
             const mixer = new THREE.AnimationMixer(m), act = {};
             [["Walking", "walk"], ["Running", "run"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
             av.spr.scale.set(0.5, 0.62, 1); av.gun.scale.setScalar(1.05);
-            av.rb = { m, mixer, act, cur: "", main, hum: 1, idleT: U.idleT, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
+            av.rb = { m, mixer, act, cur: "", main, ms, hum: 1, idleT: U.idleT, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
           } catch (e) { console.warn("soldier model", e); }
         });
       };
-      GFX.soldier().then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
+      // the full soldier and detailed guns for small matches on capable cards; light ones when there are many players or the card is modest
+      F.crowd = NX.tier().i <= 1 || V.ro.length > 6;
+      GFX.soldier(F.crowd).then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
         if (!gl || F.gone || !F.avatars) return;
         const SU = THREE_EXTRAS.SkeletonUtils;
         F.avatars.forEach((av) => {
@@ -1821,13 +1823,11 @@ function makeOps(md) {
         }
       }
     },
+    // sparks and blood flecks: two clouds of points (coarse and fine), one draw call each however many fly
     burst(V, at, hex, n, spd, fine = 0) {
-      const F = V.fps, T = THREE; if (!F || !F.ready) return;
-      for (let k = 0; k < n; k++) {
-        const m = new T.Sprite(F.partM.clone()); m.material.color = new T.Color(hex).multiplyScalar(5); const s = (0.028 + Math.random() * 0.04) * (fine ? 0.55 : 1); m.scale.set(s, s, 1);
-        m.position.set(at[0], at[1], at[2]); F.scene.add(m);
-        F.parts.push({ m, v: [(Math.random() - 0.5) * spd, Math.random() * spd * 0.8, (Math.random() - 0.5) * spd], life: (0.25 + Math.random() * 0.25) * (fine ? 0.55 : 1), max: 0.5 });
-      }
+      const F = V.fps; if (!F || !F.ready) return;
+      const K = F.sparkC || (F.sparkC = [GFX.cloud(F.scene, 360, 0.055), GFX.cloud(F.scene, 260, 0.03)]), q = K[fine ? 1 : 0], c = (GFX._bc || (GFX._bc = new THREE.Color())).set(hex).multiplyScalar(5);
+      for (let k = 0; k < n; k++) q.emit(at[0], at[1], at[2], (Math.random() - 0.5) * spd, Math.random() * spd * 0.8, (Math.random() - 0.5) * spd, (0.25 + Math.random() * 0.25) * (fine ? 0.55 : 1), c.r, c.g, c.b);
     },
     addTracer(V, from, to, hex, spark, beam) {
       const F = V.fps, T = THREE; if (!F || !F.ready) return;
@@ -1965,6 +1965,8 @@ function makeOps(md) {
       F.fovK = Math.max(0, (F.fovK || 0) - dt * 22);
       const fov = F.scoped ? 22 : 74 + F.fovK; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
       // players
+      { const K = F.cull || (F.cull = { fr: new T.Frustum(), m: new T.Matrix4(), s: new T.Sphere(new T.Vector3(), 2.4), d: new T.Vector3() });
+        F.cam.updateMatrixWorld(); K.m.multiplyMatrices(F.cam.projectionMatrix, F.cam.matrixWorldInverse); K.fr.setFromProjectionMatrix(K.m); F.cam.getWorldDirection(K.d); K.x = F.cam.position.x + K.d.x * 12; K.z = F.cam.position.z + K.d.z * 12; }
       const mypl0 = V.meIdx >= 0 && g.pl ? g.pl[V.meIdx] : null;
       V.ro.forEach((r, i) => {
         const av = F.avatars[i]; const pl = g.pl && g.pl[i];
@@ -1984,7 +1986,7 @@ function makeOps(md) {
         av.grp.position.set(av.x, av.jh || 0, av.z); av.grp.rotation.y = a + Math.PI; av.bd.scale.y = 1 - 0.3 * (av.cr || 0); av.grp.visible = !(pl && pl[16]);
         const alive = !!(pl && pl[1]);
         // the gun they actually carry
-        const cw = pl ? pl[6] : 0; if (av.gunW !== cw && OW[cw]) { av.gunW = cw; while (av.gun.children.length) av.gun.remove(av.gun.children[0]); if (!OW[cw].melee) { const gm2 = GUNS.build(OW[cw], T, { arms: false }); gm2.traverse(o => { if (o.isMesh) o.castShadow = !!F.shadows; }); av.gun.add(gm2); } }
+        const cw = pl ? pl[6] : 0; if (av.gunW !== cw && OW[cw]) { av.gunW = cw; while (av.gun.children.length) av.gun.remove(av.gun.children[0]); if (!OW[cw].melee) { const gm2 = F.crowd ? GUNS.lite(OW[cw], T) : GUNS.build(OW[cw], T, { arms: false }); gm2.traverse(o => { if (o.isMesh) o.castShadow = !!F.shadows; }); av.gun.add(gm2); } }
         if (0) { av.rbW = cw; const nm = { pistol: "Pistol", deagle: "Revolver", smg: "SMG", rifle: "AK", carbine: "AK", lmg: "AK", sniper: "Sniper", scout: "Sniper_2", shotgun: "Shotgun", knife: "Knife_1", rocket: "RocketLauncher", laser: "ShortCannon" }[(OW[cw] || OW[0]).id]; for (const n in av.rb.wp) av.rb.wp[n].visible = n === nm; }
         // death: tip over and fade out instead of vanishing
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
@@ -1998,6 +2000,9 @@ function makeOps(md) {
         if (av.rb) {
           // pick the animation from how fast they're actually moving
           const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle";
+          // skinned soldiers are never culled automatically: keep them off the screen pass when out of view, and out of the shadow pass when outside the sun-shadow area
+          if (R.ms) { const K = F.cull; K.s.center.set(av.x, 1 + (av.jh || 0), av.z); const on = K.fr.intersectsSphere(K.s), near = !!F.shadows && Math.abs(av.x - K.x) < 27 && Math.abs(av.z - K.z) < 27;
+            if (on !== R.on || near !== R.near) { R.on = on; R.near = near; for (const o of R.ms) { if (on) o.layers.enable(0); else o.layers.disable(0); if (near) o.layers.enable(2); else o.layers.disable(2); } } }
           if (R.hum && R.cur !== want && (want === "Idle" || want === "Death")) { const pv = R.act[R.cur]; if (pv) pv.fadeOut(0.22); R.cur = want; }   // no idle clip: ease back to the standing rest pose
           else if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); else if (R.hum) nx.fadeIn(0.2); R.cur = want; }
           // legs follow the real travel direction: hips turn into a strafe, and moving backwards plays the stride in reverse
@@ -2006,10 +2011,12 @@ function makeOps(md) {
           if (R.hum) { av.legY = lerp(av.legY || 0, ly, 1 - Math.pow(0.001, dt)); av.back = back; R.m.rotation.y = Math.PI + av.legY; }
           if (want === "Running") R.act.Running.timeScale = back * clamp(spd / (R.hum ? 5.4 : 6.2), 0.7, 1.3);
           if (want === "Walking") R.act.Walking.timeScale = R.hum ? back * clamp(spd / 1.7, 0.6, 1.9) : clamp(spd / 2.2, 0.6, 1.4);
-          R.mixer.update(dt);
-          if (R.hum && R.spine && Math.abs(av.legY) > 0.01) opsTwist(R.spine, -av.legY);
+          // nobody can see this one: let the animation rest (it catches up when they come back into view)
+          const idle = !!R.ms && R.on === false && R.near === false;
+          if (idle) R.lag = Math.min(0.5, (R.lag || 0) + dt); else { R.mixer.update(dt + (R.lag || 0)); R.lag = 0; }
+          if (!idle && R.hum && R.spine && Math.abs(av.legY) > 0.01) opsTwist(R.spine, -av.legY);
           // weapon rides the right hand but always points where the player faces
-          if (R.hum && R.hand && alive) {
+          if (!idle && R.hum && R.hand && alive) {
             // arms hold the weapon whatever the legs are doing: swing each upper arm and forearm onto a pose for the weapon class
             const wk = (OW[cw] || OW[0]), kind = wk.melee ? 0 : wk.slot === 2 ? 1 : 2, A = OPS_ARM[kind];
             for (let sd = 0; sd < 2; sd++) { const B = R.arms[sd]; if (!B[0] || !B[1] || !B[2]) continue; opsAim(B[0], B[1], A[sd][0], av.bd); opsAim(B[1], B[2], A[sd][1], av.bd); }
@@ -2126,6 +2133,7 @@ function makeOps(md) {
       F.tracers = F.tracers.filter(o => o.life > 0);
       for (const o of F.parts) { o.life -= dt; o.v[1] -= 9 * dt; o.m.position.x += o.v[0] * dt; o.m.position.y = Math.max(0.02, o.m.position.y + o.v[1] * dt); o.m.position.z += o.v[2] * dt; o.m.material.opacity = Math.max(0, o.life / 0.3); if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
       F.parts = F.parts.filter(o => o.life > 0);
+      if (F.sparkC) { F.sparkC[0].update(dt, 9); F.sparkC[1].update(dt, 9); }
       if (F.nx) F.nx.update(dt, t);
       { const hp = mypl && mypl[1] ? mypl[0] : 100, low = me >= 0 && hp < 35 ? (35 - hp) / 35 : 0; F.lowK = lerp(F.lowK || 0, low, 0.06);
         F.hbT = (F.hbT || 0) - dt; if (low > 0 && F.hbT <= 0) { SFX.heart(0.45 + low * 0.5); F.hbT = 1.05 - low * 0.4; F.hbP = 1; } F.hbP = Math.max(0, (F.hbP || 0) - dt * 2.4);

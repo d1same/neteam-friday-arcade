@@ -117,7 +117,9 @@ const RCCAR = {
     const tyre = new T.LatheGeometry(pr, 28); tyre.rotateZ(-Math.PI / 2);
     const nt = tyre.index ? tyre.index.count : tyre.attributes.position.count;
     const geo = C.merge(T, [[tyre], [new T.CircleGeometry(0.235, 28), C.at(T, 0.105, 0, 0, 0, Math.PI / 2)], [new T.CircleGeometry(0.235, 28), C.at(T, -0.105, 0, 0, 0, -Math.PI / 2)]]);
-    geo.addGroup(0, nt, 0); geo.addGroup(nt, geo.attributes.position.count - nt, 1);
+    // the whole wheel is one material so that every wheel in the race can be drawn in a single call:
+    // the tyre reads the dark corner of the rim picture, and a second picture says where it is rubber and where metal
+    { const uv = geo.attributes.uv, ix = geo.index, seen = new Set(); if (ix) { for (let i = 0; i < nt; i++) seen.add(ix.getX(i)); seen.forEach(v => uv.setXY(v, 0.012, 0.012)); } else for (let i = 0; i < nt; i++) uv.setXY(i, 0.012, 0.012); }
     const tex = GFX.tex(256, 256, (x, w, h) => {
       x.fillStyle = "#0b0c10"; x.fillRect(0, 0, w, h); const cx = w / 2, cy = h / 2;
       const g = x.createRadialGradient(cx, cy, 20, cx, cy, 124); g.addColorStop(0, "#3a3d46"); g.addColorStop(0.55, "#14151a"); g.addColorStop(1, "#0c0d11"); x.fillStyle = g; x.beginPath(); x.arc(cx, cy, 126, 0, 7); x.fill();
@@ -128,8 +130,9 @@ const RCCAR = {
       x.fillStyle = "#e8eaf0"; for (let k = 0; k < 5; k++) { const a = (k + 0.5) / 5 * Math.PI * 2; x.beginPath(); x.arc(cx + Math.cos(a) * 21, cy + Math.sin(a) * 21, 3.4, 0, 7); x.fill(); }
     });
     tex.anisotropy = 4;
-    const mats = [new T.MeshStandardMaterial({ color: 0x0b0b0e, roughness: 0.92, side: T.DoubleSide }), new T.MeshStandardMaterial({ map: tex, roughness: 0.34, metalness: 0.7 })];
-    return C.wh = { geo, mats };
+    const mr = GFX.tex(64, 64, (x, w, h) => { x.fillStyle = "rgb(0,235,0)"; x.fillRect(0, 0, w, h); x.fillStyle = "rgb(0,87,178)"; x.beginPath(); x.arc(w / 2, h / 2, w / 2 - 0.6, 0, 7); x.fill(); }); mr.colorSpace = T.NoColorSpace;
+    const mat = new T.MeshStandardMaterial({ map: tex, roughnessMap: mr, metalnessMap: mr, roughness: 1, metalness: 1, side: T.DoubleSide });
+    return C.wh = { geo, mat };
   },
   mats(T) {
     const C = RCCAR; if (C.mt) return C.mt;
@@ -167,7 +170,7 @@ const RCCAR = {
     body.add(new T.Mesh(sh.paint, paintM), new T.Mesh(sh.trim, M.trim), new T.Mesh(sh.head, M.head), new T.Mesh(sh.tail, M.tail));
     const gl = new T.Mesh(sh.glass, M.glass); gl.renderOrder = 2; body.add(gl);
     for (const s of [-1, 1]) { const d = new T.Mesh(C.doorG || (C.doorG = new T.PlaneGeometry(0.76, 0.38)), doorM); d.position.set(s * (sh.doorX + 0.008), sh.doorY, 0.2); d.rotation.y = s * Math.PI / 2; body.add(d); }
-    const wheels = [[-1, C.AXF], [1, C.AXF], [-1, C.AXR], [1, C.AXR]].map(([s, z]) => { const st = new T.Group(), w = new T.Mesh(W.geo, W.mats); st.position.set(s * C.TRK, C.WR, z); st.add(w); return { st, w, front: z > 0 }; });
+    const wheels = [[-1, C.AXF], [1, C.AXF], [-1, C.AXR], [1, C.AXR]].map(([s, z]) => { const st = new T.Group(), w = new T.Object3D(); st.position.set(s * C.TRK, C.WR, z); st.add(w); return { st, w, front: z > 0 }; });   // w only carries the transform: all wheels are one instanced mesh (see buildDyn)
     return { body, wheels, sh, own: [paintM, doorM, lv, dt] };
   },
 };

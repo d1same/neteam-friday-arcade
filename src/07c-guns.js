@@ -176,7 +176,7 @@ const GUNS = {
     }
     g.traverse(o => { if (o.isMesh) o.castShadow = false; });
     U.proc = g.children.slice();
-    const sk = { pistol: "pistol", sniper: "sniper", scout: "sniper", deagle: "1911", rifle: "ak", lmg: "ak", carbine: "m4", smg: "mp5", shotgun: "shotgun" }[id];
+    const sk = opt.lite ? null : { pistol: "pistol", sniper: "sniper", scout: "sniper", deagle: "1911", rifle: "ak", lmg: "ak", carbine: "m4", smg: "mp5", shotgun: "shotgun" }[id];
     if (sk) this.scan(sk).then(sc => { try { if (sc) (sk === "pistol" || sk === "sniper" ? this.fit(g, sc, sk, id, T) : this.fit2(g, sc, GUNS.REAL[id], T)); } catch (e) { console.warn("gun model", id, e); } });
     if (opt.arms !== false) {
       const R = this.arm(T, opt.hex), L = this.arm(T, opt.hex); g.add(R, L); U.armR = R; U.armL = L;
@@ -184,6 +184,22 @@ const GUNS = {
       this.setArm(R, U.rh, U.rElbow, 0); this.setArm(L, U.lh, U.lElbow, U.lroll);
     }
     return g;
+  },
+  // the gun in another player's hands when the match is crowded: the hand-built gun welded into one mesh with painted-on colours.
+  // One draw call and about a thousand triangles, where the detailed model costs up to 18 thousand per player.
+  _lg: {}, _lm: null,
+  lite(w0, T) {
+    let geo = this._lg[w0.id];
+    if (!geo) {
+      const g = this.build(w0, T, { arms: false, lite: true }), P = [], N = [], C = [], col = new T.Color(), M = this.mats(T);
+      g.updateMatrixWorld(true);
+      g.traverse(o => { if (!o.isMesh || !o.visible) return; const q = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); q.applyMatrix4(o.matrixWorld);
+        col.copy(o.material.color); if (o.material === M.wood) col.set(0x5a3a22); if (o.material.emissiveIntensity && o.material.emissive.getHex()) col.copy(o.material.emissive);
+        const p = q.attributes.position, n = q.attributes.normal; for (let i = 0; i < p.count; i++) { P.push(p.getX(i), p.getY(i), p.getZ(i)); N.push(n.getX(i), n.getY(i), n.getZ(i)); C.push(col.r, col.g, col.b); } q.dispose(); });
+      geo = this._lg[w0.id] = new T.BufferGeometry(); geo.setAttribute("position", new T.Float32BufferAttribute(P, 3)); geo.setAttribute("normal", new T.Float32BufferAttribute(N, 3)); geo.setAttribute("color", new T.Float32BufferAttribute(C, 3)); geo.computeBoundingSphere();
+      g.traverse(o => { if (o.isMesh) o.geometry.dispose(); });
+    }
+    const m = new T.Mesh(geo, this._lm || (this._lm = new T.MeshStandardMaterial({ vertexColors: true, metalness: 0.55, roughness: 0.5 }))), grp = new T.Group(); grp.add(m); return grp;
   },
   // photo-scanned CC0 models (Poly Haven, see models/CREDITS.txt) replace the hand-built pistol and bolt rifle once they have loaded
   _sc: {},

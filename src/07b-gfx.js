@@ -61,10 +61,25 @@ const GFX = {
     });
     return GFX._op;
   },
-  // realistic rigged CC0 soldier (see models/CREDITS.txt) with walk and run clips
-  soldier() {
-    if (GFX._sol) return GFX._sol;
-    return GFX._sol = GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/trooper.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } }));
+  // realistic rigged CC0 soldier (see models/CREDITS.txt) with walk and run clips.
+  // lite = the same soldier at a third of the triangles (tools: meshoptimizer), for crowded matches and modest graphics cards
+  soldier(lite) {
+    const k = lite ? 1 : 0, C = GFX._sol || (GFX._sol = []); if (C[k]) return C[k];
+    const load = (f) => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/" + f, (g) => res(g), null, () => res(null)); } catch (e) { res(null); } });
+    return C[k] = GFX.operator().then(() => load(lite ? "trooper-lod.glb?v=1" : "trooper.glb")).then((g) => g || !lite ? g : load("trooper.glb"));
+  },
+  // a cloud of glowing points drawn in one call (sparks, chips of light): emit() adds one, update() moves and fades them all
+  cloud(scene, N, size) {
+    const T = THREE, g = new T.BufferGeometry(), P = new T.BufferAttribute(new Float32Array(N * 3), 3), C = new T.BufferAttribute(new Float32Array(N * 3), 3); g.setAttribute("position", P); g.setAttribute("color", C);
+    const m = new T.Points(g, new T.PointsMaterial({ map: GFX.glowTex(), size, sizeAttenuation: true, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false })); m.frustumCulled = false; m.renderOrder = 5; m.visible = false; scene.add(m);
+    const v = new Float32Array(N * 3), life = new Float32Array(N), max = new Float32Array(N), c = new Float32Array(N * 3); let n = 0, live = 0;
+    return { m,
+      emit(x, y, z, vx, vy, vz, lf, r, gg, b) { const o = n++ % N; P.setXYZ(o, x, y, z); v[o * 3] = vx; v[o * 3 + 1] = vy; v[o * 3 + 2] = vz; life[o] = max[o] = lf; c[o * 3] = r; c[o * 3 + 1] = gg; c[o * 3 + 2] = b; live = Math.max(live, lf + 0.1); },
+      update(dt, grav) {
+        if (live <= 0) { if (m.visible) m.visible = false; return; } live -= dt; m.visible = true;
+        for (let o = 0; o < N; o++) { if (life[o] <= 0) continue; life[o] -= dt; const f = Math.max(0, life[o] / max[o]); v[o * 3 + 1] -= grav * dt; P.setXYZ(o, P.getX(o) + v[o * 3] * dt, Math.max(0.02, P.getY(o) + v[o * 3 + 1] * dt), P.getZ(o) + v[o * 3 + 2] * dt); C.setXYZ(o, c[o * 3] * f, c[o * 3 + 1] * f, c[o * 3 + 2] * f); }
+        P.needsUpdate = C.needsUpdate = true;
+      } };
   },
   // quality: phones get a lighter pipeline
   // render resolution: the device's native pixel density times the player's scale (Settings), capped for safety
