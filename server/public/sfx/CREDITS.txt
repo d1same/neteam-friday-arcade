@@ -23,3 +23,4 @@ shot-lmg.mp3 (Norinco SKS), shot-scout.mp3 (Savage 10 .300 Blackout), far-*.mp3 
 bolt-*.mp3: cut from "equipment clicks III" by lfa (OpenGameArt.org, recorded on a real bolt-action rifle), CC0.
 clip1.mp3, clip2.mp3, bullet1.mp3: "Gun Reload Sound Effects" by BMacZero (OpenGameArt.org), CC0.
 rl-ar.mp3: "assaultriflereload1" from "Gun reload sounds" by SpringySpringo (OpenGameArt.org), CC0.
+gun-*.mp3 (stereo, close), gunm-*.mp3 (one microphone, for other players' shots), far-*.mp3 (stereo, mid distance): re-exported from the original 96 kHz stereo files of The Free Firearm Sound Library, CC0.
