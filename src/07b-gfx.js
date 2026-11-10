@@ -73,6 +73,16 @@ const GFX = {
     const load = (f) => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/" + f, (g) => res(g), null, () => res(null)); } catch (e) { res(null); } });
     return C[k] = GFX.track(GFX.operator().then(() => load(lite ? "trooper-lod.glb?v=1" : "trooper.glb")).then((g) => g || !lite ? g : load("trooper.glb")));
   },
+  // real people for the two teams (Grab3D businessman, casual man, woman; slimmed, see models/CREDITS.txt) with a mask of what is
+  // suit, trousers, skin, hair, shirt and shoes so each look can recolour them in the shader. Resolves null if any piece fails.
+  people() {
+    if (GFX._ppl) return GFX._ppl;
+    const load = (f) => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/" + f, (g) => res(g), null, () => res(null)); } catch (e) { res(null); } });
+    const tex = (f) => new Promise((res) => new THREE.TextureLoader().load("models/" + f, (t) => { t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.flipY = false; t.colorSpace = THREE.NoColorSpace; res(t); }, null, () => res(null)));
+    const N = ["businessman", "man", "woman"];
+    return GFX._ppl = GFX.track(GFX.operator().then(() => Promise.all(N.map(n => Promise.all([load("person-" + n + ".glb?v=1"), tex("person-" + n + "-mask.png?v=2")])))).then((L) => {
+      if (L.some(([g, m]) => !g || !m)) return null; const o = {}; L.forEach(([g, m], k) => { g.userData.mask = m; g.userData.mean = PEOPLE_MEAN[N[k]]; o[N[k]] = g; }); return o; }));
+  },
   // a cloud of glowing points drawn in one call (sparks, chips of light): emit() adds one, update() moves and fades them all
   cloud(scene, N, size) {
     const T = THREE, g = new T.BufferGeometry(), P = new T.BufferAttribute(new Float32Array(N * 3), 3), C = new T.BufferAttribute(new Float32Array(N * 3), 3); g.setAttribute("position", P); g.setAttribute("color", C);
@@ -188,3 +198,5 @@ function pinToStage(F, w, h) {
   if (F.setBtn) { F.setBtn.style.right = right + 8 + "px"; F.setBtn.style.top = gc.offsetTop + 8 + "px"; F.setBtn.style.bottom = "auto"; }
   if (F.setPanel && !F.setPanel.classList.contains("set-modal")) { F.setPanel.style.right = right + 8 + "px"; F.setPanel.style.top = gc.offsetTop + 50 + "px"; F.setPanel.style.bottom = "auto"; }
 }
+// mean linear brightness of each masked part in the source texture (1 top, 2 trousers, 3 skin, 4 hair, 5 shirt, 6 shoes)
+const PEOPLE_MEAN = { businessman: [0.0225, 0.0225, 0.414, 0.0255, 0.663, 0.0336], man: [0.129, 0.0273, 0.418, 0.0384, 0.699, 0.409], woman: [0.1186, 0.0106, 0.46, 0.0559, 0.847, 0.602] };
