@@ -402,6 +402,10 @@ const race = {
     F.blindT = Math.max(0, F.blindT - dt); F.zapT = Math.max(0, (F.zapT || 0) - dt);
   },
   smokeTex(F) { return GAMES.breach.smokeTex(F); },
+  skid(F, a, b) {
+    const K = F.skid, P = K.m.geometry.attributes.position, o = (K.n++ % K.N) * 6, dx = b[0] - a[0], dz = b[1] - a[1], l = Math.hypot(dx, dz) || 1, nx = -dz / l * 0.13, nz = dx / l * 0.13, y = 0.045;
+    P.setXYZ(o, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 1, a[0] + nx, y, a[1] + nz); P.setXYZ(o + 2, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 3, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 4, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 5, b[0] - nx, y, b[1] - nz); P.needsUpdate = true;
+  },
   sparks(V, x, z, col, n) {
     const F = V.fps, T = THREE;
     for (let i = 0; i < n; i++) { const m = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(col).multiplyScalar(2.5), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); m.scale.set(0.15, 0.15, 1); m.position.set(x, 1, z); F.scene.add(m); const a = Math.random() * 6.28, sp = 3 + Math.random() * 7; F.wfx.push({ m, sprite: 1, life: 0.3 + Math.random() * 0.3, max: 0.6, v: [Math.cos(a) * sp, 1 + Math.random() * 5, Math.sin(a) * sp], g: 14, op: 1 }); }
@@ -608,7 +612,7 @@ const race = {
       if (V.fps !== F || APP.V !== V) { S.dispose(); return; }
       F.nx = S; const g = S.W.grade || {};
       if (g.fog) scene.fog = new T.FogExp2(new T.Color(g.fog[0], g.fog[1], g.fog[2]), g.fogD || 0.003);
-      F.post = NXP.create(renderer, S, g);
+      F.post = NXP.create(renderer, S, Object.assign({}, g, { speed: 1 }));
       // countdown lights under the gantry banner
       const gantry = new T.Group(); gantry.position.set(RC.pts[0][0], 0, RC.pts[0][1]); gantry.rotation.y = rcHead(0); scene.add(gantry);
       F.lights = [0, 1, 2].map(k => { const m = new T.Mesh(new T.SphereGeometry(0.36, 18, 12), new T.MeshBasicMaterial({ color: 0x330a0e })); m.scale.z = 0.45; m.position.set(-1.6 + k * 1.6, 6.2, 0.27); gantry.add(m); const m2 = m.clone(); m2.material = m.material; m2.position.z = -0.27; gantry.add(m2); const bk = new T.Mesh(new T.BoxGeometry(1.3, 1.3, 0.5), new T.MeshStandardMaterial({ color: 0x0c0d10, roughness: 0.6 })); bk.position.set(-1.6 + k * 1.6, 6.2, 0); gantry.add(bk); return m; });
@@ -628,16 +632,7 @@ const race = {
   // ---- everything that moves: cars, pickups, spills, effects
   buildDyn(V, scene) {
     const F = V.fps, T = THREE, m4 = new T.Matrix4();
-    // cars: extruded body + glass cabin, clear-coat paint, real-looking wheels, glowing lights, headlight pool on the road
-    const prof = (pts, depth, bevel) => { const sh = new T.Shape(); pts.forEach((p, k) => k ? sh.lineTo(p[0], p[1]) : sh.moveTo(p[0], p[1])); sh.closePath(); const g = new T.ExtrudeGeometry(sh, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 3, curveSegments: 6 }); g.translate(0, 0, -depth / 2); g.rotateY(-Math.PI / 2); g.computeVertexNormals(); return g; };
-    const bodyGeo = prof([[-2.15, 0.32], [2.05, 0.32], [2.25, 0.45], [2.25, 0.62], [1.4, 0.86], [0.9, 0.95], [-1.6, 0.98], [-2.2, 1.02], [-2.25, 0.62]], 1.8, 0.12);
-    const cabGeo = prof([[-1.25, 0.95], [1.0, 0.95], [0.35, 1.42], [-0.65, 1.45], [-1.15, 1.12]], 1.48, 0.08);
-    const tireGeo = new T.CylinderGeometry(0.43, 0.43, 0.36, 22); tireGeo.rotateZ(Math.PI / 2);
-    const rimGeo = new T.CylinderGeometry(0.27, 0.27, 0.38, 12); rimGeo.rotateZ(Math.PI / 2);
-    const tireM = new T.MeshStandardMaterial({ color: 0x111218, roughness: 0.85 }), rimM = new T.MeshStandardMaterial({ color: 0xc8ccd8, metalness: 1, roughness: 0.25 });
-    const glassM = new T.MeshPhysicalMaterial({ color: 0x0a0f22, metalness: 0.2, roughness: 0.05, clearcoat: 1, clearcoatRoughness: 0.05 });
-    const darkM = new T.MeshStandardMaterial({ color: 0x14172a, metalness: 0.5, roughness: 0.45 });
-    const headM = new T.MeshBasicMaterial({ color: new T.Color(3, 2.9, 2.6) }), tailM = new T.MeshBasicMaterial({ color: new T.Color(3, 0.25, 0.3) });
+    // cars: see 09b-cars.js. Your character drives from the open cockpit.
     const beamTex = GFX.tex(64, 128, (x, w, h) => { const g = x.createLinearGradient(0, h, 0, 0); g.addColorStop(0, "rgba(255,240,210,.55)"); g.addColorStop(1, "rgba(255,240,210,0)"); x.fillStyle = g; x.beginPath(); x.moveTo(w * 0.3, h); x.lineTo(w * 0.7, h); x.lineTo(w, 0); x.lineTo(0, 0); x.fill(); });
     const beamM = new T.MeshBasicMaterial({ map: beamTex, transparent: true, blending: T.AdditiveBlending, depthWrite: false });
     const glowM = (c) => new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(c), transparent: true, blending: T.AdditiveBlending, depthWrite: false });
@@ -645,31 +640,29 @@ const race = {
     F.smoke = [];
     F.cars = V.ro.map((r, i) => {
       const grp = new T.Group(), body = new T.Group(); grp.add(body);
-      const paint = new T.MeshPhysicalMaterial({ color: new T.Color(r.hex), metalness: 0.55, roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.08 });
-      const shell = new T.Mesh(bodyGeo, paint), cab = new T.Mesh(cabGeo, glassM);
-      const stripe = new T.Mesh(new T.BoxGeometry(0.42, 0.02, 3.4), new T.MeshStandardMaterial({ color: 0xf5f1e6, roughness: 0.3 })); stripe.position.set(0, 1.0, -0.2);
-      const hood = new T.Mesh(new T.BoxGeometry(0.42, 0.02, 1.1), stripe.material); hood.position.set(0, 0.92, 1.55); hood.rotation.x = 0.12;
-      const splitter = new T.Mesh(new T.BoxGeometry(2.0, 0.06, 0.4), darkM); splitter.position.set(0, 0.3, 2.2);
-      const diff = new T.Mesh(new T.BoxGeometry(1.8, 0.18, 0.3), darkM); diff.position.set(0, 0.36, -2.2);
-      const wing = new T.Mesh(new T.BoxGeometry(2.1, 0.06, 0.45), darkM); wing.position.set(0, 1.32, -1.95);
-      const wl = new T.Mesh(new T.BoxGeometry(0.06, 0.32, 0.25), darkM); wl.position.set(-0.75, 1.15, -1.95); const wr = wl.clone(); wr.position.x = 0.75;
-      const hl = new T.Mesh(new T.BoxGeometry(0.55, 0.09, 0.08), headM); hl.position.set(-0.62, 0.66, 2.3); hl.rotation.x = -0.4; const hr = hl.clone(); hr.position.x = 0.62;
-      const tl = new T.Mesh(new T.BoxGeometry(1.7, 0.07, 0.06), tailM); tl.position.set(0, 0.86, -2.36);
-      const hg1 = new T.Sprite(glowM(0xfff0d0)); hg1.scale.set(1.3, 0.8, 1); hg1.position.set(-0.62, 0.66, 2.45); const hg2 = hg1.clone(); hg2.position.x = 0.62;
-      const tg = new T.Sprite(glowM(0xff2a3c)); tg.scale.set(2.4, 0.7, 1); tg.position.set(0, 0.86, -2.45);
-      const beam = new T.Mesh(new T.PlaneGeometry(5, 14), beamM); beam.rotation.set(-Math.PI / 2, 0, Math.PI); beam.position.set(0, 0.04, 9.4);
-      body.add(shell, cab, stripe, hood, splitter, diff, wing, wl, wr, hl, hr, tl, hg1, hg2, tg, beam);
-      const wheels = [[-0.98, 1.38], [0.98, 1.38], [-0.98, -1.4], [0.98, -1.4]].map(([x, z]) => { const w = new T.Group(); w.add(new T.Mesh(tireGeo, tireM), new T.Mesh(rimGeo, rimM)); w.position.set(x, 0.43, z); grp.add(w); return w; });
-      // the driver: your character riding on top
-      const spr = new T.Sprite(new T.SpriteMaterial({ map: frenzy.charTex(r.c, r.hex, r.n), transparent: true })); spr.scale.set(1.5, 1.88, 1); spr.position.set(0, 2.2, -0.3); body.add(spr);
-      const flame = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(0.6, 2.2, 3.2), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); flame.scale.set(1.4, 1.4, 1); flame.position.set(0, 0.55, -2.7); flame.visible = false; body.add(flame);
-      const glow = new T.Mesh(new T.PlaneGeometry(3, 5.4), new T.MeshBasicMaterial({ map: GFX.glowTex(), color: new T.Color(r.hex).multiplyScalar(1.4), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.05; grp.add(glow);
-      const shad = new T.Mesh(new T.PlaneGeometry(2.8, 5.4), new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false })); shad.rotation.x = -Math.PI / 2; shad.position.y = 0.03; grp.add(shad);
+      const car = RCCAR.make(T, r.hex, i + 1, i % 3), L0 = RCCAR.L0, L1 = RCCAR.L1; body.add(car.body);
+      const hg1 = new T.Sprite(glowM(0x8c8470)); hg1.scale.set(0.7, 0.4, 1); hg1.position.set(-0.6, 0.66, L1 - 0.05); const hg2 = hg1.clone(); hg2.position.x = 0.58;
+      const tg = new T.Sprite(glowM(0xb01c28)); tg.scale.set(2.0, 0.5, 1); tg.position.set(0, car.sh.tailY, L0 - 0.12);
+      const beam = new T.Mesh(new T.PlaneGeometry(5, 14), beamM); beam.rotation.set(-Math.PI / 2, 0, Math.PI); beam.position.set(0, 0.04, 9.3);
+      body.add(hg1, hg2, tg, beam);
+      const wheels = car.wheels.map(w => { grp.add(w.st); return w; });
+      // the driver: your character in the cockpit, name tag above
+      const spr = new T.Sprite(new T.SpriteMaterial({ map: frenzy.charTex(r.c, r.hex, r.n), transparent: true, alphaTest: 0.02 })); spr.scale.set(1.26, 1.58, 1); spr.position.set(0, car.sh.seatY + 0.5, -0.2); body.add(spr);
+      const flame = new T.Group(), flameM = new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(0.6, 2.2, 3.2), transparent: true, blending: T.AdditiveBlending, depthWrite: false }); for (const sd of [-1, 1]) for (let k = 0; k < 2; k++) { const f = new T.Sprite(flameM); f.position.set(sd * 0.3, 0.53, L0 - 0.3 - k * 0.42); f.userData.k = k; flame.add(f); } flame.visible = false; body.add(flame);
+      const glow = new T.Mesh(new T.PlaneGeometry(3, 5.4), new T.MeshBasicMaterial({ map: GFX.glowTex(), color: new T.Color(r.hex).multiplyScalar(0.5), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); glow.rotation.x = -Math.PI / 2; glow.position.y = 0.05; grp.add(glow);
+      const shad = new T.Mesh(new T.PlaneGeometry(2.7, 5.3), new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false })); shad.rotation.x = -Math.PI / 2; shad.position.y = 0.03; grp.add(shad);
       const shield = new T.Mesh(F.shieldGeo || (F.shieldGeo = new T.SphereGeometry(3.1, 24, 16)), new T.MeshBasicMaterial({ color: new T.Color(0.4, 2.2, 1.2), transparent: true, opacity: 0.22, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide })); shield.scale.set(0.85, 0.6, 1.1); shield.position.y = 1; shield.visible = false; grp.add(shield);
       const zap = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(0.8, 2.4, 3.4), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); zap.scale.set(5, 3, 1); zap.position.y = 1.2; zap.visible = false; grp.add(zap);
       scene.add(grp);
-      return { grp, body, wheels, flame, spr, shield, zap, zapT: 0, x: 0, z: 0, a: 0, init: false, roll: 0, smokeT: 0 };
+      return { grp, body, wheels, flame, spr, sprY: car.sh.seatY + 0.5, shield, zap, zapT: 0, x: 0, z: 0, a: 0, init: false, roll: 0, smokeT: 0, steer: 0, pv: 0, pitch: 0 };
     });
+    // speed streaks, skid marks and wet-road spray
+    { const N = 64, g = new T.BufferGeometry(); g.setAttribute("position", new T.BufferAttribute(new Float32Array(N * 6), 3));
+      const m = new T.LineSegments(g, new T.LineBasicMaterial({ color: new T.Color(1.5, 1.8, 2.3), transparent: true, opacity: 0, blending: T.AdditiveBlending, depthWrite: false })); m.frustumCulled = false; m.visible = false; scene.add(m); F.streak = { m, N, p: [] }; }
+    { const N = 420, g = new T.BufferGeometry(); g.setAttribute("position", new T.BufferAttribute(new Float32Array(N * 18), 3));
+      const m = new T.Mesh(g, new T.MeshBasicMaterial({ color: 0x050506, transparent: true, opacity: 0.4, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 })); m.frustumCulled = false; scene.add(m); F.skid = { m, N, n: 0 }; }
+    F.sprayM = new T.SpriteMaterial({ map: GFX.glowTex(), color: 0x7f8996, transparent: true, opacity: 0.14, depthWrite: false });
+    F.wetRoad = /neon|storm/.test(rcWorld(RC_ID).sky || "");
     // pickups: spinning glowing data packets with the Neteam N
     const pkTex = GFX.tex(128, 128, (x, w, h) => { x.fillStyle = "#120600"; x.fillRect(0, 0, w, h); x.strokeStyle = "#ff8a3d"; x.lineWidth = 10; x.strokeRect(6, 6, w - 12, h - 12); x.fillStyle = "#ffb27a"; x.font = "700 84px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText("?", w / 2, h / 2 + 4); });
     const pkM = new T.MeshStandardMaterial({ map: pkTex, emissiveMap: pkTex, emissive: 0xffffff, emissiveIntensity: 2.2, transparent: true, opacity: 0.92, roughness: 0.3 });
@@ -699,12 +692,25 @@ const race = {
       else { car.x = lerp(car.x, x, 0.3); car.z = lerp(car.z, z, 0.3); let da = ((a - car.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.a += da * 0.3; }
       F.remote[i] = { x: car.x, z: car.z };
       car.grp.position.set(car.x, 0, car.z); car.grp.rotation.y = car.a;
-      car.body.rotation.y = -(sl || 0) * 0.8; car.body.rotation.z = lerp(car.body.rotation.z, (sl || 0) * 0.25, 0.2);
-      car.roll += (v || 0) * dt / 0.42; car.wheels.forEach(wh => wh.rotation.x = car.roll);
+      car.body.rotation.y = -(sl || 0) * 0.8; car.body.rotation.z = lerp(car.body.rotation.z, (sl || 0) * 0.25 - car.steer * Math.min(1, Math.abs(v || 0) / 30) * 0.07, 0.2);
+      // wheels roll and steer, the body leans into corners and dips under braking
+      const yaw = car.pa == null ? 0 : ((car.a - car.pa + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.pa = car.a;
+      car.steer = lerp(car.steer, clamp(dt > 0 ? yaw / dt * 0.5 / (1 + Math.abs(v || 0) / 30) : 0, -0.5, 0.5), 0.2);
+      car.pitch = lerp(car.pitch, clamp(dt > 0 ? ((v || 0) - car.pv) / dt * 0.0016 : 0, -0.045, 0.045), 0.1); car.pv = v || 0;
+      car.roll += (v || 0) * dt / RCCAR.WR; car.wheels.forEach(wh => { wh.w.rotation.x = car.roll; if (wh.front) wh.st.rotation.y = car.steer; });
+      car.body.rotation.x = -car.pitch; car.body.position.y = Math.abs(v || 0) > 1 ? Math.sin(t * 31 + i * 1.7) * 0.004 * Math.min(1, Math.abs(v) / 30) : 0;
       const pq = g.pl && g.pl[i]; car.shield.visible = !!(pq && pq[10] > 0); if (car.shield.visible) car.shield.material.opacity = 0.16 + Math.sin(t * 10) * 0.06;
       car.zapT = Math.max(0, car.zapT - dt); car.zap.visible = car.zapT > 0; if (car.zap.visible) car.zap.material.opacity = Math.random();
-      car.flame.visible = !!bo; if (bo) { const fs = 1.2 + Math.random() * 0.7; car.flame.scale.set(fs, fs, 1); }
-      car.spr.position.y = 2.2 + Math.sin(t * 9 + i) * 0.02;
+      car.flame.visible = !!bo; if (bo) car.flame.children.forEach(f => { const fs = (f.userData.k ? 0.42 : 0.7) * (0.8 + Math.random() * 0.6); f.scale.set(fs, fs, 1); });
+      car.spr.position.y = car.sprY + Math.sin(t * 9 + i) * 0.012;
+      // skid marks under the rear tyres while sliding
+      if (F.skid && Math.abs(sl || 0) > 0.12 && Math.abs(v || 0) > 12) { const ca = Math.cos(car.a), sa = Math.sin(car.a), pos = [-1, 1].map(sd => [car.x + sa * RCCAR.AXR + ca * sd * RCCAR.TRK, car.z + ca * RCCAR.AXR - sa * sd * RCCAR.TRK]);
+        if (!car.sk) car.sk = pos; else if (Math.hypot(pos[0][0] - car.sk[0][0], pos[0][1] - car.sk[0][1]) > 0.45) { pos.forEach((q, k) => this.skid(F, car.sk[k], q)); car.sk = pos; } }
+      else car.sk = null;
+      // spray off a wet road
+      car.sprayT = (car.sprayT || 0) - dt;
+      if (F.wetRoad && Math.abs(v || 0) > 16 && car.sprayT <= 0 && F.smoke.length < 150 && Math.hypot(car.x - F.cam3.position.x, car.z - F.cam3.position.z) < 48) {
+        car.sprayT = 0.07; const sp = new T.Sprite(F.sprayM.clone()), ca = Math.cos(car.a), sa = Math.sin(car.a), sd = Math.random() - 0.5; sp.position.set(car.x - sa * 2.3 + ca * sd * 1.5, 0.35, car.z - ca * 2.3 - sa * sd * 1.5); sp.scale.set(1.2, 1.2, 1); F.scene.add(sp); F.smoke.push({ m: sp, life: 0.6, op: 0.14 * Math.min(1, Math.abs(v) / 40) }); }
       // tyre smoke while drifting
       car.smokeT -= dt;
       if (Math.abs(sl || 0) > 0.12 && Math.abs(v || 0) > 12 && car.smokeT <= 0 && F.smoke.length < 120) {
@@ -748,18 +754,26 @@ const race = {
     F.camA = F.camA == null ? ta : F.camA + (((ta - F.camA + Math.PI * 3) % (Math.PI * 2)) - Math.PI) * Math.min(1, dt * 6);
     const ca = F.cam === 2 ? ta : F.camA;
     F.shake = Math.max(0, (F.shake || 0) - dt);
-    const sh = F.shake * 0.5;
+    const spd = Math.abs(tv || 0), fast = clamp((spd - 36) / 24, 0, 1), sh = F.shake * 0.5 + fast * fast * 0.035;
+    if (F.nx && F.post && F.post.comp.u.uSpd) F.post.comp.u.uSpd.value = lerp(F.post.comp.u.uSpd.value, fast, 0.08);
     const camX = tx - Math.sin(ca) * dist + (F.cam === 2 ? Math.sin(ca) * 0.6 : 0), camZ = tz - Math.cos(ca) * dist + (F.cam === 2 ? Math.cos(ca) * 0.6 : 0);
     F.cam3.position.set(camX + (Math.random() - 0.5) * sh, hgt + (Math.random() - 0.5) * sh, camZ + (Math.random() - 0.5) * sh);
     F.cam3.lookAt(tx + Math.sin(ca) * 8, F.cam === 2 ? 1.3 : 1.2, tz + Math.cos(ca) * 8);
     const fov = 66 + clamp(Math.abs(tv || 0) / RC_BOOST, 0, 1.1) * 16; F.cam3.fov = lerp(F.cam3.fov, fov, 0.08); F.cam3.updateProjectionMatrix();
     if (me >= 0 && F.cars[me]) F.cars[me].spr.visible = F.cam !== 2;
+    // speed streaks: points hanging in the air that you rush past
+    if (F.streak) { const K = F.streak, P = K.m.geometry.attributes.position, fx = Math.sin(ca), fz = Math.cos(ca), cx = F.cam3.position.x, cz = F.cam3.position.z, len = 0.5 + spd * 0.045;
+      K.m.material.opacity = fast * 0.45; K.m.visible = fast > 0.02;
+      if (K.m.visible) { for (let i = 0; i < K.N; i++) { let q = K.p[i]; const ahead = q ? (q[0] - cx) * fx + (q[2] - cz) * fz : -9;
+          if (ahead < -2 || ahead > 80) { const d = 30 + Math.random() * 45, lat = (Math.random() < 0.5 ? -1 : 1) * (3 + Math.random() * 11); q = K.p[i] = [cx + fx * d + fz * lat, 0.4 + Math.random() * 5.5, cz + fz * d - fx * lat]; }
+          P.setXYZ(i * 2, q[0], q[1], q[2]); P.setXYZ(i * 2 + 1, q[0] + fx * len, q[1], q[2] + fz * len); }
+        P.needsUpdate = true; } }
     if (F.sky) F.sky.position.set(F.cam3.position.x, 0, F.cam3.position.z);
     F.padTex.offset.y = -t * 1.4;
     F.spire.material.color.setHex(Math.floor(t * 1.5) % 2 ? 0xff4d5e : 0x550010);
     // countdown lights
     const gt = (g.t || 0) / 10; F.lights.forEach((m, k) => { const on = gt >= 0 || gt > -3 + k; m.material.color.setHex(gt >= 0 ? 0x3ddc97 : (on ? 0xff2a3c : 0x330a0e)); if (F.nx && on) m.material.color.multiplyScalar(2.6); });
-    for (const o of F.smoke) { o.life -= dt; const k = o.life / 0.9; o.m.scale.setScalar(1 + (1 - k) * 3); o.m.position.y += dt * 0.6; o.m.material.opacity = 0.32 * k; if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
+    for (const o of F.smoke) { o.life -= dt; const k = o.life / 0.9; o.m.scale.setScalar(1 + (1 - k) * 3); o.m.position.y += dt * 0.6; o.m.material.opacity = (o.op || 0.32) * k; if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
     F.smoke = F.smoke.filter(o => o.life > 0);
     if (F.nx) F.nx.update(dt, t);
     if (F.post) F.post.render(F.scene, F.cam3, t); else F.renderer.render(F.scene, F.cam3);

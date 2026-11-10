@@ -76,14 +76,17 @@ void main(){ vec2 c = texture2D( t, vUv ).rg; float s = 0.0, w = 0.0;
   for ( int y = -1; y <= 2; y ++ ) for ( int x = -1; x <= 2; x ++ ) { vec2 q = texture2D( t, vUv + ( vec2( float( x ), float( y ) ) - 0.5 ) * uP ).rg; float k = max( 0.0, 1.0 - abs( q.g - c.g ) / ( c.g * 0.04 + 1e-5 ) ); s += q.r * k; w += k; }
   gl_FragColor = vec4( w > 0.0 ? s / w : c.r, c.g, 0.0, 1.0 ); }`, { t: { value: null }, uP: { value: new T.Vector2() } });
     }
-    const cdef = {}; if (tier.ao) cdef.AO = 1; if (tier.ca) cdef.CA = 1; if (!tier.fxaa) cdef.FINAL = 1;
-    P.comp = pass(`uniform sampler2D tScene, tBloom, tAO, tExpo; uniform vec4 uA, uB; uniform vec3 uTint; uniform float hurt; varying vec2 vUv;
+    const cdef = {}; if (tier.ao) cdef.AO = 1; if (tier.ca) cdef.CA = 1; if (!tier.fxaa) cdef.FINAL = 1; if (look && look.speed && tier.i > 0) cdef.SPD = 1;
+    P.comp = pass(`uniform sampler2D tScene, tBloom, tAO, tExpo; uniform vec4 uA, uB; uniform vec3 uTint; uniform float hurt, uSpd; varying vec2 vUv;
 ${NXP.GLSL_TONE}
 void main(){ vec2 d = vUv - 0.5; float r2 = dot( d, d ); vec3 c;
 #ifdef CA
   vec2 o = d * ( r2 * uA.w * 4.0 + uA.w * 0.25 ); c = vec3( texture2D( tScene, vUv + o ).r, texture2D( tScene, vUv ).g, texture2D( tScene, vUv - o ).b );
 #else
   c = texture2D( tScene, vUv ).rgb;
+#endif
+#ifdef SPD
+  if ( uSpd > 0.002 ) { vec2 sd = d * ( uSpd * 0.02 * smoothstep( 0.03, 0.3, r2 ) ); float sj = nxHash( gl_FragCoord.xy + fract( uB.w ) * 57.0 ); vec3 sa = c; for ( int i = 0; i < 6; i ++ ) sa += texture2D( tScene, vUv - sd * ( float( i ) + sj ) ).rgb; c = sa / 7.0; }
 #endif
   float e = texture2D( tExpo, vec2( 0.5 ) ).r; c *= e;
 #ifdef AO
@@ -96,7 +99,7 @@ void main(){ vec2 d = vUv - 0.5; float r2 = dot( d, d ); vec3 c;
 #ifdef FINAL
   c += ( nxHash( gl_FragCoord.xy + fract( uB.w ) * 311.0 ) - 0.5 ) * uA.z * ( 1.0 - 0.55 * dot( c, vec3( 0.3, 0.5, 0.2 ) ) );
 #endif
-  gl_FragColor = vec4( c, 1.0 ); }`, { tScene: { value: null }, tBloom: { value: null }, tAO: { value: null }, tExpo: { value: null }, uA: { value: new T.Vector4() }, uB: { value: new T.Vector4() }, uTint: { value: new T.Vector3(1, 1, 1) }, hurt: { value: 0 } }, cdef);
+  gl_FragColor = vec4( c, 1.0 ); }`, { tScene: { value: null }, tBloom: { value: null }, tAO: { value: null }, tExpo: { value: null }, uA: { value: new T.Vector4() }, uB: { value: new T.Vector4() }, uTint: { value: new T.Vector3(1, 1, 1) }, hurt: { value: 0 }, uSpd: { value: 0 } }, cdef);
     P.comp.uniforms = P.comp.u;   // the games set comp.uniforms.hurt
     if (tier.fxaa) P.fxaa = pass(`uniform sampler2D t; uniform vec4 uP; varying vec2 vUv;
 float nxHash( vec2 p ) { vec3 q = fract( vec3( p.xyx ) * 0.1031 ); q += dot( q, q.yzx + 33.33 ); return fract( ( q.x + q.y ) * q.z ); }
