@@ -54,10 +54,13 @@ const SFX = {
     if (this._bus && this._bus.a === a) return this._bus;
     const master = a.createGain(); master.gain.value = this.vol;
     const comp = a.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.003; comp.release.value = 0.2;
-    master.connect(comp).connect(a.destination);
+    const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 20000; lp.Q.value = 0.3;
+    master.connect(lp).connect(comp).connect(a.destination);
     const send = a.createGain(), rev = a.createConvolver(), wet = a.createGain(); send.connect(rev).connect(wet).connect(master);
-    this._bus = { a, master, comp, send, rev, wet }; this.space(this._space); return this._bus;
+    this._bus = { a, master, comp, send, rev, wet, lp, mk: 0 }; this.space(this._space); return this._bus;
   },
+  // dull the whole mix (0 = clear, 1 = under water): used while badly hurt
+  muffle(k) { const B = this._bus; if (!B || k === B.mk || (k > 0 && Math.abs(k - B.mk) < 0.02)) return; B.mk = k; B.lp.frequency.setTargetAtTime(20000 * Math.pow(0.04, k), B.a.currentTime, 0.12); },
   dest(a) { return this.bus(a).master; },
   // an impulse response made of decaying noise with a few early echoes: length in seconds, damping 0..1 (1 = dull)
   ir(a, len, damp, early) {
@@ -160,6 +163,30 @@ const SFX = {
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.3, 0, 0);
     const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(190, t); th.frequency.exponentialRampToValueAtTime(70, t + 0.12); tg.gain.setValueAtTime(0.9, t); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.18);
     [head ? 1760 : 1175, head ? 2637 : 1568].forEach((f, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = f; g.gain.setValueAtTime(0.0001, t + k * 0.06); g.gain.exponentialRampToValueAtTime(0.5, t + k * 0.06 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + k * 0.06 + 0.3); os.connect(g).connect(o); os.start(t + k * 0.06); os.stop(t + k * 0.06 + 0.32); });
+  },
+  // your round landed: a dry tick, brighter and doubled for a head
+  hit(head) {
+    const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.26, 0, 0);
+    const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = head ? 5200 : 3400; f.Q.value = 2.2;
+    const g = a.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.06);
+    (head ? [2093, 3136] : [1318]).forEach((fr, k) => { const os = a.createOscillator(), og = a.createGain(), d = k * 0.035; os.type = "triangle"; os.frequency.value = fr; og.gain.setValueAtTime(0.0001, t + d); og.gain.exponentialRampToValueAtTime(0.4, t + d + 0.004); og.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.09); os.connect(og).connect(o); os.start(t + d); os.stop(t + d + 0.1); });
+  },
+  // you were hit: a dull body thump, heavier for big damage
+  hurt(n = 20) {
+    const a = this.ensure(); if (!a) return; const t = a.currentTime, k = Math.min(1, n / 60), o = this.out(a, 0.3 + k * 0.25, 0, 0);
+    const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.setValueAtTime(150, t); os.frequency.exponentialRampToValueAtTime(48, t + 0.16); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.22); os.connect(g).connect(o); os.start(t); os.stop(t + 0.24);
+    const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 900; const ng = a.createGain(); ng.gain.setValueAtTime(0.5, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.08); s.connect(f).connect(ng).connect(o); s.start(t, Math.random(), 0.1);
+  },
+  // heartbeat while badly hurt: two soft thumps
+  heart(vol = 0.5) {
+    const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, vol * 0.55, 0, 0);
+    [0, 0.17].forEach((d, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.setValueAtTime(k ? 62 : 74, t + d); os.frequency.exponentialRampToValueAtTime(38, t + d + 0.12); g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(k ? 0.7 : 1, t + d + 0.012); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.16); os.connect(g).connect(o); os.start(t + d); os.stop(t + d + 0.18); });
+  },
+  // bodywork meeting a barrier or another car: a thud, a crunch and a short scrape
+  scrape(vol = 0.5, pan = 0) {
+    const a = this.ensure(); if (!a || vol < 0.02) return; const t = a.currentTime, o = this.out(a, Math.min(1, vol) * 0.5, pan, 0.5);
+    const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.setValueAtTime(120, t); os.frequency.exponentialRampToValueAtTime(52, t + 0.12); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); os.connect(g).connect(o); os.start(t); os.stop(t + 0.18);
+    [[1100, 1.2, 0.8, 0.14], [3100, 2.5, 0.35, 0.3]].forEach(([fr, q, lv, len]) => { const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(fr, t); f.frequency.exponentialRampToValueAtTime(fr * 0.6, t + len); f.Q.value = q; const ng = a.createGain(); ng.gain.setValueAtTime(lv, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + len); s.connect(f).connect(ng).connect(o); s.start(t, Math.random(), len + 0.02); });
   },
   // a crowd going up: a swell of voices with a few whistles
   cheer(vol = 0.5) {

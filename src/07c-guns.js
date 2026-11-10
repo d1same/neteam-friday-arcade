@@ -46,8 +46,8 @@ const GUNS = {
       this._armG = { sleeve: sl, back: new T.SphereGeometry(1, 14, 10), fin: new T.CapsuleGeometry(0.0108, 0.03, 3, 8), fin2: new T.CapsuleGeometry(0.01, 0.026, 3, 8), th: new T.CapsuleGeometry(0.0118, 0.04, 3, 8) };
     }
     const A = this._armG, fore = new T.Mesh(A.sleeve, M.sleeve);
-    const cuff = new T.Mesh(new T.CylinderGeometry(0.0395, 0.041, 0.04, 16), M.glove); cuff.rotation.x = Math.PI / 2; cuff.position.z = 0.062;
-    const strap = new T.Mesh(new T.CylinderGeometry(0.0412, 0.0412, 0.02, 16), M.knuckle); strap.rotation.x = Math.PI / 2; strap.position.z = 0.066;
+    const cuff = new T.Mesh(new T.CylinderGeometry(0.0462, 0.042, 0.052, 20), M.glove); cuff.rotation.x = Math.PI / 2; cuff.position.z = 0.064;
+    const strap = new T.Mesh(new T.CylinderGeometry(0.0462, 0.0468, 0.018, 20), M.knuckle); strap.rotation.x = Math.PI / 2; strap.position.z = 0.07;
     const band = new T.Mesh(new T.CylinderGeometry(0.047, 0.049, 0.022, 16), new T.MeshStandardMaterial({ color: new T.Color(hex || "#ff8a3d").multiplyScalar(0.7), roughness: 0.6 })); band.rotation.x = Math.PI / 2; band.position.z = 0.3;
     // fist: palm, padded back of the hand, four curled fingers with a knuckle guard, thumb
     const palm = new T.Mesh(new T.BoxGeometry(0.034, 0.088, 0.084), M.glove); palm.position.set(0, 0, 0.012);

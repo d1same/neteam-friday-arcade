@@ -455,6 +455,7 @@ function makeOps(md) {
       let dmg = raw != null ? raw : W0.dmg * (head ? W0.hs : 1);
       if (from >= 0 && from !== tgt && !W0.melee && !W0.laser && wi >= 0) { const f = g.P[from], dd = Math.hypot(f.x - q.x, f.z - q.z); dmg *= clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1); }
       if (q.arm > 0) { const ab = Math.min(q.arm, dmg * 0.45); q.arm -= ab; dmg -= ab; }
+      if (q.bot && from >= 0 && from !== tgt) q.bot.alertT = 2.5;
       const real = Math.max(0, Math.min(dmg, q.hp));
       if (from >= 0 && from !== tgt) { g.P[from].dmg += real; q.hb[from] = (q.hb[from] || 0) + real; }
       q.hp -= dmg;
@@ -570,7 +571,9 @@ function makeOps(md) {
       if (team && g.ph !== "live") return;
       const W0 = OW[p.cur] || OW[0];
       let tgt = -1, td = 1e9;
-      g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
+      // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
+      const fa = Math.sin(p.a), fc = Math.cos(p.a), wide = (b.alertT = Math.max(0, (b.alertT || 0) - dt)) > 0;
+      g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > -0.25) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
       // Golden Router: go after whoever holds it; the holder only fights when cornered
       if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
       if (p.hasTr && td > 2.6) tgt = -1;
@@ -587,15 +590,23 @@ function makeOps(md) {
         b.sT -= dt; if (b.sT <= 0) { b.strafe = Math.random() < 0.5 ? -1 : 1; b.sT = 0.5 + Math.random(); }
         const sx = Math.cos(p.a) * b.strafe, sz = -Math.sin(p.a) * b.strafe;
         const moving = !OW[p.cur].scope;
-        if (moving) oMove(p, sx * 0.6 * speed * dt, sz * 0.6 * speed * dt);
+        // close the gap when the gun is out of its range, give ground when someone is in their face
+        const adv = W0.melee ? 0 : td > Math.min(20, W0.range * 0.45) ? 0.5 : td < 3.2 && !W0.pel ? -0.45 : 0;
+        if (moving) oMove(p, (sx * 0.6 + Math.sin(p.a) * adv) * speed * dt, (sz * 0.6 + Math.cos(p.a) * adv) * speed * dt);
+        b.ls = [q.x, q.z];
+        if (b.amW !== p.cur) { b.amW = p.cur; b.am = W0.mag; b.bn = 0; }
         if (W0.melee && td > 2.2) { const s2 = speed * dt, dx = q.x - p.x, dz = q.z - p.z; oMove(p, dx / td * s2, dz / td * s2); return; }
         if (W0.rocket && b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.2) {
           b.fT = W0.rate * 1.6 + Math.random() * 0.6; const ty = (q.jh || 0) + 0.4, err = (Math.random() - 0.5) * 0.12, ang = p.a + err;
           this.hostRocket(S, i, [p.x, 1.4, p.z], [Math.sin(ang) * td, ty - 1.4, Math.cos(ang) * td]); p.shot = [++p.bs, +q.x.toFixed(2), 1, +q.z.toFixed(2), p.cur]; return;
         }
         if (b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.15) {
-          b.fT = W0.rate * (1 + Math.random() * (W0.auto ? 1.4 : 0.6)) + (W0.auto ? 0 : 0.15);
-          const acc = clamp((b.boss ? 0.62 : 0.5) - td * (p.cur === 3 ? 0.002 : 0.011) - (moving ? 0.06 : 0), 0.08, 0.8);
+          // automatic guns fire in bursts with a breath between them; every gun has to stop and reload
+          const burst = W0.auto && W0.rate < 0.2;
+          if (burst) { b.bn = (b.bn || 0) - 1; if (b.bn <= 0) { b.bn = 3 + Math.floor(Math.random() * 4); b.fT = 0.25 + Math.random() * 0.4; } else b.fT = W0.rate * 1.15; }
+          else b.fT = W0.rate * (1 + Math.random() * (W0.auto ? 1.4 : 0.6)) + (W0.auto ? 0 : 0.15);
+          if (W0.mag && --b.am <= 0) { b.am = W0.mag; b.bn = 0; b.fT = Math.max(b.fT, W0.rl * 0.8); }
+          const acc = clamp((b.boss ? 0.62 : 0.5) + (burst ? 0.04 : 0) - td * (p.cur === 3 ? 0.002 : 0.011) - (moving ? 0.06 : 0), 0.08, 0.8);
           const hit = Math.random() < acc, head = hit && Math.random() < (b.boss ? 0.22 : 0.14);
           const ang = p.a + (hit ? 0 : (Math.random() - 0.5) * 0.2);
           const dist = hit ? td : oRay(p.x, p.z, Math.sin(ang), Math.cos(ang), 60);
@@ -623,7 +634,9 @@ function makeOps(md) {
         // last stretch to the router: walk straight at it
         if (tr.by < 0 && !p.hasTr && Math.floor(p.x / CS) === Math.floor(tr.x / CS) && Math.floor(p.z / CS) === Math.floor(tr.z / CS)) { const dx = tr.x - p.x, dz = tr.z - p.z, d = Math.hypot(dx, dz) || 1; oMove(p, dx / d * speed * dt, dz / d * speed * dt); }
       } else if (!team) {
-        if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); b.goal = (others.length && Math.random() < 0.6) ? [Math.floor(others[rint(0, others.length - 1)].x / CS), Math.floor(others[rint(0, others.length - 1)].z / CS)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
+        // lost sight of someone: go and look where they were last seen
+        if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1)]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
+        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); b.goal = (others.length && Math.random() < 0.6) ? [Math.floor(others[rint(0, others.length - 1)].x / CS), Math.floor(others[rint(0, others.length - 1)].z / CS)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
         goal = b.goal;
       } else if (p.tm === 0) {
         if (bm.st === 0) {
@@ -740,7 +753,7 @@ function makeOps(md) {
       const F = V.fps; if (!F) return; F.gone = true;
       (F.unbind || []).forEach(f => f());
       if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
-      SFX.amb(null);
+      SFX.amb(null); SFX.muffle(0);
       if (F.post) try { F.post.dispose(); } catch (e) {}
       if (F.nx) try { F.nx.dispose(); } catch (e) {}
       if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
@@ -958,7 +971,8 @@ function makeOps(md) {
       F.me.a -= F.look.dx * sens * (LK.ix ? -1 : 1); F.me.p = clamp(F.me.p - F.look.dy * sens * (LK.iy ? -1 : 1), -1.25, 1.25);
       F.lookVX = F.look.dx / Math.max(dt, 0.001) * 0.016; F.lookVY = F.look.dy / Math.max(dt, 0.001) * 0.016;
       F.look.dx = 0; F.look.dy = 0;
-      F.rec = Math.max(0, (F.rec || 0) - dt * (F.firing ? 0.25 : 0.9));
+      // recoil: holds while you keep firing, then settles back to where you were aiming (nothing is left behind)
+      F.recT = (F.recT || 0) + dt; { const k = 1 - Math.exp(-dt * (F.recT > 0.17 ? 7.5 : 0.3)); F.rec = Math.max(0, (F.rec || 0) * (1 - k) - (F.recT > 0.17 ? dt * 0.02 : 0)); F.recA = (F.recA || 0) * (1 - k); if (F.recT > 0.4) F.recN = 0; }
       const playing = V.h.ph === "play";
       if (!playing && document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
       const W0 = OW[F.cur];
@@ -1065,7 +1079,7 @@ function makeOps(md) {
     },
     fireRocket(V) {
       const F = V.fps, me = F.me, W0 = OW[F.cur], EY = F.eyeH || EYE, aimP = me.p + (F.rec || 0), cp = Math.cos(aimP);
-      SFX.shot("rocket", 1); SFX.swish(0.8); F.kick = 1.6; if (F.flash) F.flash.intensity = 18; F.rec = Math.min(0.16, (F.rec || 0) + W0.kick);
+      SFX.shot("rocket", 1); SFX.swish(0.8); F.kick = 1.6; if (F.flash) F.flash.intensity = 18; F.rec = Math.min(0.16, (F.rec || 0) + W0.kick); F.recT = 0; F.fovK = 3; if (F.vp) F.vp[3] += (Math.random() - 0.5) * 1.2;
       const dir = [-Math.sin(me.a) * cp, Math.sin(aimP), -Math.cos(me.a) * cp];
       F.rkSeq = (F.rkSeq || 0) + 1; F.rk = [F.rkSeq, +me.x.toFixed(2), +(EY - 0.15).toFixed(2), +me.z.toFixed(2), +dir[0].toFixed(3), +dir[1].toFixed(3), +dir[2].toFixed(3)];
       F.shotN++; F.lastShot = [F.shotN, +(me.x + dir[0] * 4).toFixed(2), +(EY + dir[1] * 4).toFixed(2), +(me.z + dir[2] * 4).toFixed(2), F.cur];
@@ -1078,8 +1092,12 @@ function makeOps(md) {
       let spread = W0.laser ? 0 : (W0.spr + (F.moving ? W0.mv : F.walking ? W0.mv * 0.35 : 0) + F.bloom) * (F.cr > 0.5 ? 0.65 : 1) + (F.inAir ? 0.09 : 0);
       if (W0.scope && !F.scoped) spread = 0.07 + (F.moving ? W0.mv : 0);
       F.bloom = Math.min(0.06, F.bloom + (W0.auto ? 0.006 : 0.012));
-      const aimA = me.a, aimP = me.p + (F.rec || 0);
-      F.rec = Math.min(0.16, (F.rec || 0) + W0.kick * (0.55 + Math.random() * 0.4)); me.a += (Math.random() - 0.5) * W0.kick * 0.25;
+      const aimA = me.a + (F.recA || 0), aimP = me.p + (F.rec || 0);
+      // recoil pattern: the first rounds climb, then the muzzle weaves side to side. It is the same every spray, so it can be learned.
+      { const n = F.recN = (F.recN || 0) + 1, up = n < 3 ? 0.75 : n < 9 ? 1.05 : 0.4, sw = n < 4 ? 0 : Math.sin((n - 4) * 0.55 + F.cur * 1.7);
+        F.rec = Math.min(Math.min(0.14, W0.kick * 6 + 0.02), (F.rec || 0) + W0.kick * up * (0.85 + Math.random() * 0.3));
+        F.recA = clamp((F.recA || 0) + W0.kick * (sw * 0.55 + (Math.random() - 0.5) * 0.3), -0.06, 0.06); F.recT = 0;
+        if (F.vp) F.vp[3] += (Math.random() - 0.5) * W0.kick * 18; if (W0.kick >= 0.04) F.fovK = W0.kick * 45; }
       const EY = F.eyeH || EYE;
       const start = [me.x - Math.sin(aimA) * 0.6 + Math.cos(aimA) * 0.2, EY - 0.16, me.z - Math.cos(aimA) * 0.6 - Math.sin(aimA) * 0.2];
       const pel = W0.pel || 1; let hitAny = false, headAny = false, lastEnd = null; const dmgAcc = {}, headIdx = {};
@@ -1120,7 +1138,7 @@ function makeOps(md) {
       }
       F.shotN++; F.lastShot = [F.shotN, +lastEnd[0].toFixed(2), +lastEnd[1].toFixed(2), +lastEnd[2].toFixed(2), F.cur];
       this.shell(V); if (!W0.laser) SFX.casing(0.5, W0.pel ? 1 : 0);
-      if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.tone(headAny ? 2400 : 1700, 0.06, "square", 0.05); if (headAny) SFX.tone(3200, 0.08, "triangle", 0.05, 0, 0.05); }
+      if (hitAny) { F.hitT = 0.3; F.hitHead = headAny; SFX.hit(headAny); }
       Object.keys(dmgAcc).forEach(k => this.pop(F, Math.round(dmgAcc[k]), !!headIdx[k]));
       if (W0.scope) F.scoped = false;
     },
@@ -1658,14 +1676,27 @@ function makeOps(md) {
       if (p.t !== 2) SFX.crash(p.t === 1 ? 1 : 0, clamp(1 - d / 45, 0.12, 1), pan);
     },
     // soft dust/smoke sprites (normal blending so they read as solid smoke, not glow)
+    // light on a puff of smoke or dust at a spot (sprites are drawn without the full material, so they are tinted by hand)
+    fxLit(F, x, z, col) {
+      const c = col && col.isColor ? col.clone() : new THREE.Color(col);
+      if (F.nx && F.nx.lightAt) { const L = F.nx.lightAt(x, z), k = 1 / Math.PI; c.r *= Math.min(1.6, L[0] * k + L[3] * 0.25); c.g *= Math.min(1.6, L[1] * k + L[3] * 0.24); c.b *= Math.min(1.6, L[2] * k + L[3] * 0.21); }
+      return c;
+    },
     puff(V, x, y, z, col, n, sc, life = 1.6, rise = 0.5) {
-      const F = V.fps, T = THREE;
+      const F = V.fps, T = THREE; col = this.fxLit(F, x, z, col);
       for (let i = 0; i < n; i++) {
         const m = new T.Sprite(new T.SpriteMaterial({ map: this.smokeTex(F), color: col, transparent: true, opacity: 0, depthWrite: false })); m.material.rotation = Math.random() * 6;
         m.position.set(x + (Math.random() - 0.5) * sc, y + Math.random() * sc * 0.5, z + (Math.random() - 0.5) * sc); F.scene.add(m);
         const a = Math.random() * 6.28, sp = 0.4 + Math.random() * 1.2 * sc;
         F.vfx.push({ m, sprite: 1, life: life * (0.7 + Math.random() * 0.6), max: life * 1.3, v: [Math.cos(a) * sp, rise + Math.random() * rise, Math.sin(a) * sp], drag: 1.6, s0: sc * 0.8, s1: sc * (2.4 + Math.random()), op: 0.9, fin: 0.1 });
       }
+    },
+    // thin dust: a few faint wisps with no solid middle
+    dustTex(F) {
+      return F.dustT || (F.dustT = GFX.tex(64, 64, (x, w, h) => {
+        x.clearRect(0, 0, w, h);
+        for (let k = 0; k < 9; k++) { const a = Math.random() * 6.28, rr = Math.random() * 13, cx = w / 2 + Math.cos(a) * rr, cy = h / 2 + Math.sin(a) * rr, r = 9 + Math.random() * 9; const g = x.createRadialGradient(cx, cy, 0, cx, cy, r); g.addColorStop(0, "rgba(255,255,255,.2)"); g.addColorStop(0.5, "rgba(255,255,255,.09)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); }
+      }));
     },
     // lumpy cloud puff: overlapping soft blobs, dense in the middle
     smokeTex(F) {
@@ -1735,7 +1766,7 @@ function makeOps(md) {
         if (!c) {
           c = F.smk[id] = { born: t, parts: [] }; const n = GFX.lowEnd() ? 14 : 24;
           for (let i = 0; i < n; i++) {
-            const m = new T.Sprite(new T.SpriteMaterial({ map: this.smokeTex(F), color: new T.Color(0.78, 0.8, 0.84).multiplyScalar(0.9 + Math.random() * 0.2), transparent: true, opacity: 0, depthWrite: false }));
+            const m = new T.Sprite(new T.SpriteMaterial({ map: this.smokeTex(F), color: this.fxLit(F, x, z, new T.Color(0.78, 0.8, 0.84).multiplyScalar(0.9 + Math.random() * 0.2)), transparent: true, opacity: 0, depthWrite: false }));
             const a = Math.random() * 6.28, r = Math.sqrt(Math.random()) * 2.7; m.material.rotation = Math.random() * 6;
             m.position.set(x, 0.3, z); m.userData.to = [x + Math.cos(a) * r, 1.0 + Math.random() * 1.9, z + Math.sin(a) * r]; m.userData.sc = 2.6 + Math.random() * 1.6; m.userData.rs = (Math.random() - 0.5) * 0.3;
             F.scene.add(m); c.parts.push(m);
@@ -1780,14 +1811,22 @@ function makeOps(md) {
       const pt = (i, su, sv) => P.setXYZ(o + i, c[0] + U[0] * su + W2[0] * sv, c[1] + U[1] * su + W2[1] * sv, c[2] + U[2] * su + W2[2] * sv);
       pt(0, -1, -1); pt(1, 1, -1); pt(2, 1, 1); pt(3, -1, -1); pt(4, 1, 1); pt(5, -1, 1); P.needsUpdate = true;
       { const d = Math.hypot(end[0] - F.me.x, end[2] - F.me.z); if (d < 26) SFX.impact(!n[1] && SFX.floor === "metal" ? 1 : 0, (1 - d / 26) * 0.55, this.panOf(F, end[0], end[2], d)); }
-      if (!GFX.lowEnd() && F.vfx.length < 90) this.puff(V, c[0] + n[0] * 0.06, c[1] + n[1] * 0.06, c[2] + n[2] * 0.06, OPS_M.theme === "desert" ? 0xc7a777 : 0x9c9c9a, 1, 0.13, 0.42, 0.12);
+      if (!GFX.lowEnd() && F.vfx.length < 90) {
+        const T = THREE, col = this.fxLit(F, c[0], c[2], OPS_M.theme === "desert" ? 0xc7a777 : 0x9c9c9a);
+        for (let k = 0; k < 2; k++) {
+          const m = new T.Sprite(new T.SpriteMaterial({ map: this.dustTex(F), color: col, transparent: true, opacity: 0, depthWrite: false })); m.material.rotation = Math.random() * 6;
+          m.position.set(c[0] + n[0] * 0.05, c[1] + n[1] * 0.05, c[2] + n[2] * 0.05); F.scene.add(m);
+          const sp = k ? 0.35 : 1.5, j = () => (Math.random() - 0.5) * (k ? 0.5 : 0.35);
+          F.vfx.push({ m, sprite: 1, life: k ? 0.7 : 0.3, max: k ? 0.7 : 0.3, v: [n[0] * sp + j(), n[1] * sp + j() + (k ? 0.12 : 0), n[2] * sp + j()], drag: k ? 2.2 : 5, s0: k ? 0.1 : 0.05, s1: k ? 0.5 : 0.24, op: k ? 0.2 : 0.38, fin: 0.12 });
+        }
+      }
     },
-    burst(V, at, hex, n, spd) {
+    burst(V, at, hex, n, spd, fine = 0) {
       const F = V.fps, T = THREE; if (!F || !F.ready) return;
       for (let k = 0; k < n; k++) {
-        const m = new T.Sprite(F.partM.clone()); m.material.color = new T.Color(hex).multiplyScalar(5); const s = 0.028 + Math.random() * 0.04; m.scale.set(s, s, 1);
+        const m = new T.Sprite(F.partM.clone()); m.material.color = new T.Color(hex).multiplyScalar(5); const s = (0.028 + Math.random() * 0.04) * (fine ? 0.55 : 1); m.scale.set(s, s, 1);
         m.position.set(at[0], at[1], at[2]); F.scene.add(m);
-        F.parts.push({ m, v: [(Math.random() - 0.5) * spd, Math.random() * spd * 0.8, (Math.random() - 0.5) * spd], life: 0.25 + Math.random() * 0.25, max: 0.5 });
+        F.parts.push({ m, v: [(Math.random() - 0.5) * spd, Math.random() * spd * 0.8, (Math.random() - 0.5) * spd], life: (0.25 + Math.random() * 0.25) * (fine ? 0.55 : 1), max: 0.5 });
       }
     },
     addTracer(V, from, to, hex, spark, beam) {
@@ -1796,7 +1835,7 @@ function makeOps(md) {
       const m = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(hex).multiplyScalar(3), transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
       m.scale.z = len; m.position.copy(a).lerp(b, 0.5); m.lookAt(b); F.scene.add(m); F.tracers.push({ m, life: beam ? 0.35 : 0.07, max: beam ? 0.35 : 0.07 });
       if (beam) { m.scale.x = m.scale.y = 3.2; const core = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(4, 4, 4), transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })); core.scale.set(1.1, 1.1, len); core.position.copy(m.position); core.quaternion.copy(m.quaternion); F.scene.add(core); F.tracers.push({ m: core, life: 0.2, max: 0.2 }); }
-      this.burst(V, to, spark ? "#ffd59a" : "#ff3b4e", spark ? 6 : 9, spark ? 3 : 2);
+      this.burst(V, to, spark ? "#ffd59a" : "#ff3b4e", spark ? 4 : 9, spark ? 3.5 : 2, spark ? 1 : 0);
     },
     // ---- jump arena (client art): decks, jump pads, pickups, the Golden Router, rockets, hook cables
     buildArena(V, scene, mStd) {
@@ -1923,7 +1962,8 @@ function makeOps(md) {
       const F = V.fps, T = THREE, g = V.g || {};
       SFX.sync();
       GFX.fitStage(F, F.cam);
-      const fov = F.scoped ? 22 : 74; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
+      F.fovK = Math.max(0, (F.fovK || 0) - dt * 22);
+      const fov = F.scoped ? 22 : 74 + F.fovK; if (Math.abs(F.cam.fov - fov) > 0.1) { F.cam.fov = lerp(F.cam.fov, fov, 0.5); F.cam.updateProjectionMatrix(); }
       // players
       const mypl0 = V.meIdx >= 0 && g.pl ? g.pl[V.meIdx] : null;
       V.ro.forEach((r, i) => {
@@ -2022,7 +2062,7 @@ function makeOps(md) {
       // camera
       const me = V.meIdx, mypl = me >= 0 && g.pl ? g.pl[me] : null;
       const dead = mypl && !mypl[1];
-      let cx = F.me.x, cz = F.me.z, ca = F.me.a, cp = F.me.p + (F.rec || 0), eye = F.eyeH || EYE;
+      let cx = F.me.x, cz = F.me.z, ca = F.me.a + (F.recA || 0), cp = F.me.p + (F.rec || 0), eye = F.eyeH || EYE;
       if (me < 0 || (dead && team)) {
         const cands = V.ro.map((r, i) => i).filter(i => g.pl && g.pl[i] && g.pl[i][1] && (me < 0 || g.pl[i][2] === mypl[2]) && F.remote[i]);
         // spectators follow one player; click / Space / arrows switch, otherwise it moves on every 8 s
@@ -2039,6 +2079,8 @@ function makeOps(md) {
       } else if (dead) { eye = 0.5; }
       const bobAmt = F.moving ? 0.045 : F.walking ? 0.018 : 0; F.bobK = lerp(F.bobK || 0, bobAmt, 0.12); const bob = Math.abs(Math.sin(F.bob)) * F.bobK * 1.4 - F.bobK * 0.7;
       F.cam.position.set(cx, eye + bob, cz); F.cam.rotation.order = "YXZ"; F.cam.rotation.set(cp, ca, dead && !team ? 0.5 : F.moving ? Math.sin(F.bob * 0.5) * 0.004 : 0);
+      // view punch: a damped spring that shots and hits knock about (a roll and a short flinch; where you aim is not touched)
+      { const P = F.vp || (F.vp = [0, 0, 0, 0]), h = Math.min(dt, 0.033); for (let k = 0; k < 2; k++) { P[k + 2] += (-190 * P[k] - 17 * P[k + 2]) * h; P[k] += P[k + 2] * h; } if (me >= 0 && !dead) { F.cam.rotation.x += P[0]; F.cam.rotation.z += P[1]; } }
       if (F.shake > 0) { F.shake = Math.max(0, F.shake - dt * 1.4); const sk = F.shake * F.shake * 0.32; F.cam.position.x += (Math.random() - 0.5) * sk; F.cam.position.y += (Math.random() - 0.5) * sk; F.cam.rotation.x += (Math.random() - 0.5) * sk * 0.25; F.cam.rotation.z += (Math.random() - 0.5) * sk * 0.3; }
       F.guns.forEach((gm, k) => { gm.visible = k === F.cur && me >= 0 && !dead && !F.scoped; });
       const gm = F.guns[F.cur];
@@ -2085,7 +2127,10 @@ function makeOps(md) {
       for (const o of F.parts) { o.life -= dt; o.v[1] -= 9 * dt; o.m.position.x += o.v[0] * dt; o.m.position.y = Math.max(0.02, o.m.position.y + o.v[1] * dt); o.m.position.z += o.v[2] * dt; o.m.material.opacity = Math.max(0, o.life / 0.3); if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
       F.parts = F.parts.filter(o => o.life > 0);
       if (F.nx) F.nx.update(dt, t);
-      if (F.post) { F.post.comp.uniforms.hurt.value = Math.min(1, (F.hurtT || 0) * 2.2); F.post.render(F.scene, F.cam, t); }
+      { const hp = mypl && mypl[1] ? mypl[0] : 100, low = me >= 0 && hp < 35 ? (35 - hp) / 35 : 0; F.lowK = lerp(F.lowK || 0, low, 0.06);
+        F.hbT = (F.hbT || 0) - dt; if (low > 0 && F.hbT <= 0) { SFX.heart(0.45 + low * 0.5); F.hbT = 1.05 - low * 0.4; F.hbP = 1; } F.hbP = Math.max(0, (F.hbP || 0) - dt * 2.4);
+        SFX.muffle(F.lowK > 0.03 ? F.lowK * 0.55 : 0); }
+      if (F.post) { F.post.comp.uniforms.hurt.value = Math.min(1, (F.hurtT || 0) * 2.2 + (F.lowK || 0) * (0.16 + 0.2 * (F.hbP || 0))); F.post.render(F.scene, F.cam, t); }
       else F.renderer.render(F.scene, F.cam);
     },
     hud(ctx, V, dt, t) {
@@ -2123,7 +2168,9 @@ function makeOps(md) {
         if (a[0] === 7) { F.ann = { big: "ROUTER DROPPED", sub: "Grab it!", col: "#ffd23f", life: 2 }; SFX.play("bump"); }
         if (a[0] === 8) { F.ann = { big: "ROUTER RESET", sub: "Back at the center", col: "#ffd23f", life: 2 }; }
       }
-      if (pl) { if (pl[0] < F.lastHp && pl[1]) { F.hurtT = 0.45; SFX.play("bump"); F.hurtN = { n: F.lastHp - pl[0], life: 1 }; const la = F.lastAttacker; if (la && performance.now() - la.t < 700) F.hurtDir = { x: la.x, z: la.z, life: 1.4 }; } F.lastHp = pl[0]; }
+      if (pl) { if (pl[0] < F.lastHp && pl[1]) { const n = F.lastHp - pl[0]; F.hurtT = 0.45; SFX.hurt(n); F.hurtN = { n, life: 1 }; const la = F.lastAttacker; let side = Math.random() < 0.5 ? -1 : 1;
+          if (la && performance.now() - la.t < 700) { F.hurtDir = { x: la.x, z: la.z, life: 1.4 }; side = (la.x - F.me.x) * Math.cos(F.me.a) - (la.z - F.me.z) * Math.sin(F.me.a) > 0 ? 1 : -1; }
+          if (F.vp) { const k = clamp(n / 45, 0.25, 1.2); F.vp[2] += k * 0.55; F.vp[3] += side * k * 0.8; } } F.lastHp = pl[0]; }
       // which way the damage came from: a red arc at the screen edge
       if (F.hurtDir && F.hurtDir.life > 0 && pl && pl[1]) {
         F.hurtDir.life -= dt; const dx = F.hurtDir.x - F.me.x, dz = F.hurtDir.z - F.me.z;
