@@ -182,6 +182,20 @@ const NXD = {
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const px = i * bw, py = j * bh, t = 0.36 + r() * 0.1, v = Math.round(255 * t); x.fillStyle = "rgb(" + v + "," + (v + 3) + "," + (v + 9) + ")"; x.fillRect(px + 1.5, py + 1.5, bw - 3, bh - 3);
       x.fillStyle = "rgba(255,255,255,.12)"; x.fillRect(px + 1.5, py + 1.5, bw - 3, 1.5); x.fillStyle = "#c9a04a"; x.fillRect(px + bw * 0.3, py + bh * 0.2, bw * 0.4, bh * 0.2); x.fillStyle = "#15171b"; for (const k of [0.3, 0.7]) { x.beginPath(); x.arc(px + bw * k, py + bh * 0.68, Math.min(bw, bh) * 0.07, 0, 6.3); x.fill(); } }
   },
+  // ---- woven rug: bands, diamonds and a fringe, six colourways
+  k_rug(x, w, h, d, r) {
+    const S = [["#7a1f1a", "#d9b56a", "#1d2f4a"], ["#1f3f5c", "#e3d3b0", "#a3352a"], ["#5a2a1a", "#e0a03a", "#f1e6cf"], ["#2b4a3a", "#e6d7b4", "#8c2f22"], ["#6b1d2e", "#f0dfc0", "#22384f"], ["#3a2a4a", "#e9b85a", "#d9d2c4"]][(d.v | 0) % 6], fr = h * 0.03;
+    x.fillStyle = S[1]; for (let i = 0; i < w; i += 3) { x.fillRect(i, 0, 1.5, fr); x.fillRect(i, h - fr, 1.5, fr); }
+    x.fillStyle = S[0]; x.fillRect(0, fr, w, h - 2 * fr); x.strokeStyle = S[1]; x.lineWidth = w * 0.03; x.strokeRect(w * 0.07, fr + w * 0.07, w * 0.86, h - 2 * fr - w * 0.14);
+    x.fillStyle = S[2]; x.fillRect(w * 0.13, fr + w * 0.13, w * 0.74, h - 2 * fr - w * 0.26);
+    const n = Math.max(2, Math.round(h / w * 2)), dh = (h - 2 * fr - w * 0.3) / n; for (let i = 0; i < n; i++) { const cy = fr + w * 0.15 + dh * (i + 0.5); x.fillStyle = i % 2 ? S[0] : S[1]; x.beginPath(); x.moveTo(w / 2, cy - dh * 0.42); x.lineTo(w * 0.8, cy); x.lineTo(w / 2, cy + dh * 0.42); x.lineTo(w * 0.2, cy); x.closePath(); x.fill(); x.fillStyle = i % 2 ? S[1] : S[0]; x.beginPath(); x.moveTo(w / 2, cy - dh * 0.2); x.lineTo(w * 0.64, cy); x.lineTo(w / 2, cy + dh * 0.2); x.lineTo(w * 0.36, cy); x.closePath(); x.fill(); }
+    x.globalAlpha = 0.1; for (let i = 0; i < w * h / 40; i++) { x.fillStyle = r() < 0.5 ? "#000" : "#fff"; x.fillRect(r() * w, r() * h, 2, 1); } x.globalAlpha = 1;
+  },
+  // ---- painted shop board
+  k_shop(x, w, h, d, r) {
+    const S = [["#1d4a5c", "#f2e3c0"], ["#7a2a1c", "#f4e2b8"], ["#e8d9b0", "#3a2414"], ["#2f4a2a", "#f0e6c8"], ["#c8962e", "#2a1a10"]][(d.v | 0) % 5]; x.fillStyle = S[0]; x.fillRect(0, 0, w, h); x.strokeStyle = S[1]; x.lineWidth = Math.max(2, h * 0.05); x.strokeRect(h * 0.09, h * 0.09, w - h * 0.18, h - h * 0.18);
+    x.fillStyle = S[1]; x.textAlign = "center"; x.textBaseline = "middle"; const px = NXD.fit(x, d.t || "", w * 0.86, h * 0.56, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(d.t || "", w / 2, h * 0.54); NXD.wear(x, w, h, r, Math.round(w * h / 500));
+  },
   // ---- the company name in light
   k_logo(x, w, h, d, r) {
     x.textBaseline = "middle"; x.textAlign = "left"; const px = h * 0.74; x.font = NXD.FONT(700, Math.round(px));

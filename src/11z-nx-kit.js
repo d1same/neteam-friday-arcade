@@ -46,5 +46,8 @@ NXW.kit = (B) => {
   };
   // paint on the floor: text or a line (px per metre kept low, it is seen from standing height)
   K.floorText = (x0, z0, w, d, t, col, rot) => B.decal("decal", rot ? [x0, 0.006, z0] : [x0, 0.006, z0 + d], rot ? [0, 0, d] : [w, 0, 0], rot ? [w, 0, 0] : [0, 0, -d], 72, { k: "text", t, col: col || 0 });
+  // where a tall block stands next to a lower one, close the strip of wall that shows above the lower roof
+  K.stepWalls = (matOf) => { for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) { if (!A.solid(x, z)) continue; const h = A.cellH[A.ci(x, z)], x0 = x * CS, z0 = z * CS;
+    DIRS.forEach(([dx, dz]) => { const nx = x + dx, nz = z + dz; if (!A.inb(nx, nz) || !A.solid(nx, nz)) return; const nh = A.cellH[A.ci(nx, nz)]; if (nh >= h - 0.01) return; box(matOf(x, z), x0, nh, z0, x0 + CS, h, z0 + CS, { f: dx > 0 ? PX : dx < 0 ? NXb : dz > 0 ? PZ : NZ, occ: false, seg: 2 }); }); } };
   return K;
 };

@@ -42,6 +42,12 @@ const NXW = (() => {
     // vault
     v_floor: { t: "granite", c: [0.5, 0.54, 0.6], s: 2.4, r: 0.22 }, v_wall: { t: "hangar", c: [1.7, 1.8, 2.0], m: 0.6, r: 0.8 }, v_wallHi: { t: "shutter", c: [0.4, 0.43, 0.5], s: 3, m: 0.8 }, v_ceil: { t: "hangar", c: [1.2, 1.25, 1.35] },
     v_deck: { t: "darkmetal", c: [1.9, 2.0, 2.2], m: 0.9 }, v_deckTop: { t: "diamond", c: [1.25, 1.3, 1.4], m: 0.7, r: 0.8 }, v_gold: { c: [1, 0.72, 0.3], r: 0.28, m: 1 },
+    // desert town
+    d_sand: { t: "sand", s: 3 }, d_cobble: { t: "cobble", s: 2.4 }, d_patio: { t: "patio", s: 2.4 }, d_pave: { t: "pavement", s: 2 }, d_gravel: { t: "gravel", c: [1.5, 1.4, 1.25], s: 2.4 },
+    d_w0: { t: "sandstone", s: 3 }, d_w1: { t: "sandbrick", s: 2.2 }, d_w2: { t: "yplaster", s: 3 }, d_w3: { t: "crackplaster", c: [1.25, 1.15, 1.0], s: 2.6 }, d_w4: { t: "stoneplaster", s: 2.6 }, d_w5: { t: "redplaster", c: [1.05, 0.95, 0.9], s: 3 }, d_w6: { t: "plaster", c: [1.1, 1.02, 0.88], s: 3 },
+    d_base: { t: "sandstone2", c: [0.75, 0.72, 0.68], s: 2 }, d_wood: { t: "planks", c: [1.25, 1.05, 0.8], s: 1.2 }, d_dwood: { t: "darkwood", s: 1.2 }, d_blue: { t: "planks", c: [0.3, 0.75, 1.0], s: 1.2 }, d_green: { t: "planks", c: [0.35, 0.8, 0.55], s: 1.2 },
+    d_cloth0: { t: "fabric", c: [1.7, 0.35, 0.25], s: 0.5 }, d_cloth1: { t: "fabric", c: [0.3, 0.7, 1.5], s: 0.5 }, d_cloth2: { t: "fabric", c: [2.1, 1.9, 1.5], s: 0.5 }, d_cloth3: { t: "fabric", c: [1.9, 1.2, 0.25], s: 0.5 },
+    d_clay: { c: [0.36, 0.16, 0.085], r: 0.85, m: 0 }, d_dark: { c: [0.012, 0.011, 0.01], r: 0.9, m: 0 }, d_palm: { c: [0.1, 0.17, 0.05], r: 0.7, m: 0 }, d_trunk: { c: [0.27, 0.2, 0.13], r: 0.9, m: 0 },
     // generic
     trimBlack: { c: [0.03, 0.032, 0.036], r: 0.42, m: 0.85 }, trimSteel: { t: "brushed", c: [0.6, 0.61, 0.63], r: 1.1, m: 1 }, trimWhite: { c: [0.8, 0.8, 0.78], r: 0.5, m: 0 },
     darkMetal: { t: "darkmetal", c: [1, 1, 1], m: 1 }, plasticBlack: { c: [0.025, 0.026, 0.03], r: 0.45, m: 0 }, plasticGrey: { t: "plastic", c: [0.35, 0.36, 0.38] }, plasticWhite: { t: "plastic", c: [0.9, 0.9, 0.9] },
