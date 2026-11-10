@@ -64,12 +64,21 @@ const SFX = {
   // reverb whose size follows the place you are in (SFX.space). `wet` scales how much of a sound reaches the reverb.
   vol: typeof store("nfa-vol") === "number" ? store("nfa-vol") : 0.9, _bus: null, _space: "room",
   setVol(v) { this.vol = Math.max(0, Math.min(1, v)); store("nfa-vol", this.vol); const B = this._bus; if (B && this.on) B.master.gain.setTargetAtTime(this.vol, B.a.currentTime, 0.05); },
+  // [where the soft clipper starts to bend (linear, 0..1), gain into it]
+  MIX: [0.7, 1],
+  softClip(k) { const n = 2048, c = new Float32Array(n); for (let i = 0; i < n; i++) { const x = ((i / (n - 1)) * 2 - 1) * 2, ax = Math.abs(x);   // the curve covers -2..2: the input is halved going in
+    c[i] = Math.sign(x) * (ax <= k ? ax : k + (1 - k) * Math.tanh((ax - k) / (1 - k))); } return c; },
   bus(a) {
     if (this._bus && this._bus.a === a) return this._bus;
     const master = a.createGain(); master.gain.value = this.vol;
-    const comp = a.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 5; comp.attack.value = 0.01; comp.release.value = 0.2;
+    // no compressor on the master: the browser's compressor adds its own make-up gain and reacts to short peaks, so the
+    // old one (-16 dB, 5:1) and even a -1.5 dB limiter pulled a gunshot down 10 dB or more while lifting quiet sounds,
+    // and a reload came out as loud as a shot. Instead a soft clipper: straight through up to -3 dBFS, then a smooth
+    // curve that never passes full scale. A shot keeps its crack and only a burst that would clip is rounded off
+    const C = this.MIX, mu = a.createGain(); mu.gain.value = C[1] * 0.5;
+    const comp = a.createWaveShaper(); comp.curve = this.softClip(C[0]); comp.oversample = "2x";
     const lp = a.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 20000; lp.Q.value = 0.3;
-    master.connect(lp).connect(comp).connect(a.destination);
+    master.connect(lp).connect(mu).connect(comp).connect(a.destination);
     const send = a.createGain(), rev = a.createConvolver(), wet = a.createGain(); send.connect(rev).connect(wet).connect(master);
     this._bus = { a, master, comp, send, rev, wet, lp, mk: 0 }; this.space(this._space); return this._bus;
   },
@@ -297,7 +306,7 @@ const SFX = {
       // which carries its own echo, so it gets little reverb. Muffling only starts past about 20 m.
       const lpF = Math.max(0, far - 0.4) * 1.3;
       if (far > 0.7) { if (this.samp("far-" + kind, v * 0.9, pan, r, lpF, dl, 0.12)) { if (G[2] && far < 0.8) this.bolt(v * 0.2 * (1 - far), pan, G[2] + dl); return; } }
-      else if (this.samp((far > 0.2 ? "gunm-" : "gun-") + kind, v * 1.15, pan, r, lpF, dl, 0.1 + far * 0.2)) {
+      else if (this.samp((far > 0.2 ? "gunm-" : "gun-") + kind, v * (far > 0 ? 1.15 : 1.4), pan, r, lpF, dl, 0.1 + far * 0.2)) {   // your own gun: right at your ear
         const tv = v * (out ? 0.18 : 0.08) * (1 - far);   // the room answering back: a touch of it, so the shot itself stays up front
         this.samp("far-" + kind, tv, clamp(pan - 0.45, -1, 1), r, 0.3 + far * 0.3, dl + (out ? 0.07 : 0.03), out ? 0.55 : 0.4);
         this.samp("far-" + kind, tv * 0.75, clamp(pan + 0.45, -1, 1), r * 0.985, 0.4 + far * 0.3, dl + (out ? 0.15 : 0.055), out ? 0.65 : 0.45);
@@ -321,7 +330,7 @@ const SFX = {
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles)]
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles), weight of the low punch]
   // pistol and SMG recordings are thin in the low end (6 to 10 dB under the rifle), so they get more level and some punch, or they sound far away
-  GUNS: { pistol: [0.6, 1, 0, 0.6], heavy: [0.64, 1, 0, 1], smg: [0.52, 1, 0, 0.4], rifle: [0.6, 1, 0, 0.55], carbine: [0.56, 1, 0, 0.3], lmg: [0.64, 1, 0, 0.8], sniper: [0.72, 1, 0.42, 1.3], scout: [0.6, 1, 0.36, 0.7], shotgun: [0.7, 1, 0, 1.2] },
+  GUNS: { pistol: [0.6, 1, 0, 0.85], heavy: [0.64, 1, 0, 1.4], smg: [0.62, 1, 0, 0.6], rifle: [0.6, 1, 0, 0.8], carbine: [0.6, 1, 0, 0.5], lmg: [0.64, 1, 0, 1.1], sniper: [0.72, 1, 0.42, 1.6], scout: [0.6, 1, 0.36, 1], shotgun: [0.7, 1, 0, 1.5] },
   // pre-PR15 table, kept for the old/new switch on the sound page
   GUNS_OLD: { pistol: [0.5, 1, 0, 0.5], heavy: [0.62, 0.92, 0, 1.1], smg: [0.48, 1, 0, 0.45], rifle: [0.62, 1, 0, 0.8], carbine: [0.6, 1, 0, 0.7], lmg: [0.62, 0.95, 0, 0.9], sniper: [0.68, 1, 0.42, 1.4], scout: [0.6, 1, 0.36, 1.1], shotgun: [0.66, 1, 0, 1.3] },
   legacy: false,
