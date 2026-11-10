@@ -744,8 +744,10 @@ const race = {
       if (i === me && F.me) ({ x, z, a, v } = F.me), bo = F.me.bo > 0, sl = F.me.slip || 0;
       else if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a, v] = b; bo = !!b[4]; sl = b[5] || 0; }
       else { const inp = V.inputOf(i); if (!inp || !Number.isFinite(inp.x)) { if (!car.init) { const row = Math.floor(i / 2), side = i % 2 ? 1 : -1, idx = RC.N - 6 - row * 5, p = rcAt(idx, side * 3.6); x = p[0]; z = p[1]; a = rcHead(idx); v = 0; } else { x = car.x; z = car.z; a = car.a; v = 0; } } else { x = inp.x; z = inp.z; a = inp.a; v = inp.v || 0; bo = !!inp.bo; sl = inp.sl || 0; } }
-      if (!car.init || Math.hypot(car.x - x, car.z - z) > 12 || i === me) { car.x = x; car.z = z; car.a = a; car.init = true; }
-      else { car.x = lerp(car.x, x, 0.3); car.z = lerp(car.z, z, 0.3); let da = ((a - car.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.a += da * 0.3; }
+      // other cars: carry on along their speed and heading between updates instead of trailing behind and jumping
+      const ref = i === me ? null : r.b ? g : V.inputOf(i);
+      if (!ref || !car.init || i === me) { if (!car.init || Math.hypot(car.x - x, car.z - z) > 18 || i === me || !ref) { car.x = x; car.z = z; car.a = a; car.init = true; } car.nsT = null; }
+      else { const ma = a + (sl || 0); netSmooth(car, ref, x, z, Math.sin(ma) * (v || 0), Math.cos(ma) * (v || 0), dt, 18, 0.16); let da = ((a - car.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.a += da * (1 - Math.exp(-dt * 16)); }
       F.remote[i] = { x: car.x, z: car.z };
       car.grp.position.set(car.x, 0, car.z); car.grp.rotation.y = car.a;
       car.body.rotation.y = -(sl || 0) * 0.8; car.body.rotation.z = lerp(car.body.rotation.z, (sl || 0) * 0.25 - car.steer * Math.min(1, Math.abs(v || 0) / 30) * 0.07, 0.2);

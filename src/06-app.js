@@ -29,6 +29,24 @@ function findHost() {
   }
   return best;
 }
+// Other players arrive 15 to 25 times a second. Instead of easing toward the last position (which trails and then
+// jumps), remember when each update arrived and how fast they were moving, look a little ahead along that motion and
+// glide there at the same rate whatever the frame rate. vx/vz: speed sent with the update (cars), else measured.
+function netSmooth(o, ref, x, z, vx, vz, dt, snap, ahead) {
+  const t = performance.now();
+  if (!o.init || o.nsT == null || Math.hypot(o.x - x, o.z - z) > snap) { o.x = x; o.z = z; o.init = true; o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t; o.nvx = 0; o.nvz = 0; return o; }
+  if (ref !== o.nsRef || x !== o.nsX || z !== o.nsZ) {
+    const gap = Math.max(0.016, (t - o.nsT) / 1000);
+    if (vx == null) { const mx = clamp((x - o.nsX) / gap, -24, 24), mz = clamp((z - o.nsZ) / gap, -24, 24); const k = gap > 0.3 ? 1 : 0.4; o.nvx += (mx - o.nvx) * k; o.nvz += (mz - o.nvz) * k; }
+    else { o.nvx = vx; o.nvz = vz; }
+    o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t;
+  }
+  // look ahead by the time since the update, fading out when no new one comes (they stopped, or the update is late)
+  const age = (t - o.nsT) / 1000, la = age < ahead ? age : Math.max(0, ahead - (age - ahead));
+  const tx = o.nsX + o.nvx * la, tz = o.nsZ + o.nvz * la, k = 1 - Math.exp(-(dt || 0) * 16);
+  o.x += (tx - o.x) * k; o.z += (tz - o.z) * k;
+  return o;
+}
 function setPresence(patch) { if (NET.room) NET.room.presence(patch).catch(() => {}); }
 function myPresence() { return { v: 1, nick: APP.me.nick || "New tech", c: APP.me.c, uid: NET.uid }; }
 
@@ -255,7 +273,7 @@ function exitGame() {
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
-  $("#gameView").hidden = true; $("#lobbyView").hidden = false;
+  $("#gameView").hidden = true; $("#lobbyView").hidden = false; updateLobby();
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
   updateLobby();
@@ -667,7 +685,14 @@ function drawStage(t) {
     }
   });
 }
+// network messages arrive many times a second: refresh the lobby at most 4 times a second, and not at all during a match
+function lobbySoon() {
+  if (APP.view === "game") { APP.lobbyStale = true; return; }
+  if (APP.lobbyT) return;
+  APP.lobbyT = setTimeout(() => { APP.lobbyT = 0; updateLobby(); }, 250);
+}
 function updateLobby() {
+  APP.lobbyStale = false;
   const ps = lobbyPeers();
   const n = ps.length || 1;
   $("#hereCount").textContent = n === 1 ? "Just you in the NOC" : n + " techs in the NOC";
@@ -1035,7 +1060,7 @@ async function boot() {
     if (ch.joined.some(p => !p.sameTab) && APP.view === "lobby") SFX.play("join");
     // two hosts at once: the older session wins
     if (APP.S) { const h = findHost(); if (h && h.h.id !== APP.S.id) { stopHostTimer(); APP.S = null; setPresence({ h: null }); } }
-    updateLobby();
+    if (ch.joined.length || ch.left.length) updateLobby(); else lobbySoon();
   });
   NET.room.onConnection(() => updateLobby());
   try {

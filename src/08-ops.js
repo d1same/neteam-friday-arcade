@@ -2009,11 +2009,13 @@ function makeOps(md) {
       const mypl0 = V.meIdx >= 0 && g.pl ? g.pl[V.meIdx] : null;
       V.ro.forEach((r, i) => {
         const av = F.avatars[i]; const pl = g.pl && g.pl[i];
-        let x, z, a;
-        if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; }
-        else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = (inp.a || 0) + Math.PI; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
-        if (!av.init || Math.hypot(av.x - x, av.z - z) > 5) { av.x = x; av.z = z; av.init = true; }
-        const k = 1 - Math.pow(0.0005, dt), ox = av.x, oz = av.z; av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); av.a = a;
+        let x, z, a, ref = null;
+        if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; ref = g; }
+        else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = (inp.a || 0) + Math.PI; ref = inp; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
+        const ox = av.x, oz = av.z;
+        if (i === V.meIdx || !ref) { if (!av.init || Math.hypot(av.x - x, av.z - z) > 5 || i === V.meIdx) { av.x = x; av.z = z; av.init = true; } else { const k = 1 - Math.pow(0.0005, dt); av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); } av.nsT = null; }
+        else netSmooth(av, ref, x, z, null, null, dt, 5, 0.09);
+        av.a = a;
         // enemy footsteps: only running players make noise
         if (i !== V.meIdx && pl && pl[1] && dt > 0) {
           const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2); av.mvx = lerp(av.mvx || 0, (av.x - ox) / dt, 0.2); av.mvz = lerp(av.mvz || 0, (av.z - oz) / dt, 0.2);

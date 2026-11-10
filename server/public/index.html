@@ -7999,11 +7999,13 @@ function makeOps(md) {
       const mypl0 = V.meIdx >= 0 && g.pl ? g.pl[V.meIdx] : null;
       V.ro.forEach((r, i) => {
         const av = F.avatars[i]; const pl = g.pl && g.pl[i];
-        let x, z, a;
-        if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; }
-        else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = (inp.a || 0) + Math.PI; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
-        if (!av.init || Math.hypot(av.x - x, av.z - z) > 5) { av.x = x; av.z = z; av.init = true; }
-        const k = 1 - Math.pow(0.0005, dt), ox = av.x, oz = av.z; av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); av.a = a;
+        let x, z, a, ref = null;
+        if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; ref = g; }
+        else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x) && pl && inp.q === pl[7]) { x = inp.x; z = inp.z; a = (inp.a || 0) + Math.PI; ref = inp; } else if (pl) { x = av.init ? av.x : pl[8]; z = av.init ? av.z : pl[9]; a = av.a || 0; } else return; }
+        const ox = av.x, oz = av.z;
+        if (i === V.meIdx || !ref) { if (!av.init || Math.hypot(av.x - x, av.z - z) > 5 || i === V.meIdx) { av.x = x; av.z = z; av.init = true; } else { const k = 1 - Math.pow(0.0005, dt); av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); } av.nsT = null; }
+        else netSmooth(av, ref, x, z, null, null, dt, 5, 0.09);
+        av.a = a;
         // enemy footsteps: only running players make noise
         if (i !== V.meIdx && pl && pl[1] && dt > 0) {
           const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2); av.mvx = lerp(av.mvx || 0, (av.x - ox) / dt, 0.2); av.mvz = lerp(av.mvz || 0, (av.z - oz) / dt, 0.2);
@@ -9185,8 +9187,10 @@ const race = {
       if (i === me && F.me) ({ x, z, a, v } = F.me), bo = F.me.bo > 0, sl = F.me.slip || 0;
       else if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a, v] = b; bo = !!b[4]; sl = b[5] || 0; }
       else { const inp = V.inputOf(i); if (!inp || !Number.isFinite(inp.x)) { if (!car.init) { const row = Math.floor(i / 2), side = i % 2 ? 1 : -1, idx = RC.N - 6 - row * 5, p = rcAt(idx, side * 3.6); x = p[0]; z = p[1]; a = rcHead(idx); v = 0; } else { x = car.x; z = car.z; a = car.a; v = 0; } } else { x = inp.x; z = inp.z; a = inp.a; v = inp.v || 0; bo = !!inp.bo; sl = inp.sl || 0; } }
-      if (!car.init || Math.hypot(car.x - x, car.z - z) > 12 || i === me) { car.x = x; car.z = z; car.a = a; car.init = true; }
-      else { car.x = lerp(car.x, x, 0.3); car.z = lerp(car.z, z, 0.3); let da = ((a - car.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.a += da * 0.3; }
+      // other cars: carry on along their speed and heading between updates instead of trailing behind and jumping
+      const ref = i === me ? null : r.b ? g : V.inputOf(i);
+      if (!ref || !car.init || i === me) { if (!car.init || Math.hypot(car.x - x, car.z - z) > 18 || i === me || !ref) { car.x = x; car.z = z; car.a = a; car.init = true; } car.nsT = null; }
+      else { const ma = a + (sl || 0); netSmooth(car, ref, x, z, Math.sin(ma) * (v || 0), Math.cos(ma) * (v || 0), dt, 18, 0.16); let da = ((a - car.a + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.a += da * (1 - Math.exp(-dt * 16)); }
       F.remote[i] = { x: car.x, z: car.z };
       car.grp.position.set(car.x, 0, car.z); car.grp.rotation.y = car.a;
       car.body.rotation.y = -(sl || 0) * 0.8; car.body.rotation.z = lerp(car.body.rotation.z, (sl || 0) * 0.25 - car.steer * Math.min(1, Math.abs(v || 0) / 30) * 0.07, 0.2);
@@ -9579,6 +9583,24 @@ function findHost() {
   }
   return best;
 }
+// Other players arrive 15 to 25 times a second. Instead of easing toward the last position (which trails and then
+// jumps), remember when each update arrived and how fast they were moving, look a little ahead along that motion and
+// glide there at the same rate whatever the frame rate. vx/vz: speed sent with the update (cars), else measured.
+function netSmooth(o, ref, x, z, vx, vz, dt, snap, ahead) {
+  const t = performance.now();
+  if (!o.init || o.nsT == null || Math.hypot(o.x - x, o.z - z) > snap) { o.x = x; o.z = z; o.init = true; o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t; o.nvx = 0; o.nvz = 0; return o; }
+  if (ref !== o.nsRef || x !== o.nsX || z !== o.nsZ) {
+    const gap = Math.max(0.016, (t - o.nsT) / 1000);
+    if (vx == null) { const mx = clamp((x - o.nsX) / gap, -24, 24), mz = clamp((z - o.nsZ) / gap, -24, 24); const k = gap > 0.3 ? 1 : 0.4; o.nvx += (mx - o.nvx) * k; o.nvz += (mz - o.nvz) * k; }
+    else { o.nvx = vx; o.nvz = vz; }
+    o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t;
+  }
+  // look ahead by the time since the update, fading out when no new one comes (they stopped, or the update is late)
+  const age = (t - o.nsT) / 1000, la = age < ahead ? age : Math.max(0, ahead - (age - ahead));
+  const tx = o.nsX + o.nvx * la, tz = o.nsZ + o.nvz * la, k = 1 - Math.exp(-(dt || 0) * 16);
+  o.x += (tx - o.x) * k; o.z += (tz - o.z) * k;
+  return o;
+}
 function setPresence(patch) { if (NET.room) NET.room.presence(patch).catch(() => {}); }
 function myPresence() { return { v: 1, nick: APP.me.nick || "New tech", c: APP.me.c, uid: NET.uid }; }
 
@@ -9805,7 +9827,7 @@ function exitGame() {
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
-  $("#gameView").hidden = true; $("#lobbyView").hidden = false;
+  $("#gameView").hidden = true; $("#lobbyView").hidden = false; updateLobby();
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
   updateLobby();
@@ -10217,7 +10239,14 @@ function drawStage(t) {
     }
   });
 }
+// network messages arrive many times a second: refresh the lobby at most 4 times a second, and not at all during a match
+function lobbySoon() {
+  if (APP.view === "game") { APP.lobbyStale = true; return; }
+  if (APP.lobbyT) return;
+  APP.lobbyT = setTimeout(() => { APP.lobbyT = 0; updateLobby(); }, 250);
+}
 function updateLobby() {
+  APP.lobbyStale = false;
   const ps = lobbyPeers();
   const n = ps.length || 1;
   $("#hereCount").textContent = n === 1 ? "Just you in the NOC" : n + " techs in the NOC";
@@ -10585,7 +10614,7 @@ async function boot() {
     if (ch.joined.some(p => !p.sameTab) && APP.view === "lobby") SFX.play("join");
     // two hosts at once: the older session wins
     if (APP.S) { const h = findHost(); if (h && h.h.id !== APP.S.id) { stopHostTimer(); APP.S = null; setPresence({ h: null }); } }
-    updateLobby();
+    if (ch.joined.length || ch.left.length) updateLobby(); else lobbySoon();
   });
   NET.room.onConnection(() => updateLobby());
   try {
