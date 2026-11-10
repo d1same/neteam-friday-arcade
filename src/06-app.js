@@ -284,7 +284,6 @@ function exitGame() {
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
   setPresence({ in: null, watch: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
-  const st = $("#sndTest"); if (st && st.parentNode !== document.body) document.body.appendChild(st);
   $("#gameView").hidden = true; $("#lobbyView").hidden = false; updateLobby();
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
   $("#overlay").textContent = "";
@@ -975,7 +974,7 @@ function bindEvents() {
   $("#photoDel").addEventListener("click", () => { DRAFT.c = DRAFT.c.slice(0, 5); SFX.play("pop"); buildEditorOpts(); });
   $("#soundBtn").addEventListener("click", () => { SFX.on = !SFX.on; store("nfa-sound", SFX.on); $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
-  $("#sndTestBtn").addEventListener("click", () => soundTest());
+  $("#setBtn").addEventListener("click", (e) => { e.stopPropagation(); let sp = $("#homeSettings"); if (!sp) { sp = opsSettingsPanel(); sp.id = "homeSettings"; sp.classList.add("set-home"); document.body.appendChild(sp); const box = sp; document.addEventListener("click", (ev) => { if (!box.hidden && !box.contains(ev.target)) box.hidden = true; }); document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") box.hidden = true; }); } else syncLookPanel({ setPanel: sp }); sp.hidden = !sp.hidden; });
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
   $("#fsBtn").addEventListener("click", toggleFullscreen);
   $("#leaveBtn").addEventListener("click", () => {
@@ -1013,24 +1012,6 @@ function bindEvents() {
   $("#stagebox").addEventListener("pointerdown", (e) => { const V = APP.V; if (V && V.mod.id === "alert" && e.target.id !== "leaveBtn" && !e.target.closest(".card") && !e.target.closest("#socPanel")) { if (e.target !== cv) alert.tap(V); } });
 }
 
-// ---------- sound test: every sound in the game on a button (Settings in a match, or open the site with #sounds) ----------
-function soundTest() {
-  let d = $("#sndTest");
-  if (!d) {
-    d = document.createElement("div"); d.id = "sndTest"; d.className = "snd-test";
-    d.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Sound test</h4></div><button type="button" class="set-x" aria-label="Close">✕</button></header><p>Press a sound to hear it. Tell us the names of the ones that are wrong.</p><label class="snd-ab"><input type="checkbox" data-old> Play the old sounds (to compare)</label><div class="snd-grid"></div>';
-    const grid = d.querySelector(".snd-grid");
-    d.querySelector("[data-old]").addEventListener("change", (e) => { SFX.legacy = e.target.checked; SFX.space(SFX._space); });
-    SFX.LIST().forEach(([name, fn]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.addEventListener("click", () => { if (!SFX.on) { toast("Sound is off. Turn it on with the speaker button."); return; } SFX.ensure(); try { fn(); } catch (e) { console.error(e); } }); grid.appendChild(b); });
-    d.querySelector(".set-x").addEventListener("click", () => { d.hidden = true; if (location.hash === "#sounds") history.replaceState(null, "", location.pathname + location.search); });
-    ["mousedown", "pointerdown", "click"].forEach(ev => d.addEventListener(ev, (e) => e.stopPropagation()));
-  }
-  // On the page itself, so it stays open when a match ends; inside the game view only in fullscreen (nothing else shows there).
-  const host = APP.view === "game" && fsElement() ? $("#gameView") : document.body; if (d.parentNode !== host) host.appendChild(d);
-  d.hidden = false; if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) { }
-  SFX.ensure(); SFX.load();
-}
-addEventListener("hashchange", () => { if (location.hash === "#sounds") soundTest(); });
 
 // ---------- main loop ----------
 let lastT = now();
@@ -1056,7 +1037,6 @@ function frame() {
 async function boot() {
   APP.peerMap = {};
   renderMe(); buildCards(); bindEvents(); renderBoard(); updateLobby();
-  if (location.hash === "#sounds") soundTest();
   requestAnimationFrame(frame);
   await NET.init();
   // a stored character from the shared store wins if this browser has none

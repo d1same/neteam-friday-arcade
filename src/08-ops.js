@@ -25,6 +25,56 @@ const OPS_MAPS = {
   "#...#...rrrrrr...#...#",
   "######################",
   ] },
+  // two storeys: an atrium in the middle with a gallery around it, two feature stairs, offices upstairs
+  hq2: { n: "Neteam HQ 2F", dev: true, theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "NETWORK CLOSET"], spawns: ["LOBBY", "NOC"],
+  stairs: [[7, 12, 0, -1, 2], [14, 10, 0, 1, 2]],
+  up: { h: 3.6, ceil: 3.2, rows: [
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+    "#......###..###......#",
+    "#.##.#..........#.##.#",
+    "#.##.#..........#.##.#",
+    "#.......      .......#",
+    "#.###...       #..##.#",
+    "#.....#        #.....#",
+    "#.###.#       ...##..#",
+    "#.##.#..........#.##.#",
+    "#.##.#..........#.##.#",
+    "#......###..###......#",
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+    "######################",
+  ] }, rows: [
+  "######################",
+  "#aaaa...#.uuuu.#.bbbb#",
+  "#aaaa...#.uuuu.#.bbbb#",
+  "#aa##........#...##bb#",
+  "#......####..#.......#",
+  "###.##.#........###.##",
+  "#....#.#.##.###.#....#",
+  "#.##.....#.......###.#",
+  "#.#..###.#.###.#.....#",
+  "#...#............#.#.#",
+  "##.##.##.........#...#",
+  "#...................##",
+  "#.###.#.......#.###..#",
+  "#.#...#...#.#.#...#..#",
+  "#...#.###.#.#.##.#.#.#",
+  "#.#.#.....#......#...#",
+  "###.###.####.##.###.##",
+  "#.....#.........#....#",
+  "#.###...rrrrrr....##.#",
+  "#.....#.rrrrrr.#.....#",
+  "#...#...rrrrrr...#...#",
+  "######################",
+  ] },
   farm: { n: "Server Farm", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
     "#aaaa......uuuuuu#",
@@ -164,7 +214,7 @@ function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq",
 // feet height of whoever is moving, and how high a step they can take onto a box (more with legs tucked mid-air)
 let OPS_FEET = 0, OPS_STEP = 0.35;
 // multi-level maps (see opsBuildLevels): per-cell solid spans, stair runs, upper floor height
-let OPS_ML = false, OPS_SP = null, OPS_RAMP = null, OPS_UPH = 0;
+let OPS_ML = false, OPS_SP = null, OPS_RAMP = null, OPS_UPH = 0, OPS_RAILS = [];
 const ML_SLAB = 0.35, ML_TOP = 99;
 let OPS_JUMP = {}, OPS_ID = "", OPS_M = null, OPS_MAP = [], OG = 0, OPS_CELLS = null, OPS_SITE = null, OPS_PROPS = [], OPS_PALIVE = new Uint8Array(0);
 // breakable props: 0 hardware crate, 1 old monitor on a cart, 2 Li-ion UPS battery (explodes)
@@ -178,7 +228,7 @@ function opsPlaceProps(id) {
   const cells = OPS_CELLS.open.slice(); for (let i = cells.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [cells[i], cells[j]] = [cells[j], cells[i]]; }
   for (const [cx, cz] of cells) {
     if (out.length >= cap) break;
-    const ch = OPS_MAP[cz][cx]; if (!".ab".includes(ch)) continue;
+    const ch = OPS_MAP[cz][cx]; if (!".ab".includes(ch) || (OPS_RAMP && OPS_RAMP[cz * OG + cx])) continue;
     if ([[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, -1], [1, -1], [-1, 1]].some(([a, b]) => used.has((cx + a) + "," + (cz + b)))) continue;
     const sides = [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([a, b]) => oWall(cx + a, cz + b)); if (!sides.length) continue;
     // a cell walled on two opposite sides is a corridor: leave it clear
@@ -197,7 +247,8 @@ const OWH = 3.2;
 function opsSetMap(id) {
   if (!OPS_MAPS[id]) id = "hq"; if (id === OPS_ID) return;
   OPS_ID = id; OPS_M = OPS_MAPS[id]; OPS_MAP = OPS_M.rows; OG = OPS_MAP.length;
-  OPS_CELLS = { r: [], u: [], a: [], b: [], open: [], spawn: [], T: [] };
+  OPS_CELLS = { r: [], u: [], a: [], b: [], open: [], spawn: [], T: [], up: [] };
+  if (OPS_M.up) OPS_M.up.rows.forEach((row, z) => [...row].forEach((ch, x) => { if (ch === ".") OPS_CELLS.up.push([x, z, 1]); }));
   OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (ch !== "#" && ch !== "v") OPS_CELLS.open.push([x, z]); if (".rubaT".includes(ch)) OPS_CELLS.spawn.push([x, z]); if (OPS_CELLS[ch]) OPS_CELLS[ch].push([x, z]); }));
   opsBuildLevels();
   OPS_PROPS = opsPlaceProps(id); OPS_PALIVE = new Uint8Array(OPS_PROPS.length).fill(1);
@@ -211,7 +262,48 @@ const cellC = ([x, z]) => [x * CS + CS / 2, z * CS + CS / 2];
 function oWall(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return true; return OPS_MAP[cz][cx] === "#"; }
 function oCh(x, z) { const cx = Math.floor(x / CS), cz = Math.floor(z / CS); return oWall(cx, cz) ? "#" : OPS_MAP[cz][cx]; }
 function oSolid(x, z, y) { if (OPS_ML) { const yy = y == null ? OPS_FEET + 1 : y; return mlHit(x, z, yy - 0.02, yy + 0.02); } return oWall(Math.floor(x / CS), Math.floor(z / CS)); }
-function oBlocked(x, z, r = PR) { if (OPS_ML) { const lo = OPS_FEET + 0.55, hi = OPS_FEET + 1.7; return mlHit(x - r, z - r, lo, hi) || mlHit(x + r, z - r, lo, hi) || mlHit(x - r, z + r, lo, hi) || mlHit(x + r, z + r, lo, hi) || oPropBlock(x, z, r) >= 0; } return oSolid(x - r, z - r) || oSolid(x + r, z - r) || oSolid(x - r, z + r) || oSolid(x + r, z + r) || oPropBlock(x, z, r) >= 0 || oDeckBlocks(x, z, r, OPS_FEET); }
+// the Settings window: mouse and aim, video, sound, accessibility. Used in a match (⚙ Settings) and on the homepage.
+function opsSettingsPanel() {
+  const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
+  sp.classList.add("set-modal");
+  sp.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Settings</h4></div><button type="button" class="set-x" data-close aria-label="Close">✕</button></header>' +
+    '<div class="set-grid">' +
+    '<section><h5>Mouse and aim</h5>' +
+    '<label class="sl"><span>Sensitivity</span><b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label>' +
+    '<label class="sw"><span>Invert up/down <small>key I</small></span><input type="checkbox" data-k="iy"><i></i></label>' +
+    '<label class="sw"><span>Invert left/right</span><input type="checkbox" data-k="ix"><i></i></label></section>' +
+    '<section><h5>Video</h5>' +
+    '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto (fits this PC)</option><option value="ultra">Ultra</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Performance</option></select></label>' +
+    '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label>' +
+    '<label class="sw"><span>Show frame rate <small>key F8</small></span><input type="checkbox" data-fps><i></i></label></section>' +
+    '<section><h5>Sound</h5>' +
+    '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label>' +
+    '<label class="sl"><span>Volume</span><b data-vv></b><input type="range" min="0" max="100" step="5" data-vol></label></section>' +
+    '<section><h5>Accessibility</h5>' +
+    '<label class="sw"><span>Color-blind team colors <small>orange ▲ vs blue ■</small></span><input type="checkbox" data-cb><i></i></label></section>' +
+    '</div>' +
+    '<div class="set-keys"><span><kbd>WASD</kbd> move</span><span><kbd>Shift</kbd> walk</span><span><kbd>Space</kbd> jump</span><span><kbd>R</kbd> reload</span><span><kbd>1</kbd>–<kbd>5</kbd> weapons</span><span><kbd>Tab</kbd> scoreboard</span><span><kbd>Esc</kbd> free the mouse</span></div>' +
+    '<footer><span class="hint">Saved on this device.</span><button type="button" class="btn primary" data-close>Done</button></footer>';
+  const snd = sp.querySelector("[data-snd]"); snd.checked = SFX.on;
+  snd.addEventListener("change", () => { SFX.on = snd.checked; store("nfa-sound", SFX.on); const sbn = $("#soundBtn"); if (sbn) sbn.textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
+  const vI = sp.querySelector("[data-vol]"), vV = sp.querySelector("[data-vv]"); vI.value = Math.round(SFX.vol * 100); vV.textContent = vI.value + "%";
+  vI.addEventListener("input", () => { vV.textContent = vI.value + "%"; SFX.setVol(+vI.value / 100); });
+  vI.addEventListener("change", () => { if (SFX.on) SFX.play("blip"); });
+  const fpx = sp.querySelector("[data-fps]"); fpx.checked = NX.perfOn(); fpx.addEventListener("change", () => NX.perfSet(fpx.checked));
+  const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
+  cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
+  const rsI = sp.querySelector("[data-rs]"), rsV = sp.querySelector("[data-rv]"), rsShow = () => { rsV.textContent = rsI.value + "%"; };
+  rsI.value = Math.round(((store("nfa-gfx") || {}).rs || (GFX.lowEnd() ? 0.75 : 1)) * 100); rsShow();
+  rsI.addEventListener("input", () => { rsShow(); store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { rs: +rsI.value / 100 })); });
+  const qs = sp.querySelector("[data-q]"); qs.value = (store("nfa-gfx") || {}).q || "auto";
+  qs.addEventListener("change", () => { store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { q: qs.value })); toast("Graphics: " + qs.options[qs.selectedIndex].text + ". Applies from the next game."); });
+  sp.addEventListener("mousedown", (e) => e.stopPropagation());
+  sp.addEventListener("input", (e) => { const k = e.target.dataset.k; if (!k) return; const L = lookPrefs(); L[k] = k === "s" ? clamp(+e.target.value || 1, 0.3, 3) : e.target.checked; saveLookPrefs(L); syncLookPanel({ setPanel: sp }); });
+  sp.querySelectorAll("[data-close]").forEach(el => el.addEventListener("click", () => { sp.hidden = true; }));
+  syncLookPanel({ setPanel: sp });
+  return sp;
+}
+function oBlocked(x, z, r = PR) { if (OPS_ML) { const lo = OPS_FEET + 0.55, hi = OPS_FEET + 1.7; return mlHit(x - r, z - r, lo, hi) || mlHit(x + r, z - r, lo, hi) || mlHit(x - r, z + r, lo, hi) || mlHit(x + r, z + r, lo, hi) || oPropBlock(x, z, r) >= 0 || (OPS_RAILS.length > 0 && mlRailBlock(x, z, r, OPS_FEET)); } return oSolid(x - r, z - r) || oSolid(x + r, z - r) || oSolid(x - r, z + r) || oSolid(x + r, z + r) || oPropBlock(x, z, r) >= 0 || oDeckBlocks(x, z, r, OPS_FEET); }
 // raised decks in the jump arena: height of a cell, what you'd stand on, and whether a deck is a wall at your height
 const DECK_H = { "1": 1.2, "2": 2.6 };
 function oCellH(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return 0; return DECK_H[OPS_MAP[cz][cx]] || 0; }
@@ -262,6 +354,29 @@ function opsBuildLevels() {
     const ax = dx ? 0 : 2, dir = dx || dz, edge = dx ? (dx > 0 ? cx * CS : (cx + 1) * CS) : (dz > 0 ? cz * CS : (cz + 1) * CS);
     for (let k = 0; k < n; k++) { const x = cx + dx * k, z = cz + dz * k; OPS_RAMP[z * OG + x] = { ax, dir, edge, len: n * CS, h: H }; }
   });
+  // glass balustrades (the world generator draws the same ones): round every opening in the upper floor, except where a
+  // stair arrives, and down the open sides of each stair. A rail is an edge on the cell grid: fixed coordinate e on axis
+  // ax (0 = a line of constant x), running a0..a1 on the other axis, standing on lo0..lo1 along it
+  OPS_RAILS = []; if (!U) return;
+  const up = (x, z) => x < 0 || z < 0 || x >= OG || z >= OG ? "#" : (U.rows[z] || "")[x] || "#", gr = (x, z) => x < 0 || z < 0 || x >= OG || z >= OG ? "#" : OPS_MAP[z][x];
+  const runs = (OPS_M.stairs || []).map(([cx, cz, dx, dz, n]) => ({ cx, cz, dx, dz, n })), inRun = (x, z) => runs.find(r => { for (let k = 0; k < r.n; k++) if (r.cx + r.dx * k === x && r.cz + r.dz * k === z) return true; return false; });
+  for (let z = 0; z < OG; z++) for (let x = 0; x < OG; x++) {
+    if (up(x, z) !== " ") continue;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz, r = inRun(x, z); if (up(nx, nz) !== "." || (r && r.cx + r.dx * r.n === nx && r.cz + r.dz * r.n === nz)) continue;
+      if (dx) OPS_RAILS.push({ ax: 0, e: (dx > 0 ? x + 1 : x) * CS, a0: z * CS, a1: (z + 1) * CS, lo0: H, lo1: H }); else OPS_RAILS.push({ ax: 2, e: (dz > 0 ? z + 1 : z) * CS, a0: x * CS, a1: (x + 1) * CS, lo0: H, lo1: H }); }
+  }
+  for (const r of runs) for (let k = 0; k < r.n; k++) { const x = r.cx + r.dx * k, z = r.cz + r.dz * k, along = r.dx !== 0;
+    for (const sg of [-1, 1]) { const sx = along ? x : x + sg, sz = along ? z + sg : z; if (gr(sx, sz) === "#" || inRun(sx, sz)) continue;
+      // the rail stands on the stair: its foot rises with the flight
+      const lowEnd = along ? (r.dx > 0 ? x * CS : (x + 1) * CS) : (r.dz > 0 ? z * CS : (z + 1) * CS), dir = r.dx || r.dz, h0 = k / r.n * H, h1 = (k + 1) / r.n * H;
+      const a0 = lowEnd, a1 = lowEnd + dir * CS, rail = along ? { ax: 2, e: (sg > 0 ? z + 1 : z) * CS } : { ax: 0, e: (sg > 0 ? x + 1 : x) * CS };
+      OPS_RAILS.push(Object.assign(rail, a0 < a1 ? { a0, a1, lo0: h0, lo1: h1 } : { a0: a1, a1: a0, lo0: h1, lo1: h0 })); } }
+}
+// does a balustrade stand in the way of someone of radius r at (x, z) with their feet at `feet`
+function mlRailBlock(x, z, r, feet) {
+  for (const q of OPS_RAILS) { const u = q.ax ? z : x, v = q.ax ? x : z; if (Math.abs(u - q.e) >= r || v + r <= q.a0 || v - r >= q.a1) continue;
+    const t = Math.max(0, Math.min(1, (v - q.a0) / (q.a1 - q.a0))), lo = q.lo0 + (q.lo1 - q.lo0) * t; if (feet < lo + 0.9 && feet + 1.7 > lo) return true; }
+  return false;
 }
 // height of the stair surface at a point (-1 if there are no stairs there)
 function mlRampH(x, z) {
@@ -492,7 +607,7 @@ function makeOps(md) {
     rec: troph ? { label: "Longest router hold", better: "max", fmt: v => v + "s" } : { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: cap ? 240 : 300, GOAL: 25, HOLD: cap ? 60 : 90,
-    mapList() { return Object.keys(OPS_MAPS).filter(id => arena ? OPS_MAPS[id].only === "golden" || (laser && OPS_MAPS[id].only === "laser") : !OPS_MAPS[id].only).map(id => ({ id, n: OPS_MAPS[id].n, sub: OPS_MAPS[id].sky ? "Sky towers · fall = out · 2–10" : OPS_MAPS[id].only ? "Jump arena · 2–10" : id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
+    mapList() { return Object.keys(OPS_MAPS).filter(id => !OPS_MAPS[id].dev || store("nfa-dev")).filter(id => arena ? OPS_MAPS[id].only === "golden" || (laser && OPS_MAPS[id].only === "laser") : !OPS_MAPS[id].only).map(id => ({ id, n: OPS_MAPS[id].n, sub: OPS_MAPS[id].sky ? "Sky towers · fall = out · 2–10" : OPS_MAPS[id].only ? "Jump arena · 2–10" : id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
     fill(nHumans) { if (arena) return Math.max(6, Math.min(10, nHumans)); if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
     // ---------------- host ----------------
@@ -919,7 +1034,7 @@ function makeOps(md) {
       } else if (!team) {
         // lost sight of someone: go and look where they were last seen
         if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1), b.ls[2] || 0]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
-        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS), mlLevel(o.x, o.z, o.jh)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
+        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS), mlLevel(o.x, o.z, o.jh)] : OPS_CELLS.up.length && Math.random() < 0.35 ? OPS_CELLS.up[rint(0, OPS_CELLS.up.length - 1)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
         goal = b.goal;
       } else if (p.tm === 0) {
         if (bm.st === 0) {
@@ -1197,41 +1312,8 @@ function makeOps(md) {
       }
       // aim settings (shared with the other 3D game)
       const sb = document.createElement("button"); sb.type = "button"; sb.className = "look-btn"; sb.innerHTML = "<span>⚙</span> Settings";
-      const sp = document.createElement("div"); sp.className = "look-panel"; sp.hidden = true;
-      sp.classList.add("set-modal");
-      sp.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Settings</h4></div><button type="button" class="set-x" data-close aria-label="Close">✕</button></header>' +
-        '<div class="set-grid">' +
-        '<section><h5>Mouse and aim</h5>' +
-        '<label class="sl"><span>Sensitivity</span><b data-v></b><input type="range" min="0.3" max="3" step="0.1" data-k="s"></label>' +
-        '<label class="sw"><span>Invert up/down <small>key I</small></span><input type="checkbox" data-k="iy"><i></i></label>' +
-        '<label class="sw"><span>Invert left/right</span><input type="checkbox" data-k="ix"><i></i></label></section>' +
-        '<section><h5>Video</h5>' +
-        '<label class="sl"><span>Graphics</span><select data-q><option value="auto">Auto (fits this PC)</option><option value="ultra">Ultra</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Performance</option></select></label>' +
-        '<label class="sl"><span>Resolution</span><b data-rv></b><input type="range" min="50" max="150" step="5" data-rs></label>' +
-        '<label class="sw"><span>Show frame rate <small>key F8</small></span><input type="checkbox" data-fps><i></i></label></section>' +
-        '<section><h5>Sound</h5>' +
-        '<label class="sw"><span>Game sound</span><input type="checkbox" data-snd><i></i></label>' +
-        '<button type="button" class="btn" data-sndtest>Sound test</button></section>' +
-        '<section><h5>Accessibility</h5>' +
-        '<label class="sw"><span>Color-blind team colors <small>orange ▲ vs blue ■</small></span><input type="checkbox" data-cb><i></i></label></section>' +
-        '</div>' +
-        '<div class="set-keys"><span><kbd>WASD</kbd> move</span><span><kbd>Shift</kbd> walk</span><span><kbd>Space</kbd> jump</span><span><kbd>R</kbd> reload</span><span><kbd>1</kbd>–<kbd>5</kbd> weapons</span><span><kbd>Tab</kbd> scoreboard</span><span><kbd>Esc</kbd> free the mouse</span></div>' +
-        '<footer><span class="hint">Saved on this device.</span><button type="button" class="btn primary" data-close>Done</button></footer>';
-      const snd = sp.querySelector("[data-snd]"); snd.checked = SFX.on;
-      snd.addEventListener("change", () => { SFX.on = snd.checked; store("nfa-sound", SFX.on); const sbn = $("#soundBtn"); if (sbn) sbn.textContent = SFX.on ? "🔊" : "🔇"; if (SFX.on) SFX.play("blip"); });
-      sp.querySelector("[data-sndtest]").addEventListener("click", () => { sp.hidden = true; soundTest(); });
-      const fpx = sp.querySelector("[data-fps]"); fpx.checked = NX.perfOn(); fpx.addEventListener("change", () => NX.perfSet(fpx.checked));
-      const cbx = sp.querySelector("[data-cb]"); cbx.checked = opsColorBlind();
-      cbx.addEventListener("change", () => { store("nfa-cb", { on: cbx.checked }); opsApplyTeamColors(); toast(cbx.checked ? "Teams: orange ▲ vs blue ■" : "Teams: red vs blue"); });
-      const rsI = sp.querySelector("[data-rs]"), rsV = sp.querySelector("[data-rv]"), rsShow = () => { rsV.textContent = rsI.value + "%"; };
-      rsI.value = Math.round(((store("nfa-gfx") || {}).rs || (GFX.lowEnd() ? 0.75 : 1)) * 100); rsShow();
-      rsI.addEventListener("input", () => { rsShow(); store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { rs: +rsI.value / 100 })); });
-      const qs = sp.querySelector("[data-q]"); qs.value = (store("nfa-gfx") || {}).q || "auto";
-      qs.addEventListener("change", () => { store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { q: qs.value })); toast("Graphics: " + qs.options[qs.selectedIndex].text + ". Applies from the next game."); });
+      const sp = opsSettingsPanel();
       sb.addEventListener("click", (e) => { e.stopPropagation(); if (document.pointerLockElement) try { document.exitPointerLock(); } catch (er) {} sp.hidden = !sp.hidden; syncLookPanel(F); });
-      sp.addEventListener("mousedown", (e) => e.stopPropagation());
-      sp.addEventListener("input", (e) => { const k = e.target.dataset.k; if (!k) return; const L = lookPrefs(); L[k] = k === "s" ? clamp(+e.target.value || 1, 0.3, 3) : e.target.checked; saveLookPrefs(L); syncLookPanel(F); });
-      sp.querySelectorAll("[data-close]").forEach(el => el.addEventListener("click", () => { sp.hidden = true; }));
       box.append(sb, sp); F.setBtn = sb; F.setPanel = sp;
     },
     clientInput(V, dt, inp) {

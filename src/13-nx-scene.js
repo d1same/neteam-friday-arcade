@@ -47,7 +47,7 @@ const NXS = {
       if (city) NXS.buildCity(S, city);
       scene.add(S.group);
       NXS.initShadow(S);
-      S.update = (dt, t) => NXS.update(S, dt, t); S.adopt = (o, opt) => NXS.adopt(S, o, opt); S.dispose = () => NXS.dispose(S); S.lightAt = (x, z) => NXS.lightAt(S, x, z);
+      S.update = (dt, t) => NXS.update(S, dt, t); S.adopt = (o, opt) => NXS.adopt(S, o, opt); S.dispose = () => NXS.dispose(S); S.lightAt = (x, z, y) => NXS.lightAt(S, x, z, y);
       return NXS.reflBuild(S).catch((e) => { console.warn("[nx] room reflections off:", e && e.message); S.uni.nxReflP.value.w = 0; }).then(() => {
         console.log("[nx] " + id + " ready in " + Math.round(performance.now() - t0) + " ms, tier " + tier.name + (tier.auto ? " (auto, " + NX.gpu() + ")" : "") + ", " + S.group.children.length + " meshes, baked " + S.baked + (S.refl ? ", " + S.refl.n + " room reflections" : ""));
         return S;
@@ -63,33 +63,36 @@ const NXS = {
       if (!buf || buf.byteLength < 16) return null; const dv = new DataView(buf); if (dv.getUint32(0, true) !== 0x4d4c584e) return null;
       const hl = dv.getUint32(4, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
       if (head.sig !== W.sig || head.nv !== W.vl.g.length || head.aw !== W.atlas.w || head.ah !== W.atlas.h) { console.warn("[nx] baked light does not match this map version (run tools/bake.js)"); return null; }
-      const o = 8 + hl, pn = head.pn; if (buf.byteLength < o + head.nv * 4 + pn * pn * 52) return null;
-      return { head, vl: new Uint8Array(buf, o, head.nv * 4), probes: new Float32Array(buf.slice(o + head.nv * 4, o + head.nv * 4 + pn * pn * 52)) };
+      const o = 8 + hl, pn = head.pn, nl = head.nl || 1; if (buf.byteLength < o + head.nv * 4 + pn * pn * 52 * nl) return null;
+      return { head, vl: new Uint8Array(buf, o, head.nv * 4), probes: new Float32Array(buf.slice(o + head.nv * 4, o + head.nv * 4 + pn * pn * 52 * nl)) };
     } catch (e) { console.warn("[nx] bad bake file", e && e.message); return null; }
   },
 
-  // light probes -> one small float texture (4 blocks side by side: constant term + sun visibility, then x, y, z terms)
+  // light probes -> one small float texture (4 blocks side by side: constant term + sun visibility, then x, y, z terms;
+  // a map with storeys stacks one such grid per storey, and the shader picks the storey by height)
   probeTex(S, baked) {
     const T = THREE, h = T.DataUtils.toHalfFloat;
     if (!baked) { const d = new Uint16Array(16); d[0] = d[1] = d[2] = h(2.4); d[3] = h(0); const t = new T.DataTexture(d, 4, 1, T.RGBAFormat, T.HalfFloatType); t.minFilter = t.magFilter = T.LinearFilter; t.needsUpdate = true; S.uni.nxProbe.value = t; S.uni.nxProbeP.value.set(0, 0.5, 0, 0); S.trash.push(t); S.probes = null; return; }
-    const pn = baked.head.pn, n = pn * pn, P = baked.probes; let valid = new Uint8Array(n); for (let i = 0; i < n; i++) valid[i] = P[i * 13 + 12] >= 0 ? 1 : 0;
-    S.pfree = valid.slice();   // spots that are not inside furniture or walls (used to place the reflection cameras)
+    const pn = baked.head.pn, nl = baked.head.nl || 1, n = pn * pn, P = baked.probes, d = new Uint16Array(pn * 4 * pn * 4 * nl);
+    for (let lv = 0; lv < nl; lv++) { const b0 = lv * n;
+    let valid = new Uint8Array(n); for (let i = 0; i < n; i++) valid[i] = P[(b0 + i) * 13 + 12] >= 0 ? 1 : 0;
+    if (!lv) S.pfree = valid.slice();   // spots that are not inside furniture or walls (used to place the reflection cameras)
     // probes inside walls take the average of their neighbours, so a player hugging a wall is not darkened
     for (let pass = 0; pass < 6; pass++) { const nv = valid.slice(); let ch = 0;
       for (let z = 0; z < pn; z++) for (let x = 0; x < pn; x++) { const i = z * pn + x; if (valid[i]) continue; let c = 0; const acc = new Float32Array(13);
-        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const qx = x + dx, qz = z + dz; if (qx < 0 || qz < 0 || qx >= pn || qz >= pn) continue; const j = qz * pn + qx; if (!valid[j]) continue; c++; for (let k = 0; k < 13; k++) acc[k] += P[j * 13 + k]; }
-        if (c) { for (let k = 0; k < 13; k++) P[i * 13 + k] = acc[k] / c; nv[i] = 1; ch++; } }
+        for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) { const qx = x + dx, qz = z + dz; if (qx < 0 || qz < 0 || qx >= pn || qz >= pn) continue; const j = qz * pn + qx; if (!valid[j]) continue; c++; for (let k = 0; k < 13; k++) acc[k] += P[(b0 + j) * 13 + k]; }
+        if (c) { for (let k = 0; k < 13; k++) P[(b0 + i) * 13 + k] = acc[k] / c; nv[i] = 1; ch++; } }
       valid = nv; if (!ch) break; }
-    const d = new Uint16Array(pn * 4 * pn * 4);
-    for (let z = 0; z < pn; z++) for (let x = 0; x < pn; x++) { const i = (z * pn + x) * 13; for (let b = 0; b < 4; b++) { const o = (z * pn * 4 + b * pn + x) * 4; d[o] = h(P[i + b * 3]); d[o + 1] = h(P[i + b * 3 + 1]); d[o + 2] = h(P[i + b * 3 + 2]); d[o + 3] = h(b === 0 ? Math.max(0, P[i + 12]) : 1); } }
-    const t = new T.DataTexture(d, pn * 4, pn, T.RGBAFormat, T.HalfFloatType); t.minFilter = t.magFilter = T.LinearFilter; t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.needsUpdate = true;
-    S.uni.nxProbe.value = t; S.uni.nxProbeP.value.set(1 / (pn * baked.head.ps), 0.5 / pn, 0, 0); S.trash.push(t); S.probes = P; S.pn = pn; S.ps = baked.head.ps;
+    for (let z = 0; z < pn; z++) for (let x = 0; x < pn; x++) { const i = (b0 + z * pn + x) * 13; for (let b = 0; b < 4; b++) { const o = ((lv * pn + z) * pn * 4 + b * pn + x) * 4; d[o] = h(P[i + b * 3]); d[o + 1] = h(P[i + b * 3 + 1]); d[o + 2] = h(P[i + b * 3 + 2]); d[o + 3] = h(b === 0 ? Math.max(0, P[i + 12]) : 1); } }
+    }
+    const t = new T.DataTexture(d, pn * 4, pn * nl, T.RGBAFormat, T.HalfFloatType); t.minFilter = t.magFilter = T.LinearFilter; t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.needsUpdate = true;
+    S.uni.nxProbe.value = t; S.uni.nxProbeP.value.set(1 / (pn * baked.head.ps), 0.5 / pn, nl > 1 ? baked.head.split : 0, nl > 1 ? nl : 0); S.trash.push(t); S.probes = P; S.pn = pn; S.ps = baked.head.ps; S.pnl = nl; S.psplit = baked.head.split || 0;
   },
   // light at a spot on the floor plan, for effects drawn without the full material (smoke, blob shadows): [r, g, b, sun]
-  lightAt(S, x, z) {
+  lightAt(S, x, z, y) {
     const P = S.probes; if (!P) return [2.4, 2.4, 2.4, 0];
-    const pn = S.pn, fx = Math.max(0, Math.min(pn - 1.001, x / S.ps - 0.5)), fz = Math.max(0, Math.min(pn - 1.001, z / S.ps - 0.5)), x0 = Math.floor(fx), z0 = Math.floor(fz), ax = fx - x0, az = fz - z0, o = [0, 0, 0, 0];
-    for (const [dx, dz, w] of [[0, 0, (1 - ax) * (1 - az)], [1, 0, ax * (1 - az)], [0, 1, (1 - ax) * az], [1, 1, ax * az]]) { const i = ((z0 + dz) * pn + x0 + dx) * 13; o[0] += P[i] * w; o[1] += P[i + 1] * w; o[2] += P[i + 2] * w; o[3] += Math.max(0, P[i + 12]) * w; }
+    const pn = S.pn, b0 = S.pnl > 1 && y >= S.psplit ? pn * pn : 0, fx = Math.max(0, Math.min(pn - 1.001, x / S.ps - 0.5)), fz = Math.max(0, Math.min(pn - 1.001, z / S.ps - 0.5)), x0 = Math.floor(fx), z0 = Math.floor(fz), ax = fx - x0, az = fz - z0, o = [0, 0, 0, 0];
+    for (const [dx, dz, w] of [[0, 0, (1 - ax) * (1 - az)], [1, 0, ax * (1 - az)], [0, 1, (1 - ax) * az], [1, 1, ax * az]]) { const i = (b0 + (z0 + dz) * pn + x0 + dx) * 13; o[0] += P[i] * w; o[1] += P[i + 1] * w; o[2] += P[i + 2] * w; o[3] += Math.max(0, P[i + 12]) * w; }
     return o;
   },
 
