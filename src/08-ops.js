@@ -345,12 +345,12 @@ function oSmoked(ax, az, bx, bz) {
   for (const s of OPS_SMOKES) { if (s.age < 0.8) continue; const dx = bx - ax, dz = bz - az, L = dx * dx + dz * dz || 1e-6, t = clamp(((s.x - ax) * dx + (s.z - az) * dz) / L, 0, 1); if (Math.hypot(ax + dx * t - s.x, az + dz * t - s.z) < 3.1) return true; }
   return false;
 }
-const TEAM = [{ n: "Red Team", short: "RED", hex: "#ff4d5e", sub: "Attackers · pen testers", cols: [0, 6, 5, 1, 7] }, { n: "Blue Team", short: "BLUE", hex: "#3fa9ff", sub: "Defenders · SOC", cols: [3, 8, 4, 2, 9] }];
+const TEAM = [{ n: "IT Team", short: "IT", hex: "#ff4d5e", sub: "Attackers · pen testers", cols: [0, 6, 5, 1, 7] }, { n: "Business", short: "BIZ", hex: "#3fa9ff", sub: "Defenders · the boardroom", cols: [3, 8, 4, 2, 9] }];
 // team colours: strong red/blue by default; colour-blind mode swaps red for orange and adds shapes (▲ red side, ■ blue side)
 function opsColorBlind() { return !!(store("nfa-cb") || {}).on; }
 function opsApplyTeamColors() { const cb = opsColorBlind(); TEAM[0].hex = cb ? "#ffa31a" : "#ff2d3f"; TEAM[1].hex = cb ? "#2f7dff" : "#1f8fff"; }
 opsApplyTeamColors();
-const OPS_ANN = ["", "Red Team eliminated", "Blue Team eliminated", "Time ran out", "Payload defused", "Payload detonated"];
+const OPS_ANN = ["", "IT Team eliminated", "Business eliminated", "Time ran out", "Payload defused", "Payload detonated"];
 const OPS_EXTRA_BOTS = ["Kernel Bot", "Proxy Bot", "Daemon Bot", "Sudo Bot", "Root Bot", "Packet Bot", "Byte Bot", "Cron Bot", "Hash Bot", "Socket Bot"];
 
 function makeOps(md) {
@@ -358,7 +358,7 @@ function makeOps(md) {
   return {
     id: team ? "breach" : troph ? "golden" : laser ? "laser" : "deathmatch",
     title: team ? "Breach Protocol" : troph ? "Golden Router" : laser ? "Laser Arena" : "Zero-Day Deathmatch",
-    tag: team ? "Red Team vs Blue Team · 3D" : troph ? "Jump arena · hold the trophy · 3D" : laser ? "Lasers + grappling hook · 3D" : "Free-for-all shooter · 3D",
+    tag: team ? "IT vs Business · 3D" : troph ? "Jump arena · hold the trophy · 3D" : laser ? "Lasers + grappling hook · 3D" : "Free-for-all shooter · 3D",
     blurb: team ? "Red plants the payload. Blue stops it. First to 7 rounds." : troph ? "Grab the Golden Router and keep it. First to 90 seconds held wins." : laser ? "Every hit kills. Hook, jump and fly. First to 25 wins." : "Everyone for themselves. First to 25 wins.",
     how: [],
     keys: troph ? ["WASD move", "Space jump (hold to bunny hop)", "Strafe in the air to speed up", "Walk over pads for guns, health, armor", "Rocket at your feet to rocket jump", "Touch the Golden Router to grab it", "4 / G frag"] : laser ? ["WASD move", "Space jump (hold to bunny hop)", "Right-click or F: grappling hook", "Click fire the laser · one hit kills", "Jump pads launch you up", "Uplink: boosters fly you over the gap · falling is out"] : team ? ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "E plant / defuse", "B buy"] : ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "B loadout", "Right-click scope / stab"],
@@ -811,7 +811,7 @@ function makeOps(md) {
         ctx.fillStyle = "#1a1d2e"; ctx.strokeStyle = "#0d1024"; ctx.lineWidth = 5; ctx.beginPath(); ctx.roundRect(W / 2 - 70, H * 0.62, 140, 90, 10); ctx.fill(); ctx.stroke();
         ctx.fillStyle = "#200"; ctx.fillRect(W / 2 - 50, H * 0.62 + 16, 100, 34);
         ctx.fillStyle = Math.floor(t * 3) % 2 ? "#ff3b4e" : "#a01020"; ctx.font = "700 26px 'JetBrains Mono', monospace"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("0:40", W / 2, H * 0.62 + 34);
-        ctx.font = "700 64px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ff4d5e"; ctx.fillText("RED", W * 0.27, H * 0.16); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 36px 'Chakra Petch', sans-serif"; ctx.fillText("VS", W / 2, H * 0.16); ctx.fillStyle = "#3fa9ff"; ctx.font = "700 64px 'Chakra Petch', sans-serif"; ctx.fillText("BLUE", W * 0.73, H * 0.16);
+        ctx.font = "700 64px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ff4d5e"; ctx.fillText("IT", W * 0.27, H * 0.16); ctx.fillStyle = "#f5f1e6"; ctx.font = "700 36px 'Chakra Petch', sans-serif"; ctx.fillText("VS", W / 2, H * 0.16); ctx.fillStyle = "#3fa9ff"; ctx.font = "700 52px 'Chakra Petch', sans-serif"; ctx.fillText("BUSINESS", W * 0.73, H * 0.16);
       } else if (arena) {
         const gl = ctx.createRadialGradient(W / 2, H * 0.5, 10, W / 2, H * 0.5, 460); gl.addColorStop(0, laser ? "rgba(255,61,240,.5)" : "rgba(255,200,61,.55)"); gl.addColorStop(1, "rgba(0,0,0,0)"); ctx.fillStyle = gl; ctx.fillRect(0, 0, W, H);
         ctx.fillStyle = "#2a2e39"; [[0.12, 0.7, 0.22], [0.66, 0.62, 0.24]].forEach(([x0, y0, w0]) => { ctx.fillRect(W * x0, H * y0, W * w0, H); ctx.fillStyle = laser ? "#ff3df0" : "#ff8a3d"; ctx.fillRect(W * x0, H * y0, W * w0, 6); ctx.fillStyle = "#2a2e39"; });
@@ -1594,37 +1594,42 @@ function makeOps(md) {
         return { grp, bd, legs, arms, suit, stripeM: stripe.material, mark, rim, tmKey: "", spr, ring, gun, fl, flT: 0, ph: 0, x: 0, z: 0, init: false, hurtT: 0, lastHp: 100, deadT: 0, wasAlive: true };
       });
       // swap the simple capsule bodies for animated operators once the model has loaded
-      const soldier = (gl) => {
-        if (F.gone || !F.avatars) return;
+      // fit an animated character onto one avatar (replacing whatever body it had): the soldier, or one of the dressed people
+      const rig = (av, gl, look) => {
         const SU = THREE_EXTRAS.SkeletonUtils, U = gl.userData, clip = (n) => gl.animations.find(c => c.name === n);
         if (!U.h) {
           gl.scene.updateWorldMatrix(true, true); let lo = 1e9, hi = -1e9; const v = new THREE.Vector3(), w = new THREE.Vector3();
           gl.scene.traverse(o => { if (o.isBone) { o.getWorldPosition(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } }); U.h = (hi - lo) || 1; U.y0 = lo;
           // there is no idle clip: stand on the walk frame where the feet pass each other
           U.idleT = 0; const wc = clip("walk"), lf = gl.scene.getObjectByName("LeftFoot"), rf = gl.scene.getObjectByName("RightFoot");
-          if (wc && lf && rf) { const mx = new THREE.AnimationMixer(gl.scene), a = mx.clipAction(wc); a.play(); let best = 1e9; for (let k = 0; k < 24; k++) { mx.setTime(wc.duration * k / 24); gl.scene.updateWorldMatrix(true, true); lf.getWorldPosition(v); rf.getWorldPosition(w); const d = Math.abs(v.z - w.z) + Math.abs(v.y - w.y); if (d < best) { best = d; U.idleT = wc.duration * k / 24; } } a.stop(); mx.uncacheRoot(gl.scene); }
+          const keep = []; gl.scene.traverse(o => { if (o.isBone) keep.push([o, o.position.clone(), o.quaternion.clone(), o.scale.clone()]); });
+          if (wc && lf && rf) { const mx = new THREE.AnimationMixer(gl.scene), a = mx.clipAction(wc); a.play(); let best = 1e9; for (let k = 0; k < 24; k++) { mx.setTime(wc.duration * k / 24); gl.scene.updateWorldMatrix(true, true); lf.getWorldPosition(v); rf.getWorldPosition(w); const d = Math.abs(v.z - w.z) + Math.abs(v.y - w.y); if (d < best) { best = d; U.idleT = wc.duration * k / 24; } } a.stop(); mx.uncacheRoot(gl.scene); keep.forEach(([o, p, q, k]) => { o.position.copy(p); o.quaternion.copy(q); o.scale.copy(k); }); gl.scene.updateWorldMatrix(true, true); }
         }
-        const sc = 1.8 / U.h;
-        F.avatars.forEach((av) => {
-          try {
-            const m = SU.clone(gl.scene); m.scale.multiplyScalar(sc); m.rotation.y = Math.PI; m.position.y = -U.y0 * sc;
-            const main = [], ms = [];
-            m.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows; const c = o.material.clone(); c.envMapIntensity = 0.6; main.push(c); o.material = c; ms.push(o); });
-            av.bd.children.forEach(c => { if (c !== av.gun && c !== av.fl) c.visible = false; });
-            av.bd.add(m);
-            const mixer = new THREE.AnimationMixer(m), act = {};
-            [["Walking", "walk"], ["Running", "run"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
-            av.spr.scale.set(0.5, 0.62, 1); av.gun.scale.setScalar(1.05);
-            const nb = (n) => m.getObjectByName(n), B = { s1: nb("Spine01"), s2: nb("Spine02"), nk: nb("neck"), hd: nb("Head"), lu: nb("LeftUpLeg"), ll: nb("LeftLeg"), lf: nb("LeftFoot"), ru: nb("RightUpLeg"), rl: nb("RightLeg"), rf: nb("RightFoot") };
-            const okB = Object.values(B).every(Boolean), rest = okB ? Object.values(B).map(bn => [bn, bn.quaternion.clone()]) : null;
-            let L1 = 0.44, L2 = 0.45; if (okB) { m.updateWorldMatrix(true, true); const p1 = new THREE.Vector3(), p2 = new THREE.Vector3(); L1 = B.lu.getWorldPosition(p1).distanceTo(B.ll.getWorldPosition(p2)); L2 = B.ll.getWorldPosition(p1).distanceTo(B.lf.getWorldPosition(p2)); }
-            av.rb = { m, mixer, act, cur: "", main, ms, hum: 1, idleT: U.idleT, B: okB ? B : null, rest, L1, L2, y0: m.position.y, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
-          } catch (e) { console.warn("soldier model", e); }
-        });
+        const sc = 1.8 / U.h * (look ? look.ht : 1);
+        if (av.rb && av.rb.m) { av.rb.mixer.stopAllAction(); av.rb.mixer.uncacheRoot(av.rb.m); av.bd.remove(av.rb.m); if (av.rb.ppl) av.rb.main.forEach(mt => mt.dispose()); av.rb = null; }
+        const m = SU.clone(gl.scene); m.scale.multiplyScalar(sc); m.rotation.y = Math.PI; m.position.y = -U.y0 * sc;
+        const main = [], ms = [];
+        m.traverse(o => { if (!o.isMesh) return; o.frustumCulled = false; o.castShadow = !!F.shadows && !(look && F.crowd); const c = o.material.clone(); c.envMapIntensity = 0.6; if (look) PPL.dress(c, gl, look); main.push(c); o.material = c; ms.push(o); });
+        av.bd.children.forEach(c => { if (c !== av.gun && c !== av.fl) c.visible = false; });
+        av.bd.add(m);
+        const mixer = new THREE.AnimationMixer(m), act = {};
+        [["Walking", "walk"], ["Running", "run"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
+        av.spr.scale.set(0.5, 0.62, 1); av.gun.scale.setScalar(1.05);
+        const nb = (n) => m.getObjectByName(n), B = { s1: nb("Spine01"), s2: nb("Spine02"), nk: nb("neck"), hd: nb("Head"), lu: nb("LeftUpLeg"), ll: nb("LeftLeg"), lf: nb("LeftFoot"), ru: nb("RightUpLeg"), rl: nb("RightLeg"), rf: nb("RightFoot") };
+        const okB = Object.values(B).every(Boolean), rest = okB ? Object.values(B).map(bn => [bn, bn.quaternion.clone()]) : null;
+        let L1 = 0.44, L2 = 0.45; if (okB) { m.updateWorldMatrix(true, true); const p1 = new THREE.Vector3(), p2 = new THREE.Vector3(); L1 = B.lu.getWorldPosition(p1).distanceTo(B.ll.getWorldPosition(p2)); L2 = B.ll.getWorldPosition(p1).distanceTo(B.lf.getWorldPosition(p2)); }
+        if (look) PPL.extras(m, gl, look, F);
+        av.rim.material.opacity = look ? 0.1 : 0.55;   // the clothes already say which side: only a faint team glow
+        av.rb = { m, mixer, act, cur: "", main, ms, hum: 1, ppl: !!look, hs: look ? look.hs : 1, idleT: U.idleT, B: okB ? B : null, rest, L1, L2, y0: m.position.y, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
+        av.rb.on = undefined;
       };
+      const soldier = (gl) => { if (F.gone || !F.avatars) return; F.avatars.forEach((av) => { try { rig(av, gl); } catch (e) { console.warn("soldier model", e); } }); };
+      // Business vs IT: real people, each player dressed in one of ten looks (suits on one side, casual on the other)
+      F.dress = (av, i) => { const P = F.ppl, lk = P && PPL.lookOf(V, i, team); if (!lk || av.look === lk.id) return; try { rig(av, P[lk.model], lk); av.look = lk.id; } catch (e) { console.warn("person model", e); } };
       // the full soldier and detailed guns for small matches on capable cards; light ones when there are many players or the card is modest
       F.crowd = NX.tier().i <= 1 || V.ro.length > 6;
-      GFX.soldier(F.crowd).then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
+      const people = NX.tier().i > 0 && (store("nfa-gfx") || {}).ppl !== 0;
+      (people ? GFX.people() : Promise.resolve(null)).then((P) => { if (P && !F.gone && F.avatars) { F.ppl = P; F.avatars.forEach((av, i) => F.dress(av, i)); return; } return GFX.soldier(F.crowd).then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
         if (!gl || F.gone || !F.avatars) return;
         const SU = THREE_EXTRAS.SkeletonUtils;
         F.avatars.forEach((av) => {
@@ -1650,7 +1655,7 @@ function makeOps(md) {
             av.rb = { m, mixer, act, cur: "", main };
           } catch (e) { console.warn("operator model", e); }
         });
-      }));
+      })); });
       // ---- view-model guns
       const myHex = (V.ro[V.meIdx] || {}).hex || "#ff8a3d";
       F.guns = OW.map((w0, k) => {
@@ -2249,6 +2254,7 @@ function makeOps(md) {
         // walk cycle from actual movement speed
         const spd = i === V.meIdx ? 0 : (av.spd || 0), sw = Math.min(1, spd / 4.5);
         av.ph += dt * (4 + spd * 1.6); av.legs[0].rotation.x = Math.sin(av.ph) * 0.65 * sw; av.legs[1].rotation.x = -Math.sin(av.ph) * 0.65 * sw;
+        if (F.ppl && team) F.dress(av, i);
         if (av.rb) {
           // pick the animation from how fast they're actually moving
           const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 || av.stepT > 0 ? "Walking" : "Idle";
@@ -2274,6 +2280,7 @@ function makeOps(md) {
           if (idle) R.lag = Math.min(0.5, (R.lag || 0) + dt); else { if (R.rest) for (const [bn, q0] of R.rest) bn.quaternion.copy(q0); R.mixer.update(dt + (R.lag || 0)); R.lag = 0; }
           if (!idle && R.hum && R.spine && Math.abs(av.legY) > 0.01) opsTwist(R.spine, -av.legY);
           if (!idle && R.hum && R.B) opsPose(av, R, alive, spd, dt, t, i);
+          if (!idle && R.ppl && R.B && R.hs !== 1) R.B.hd.scale.multiplyScalar(R.hs);
           // weapon rides the right hand but always points where the player faces
           if (!idle && R.hum && R.hand && alive) {
             // arms hold the weapon whatever the legs are doing: swing each upper arm and forearm onto a pose for the weapon class
@@ -2282,7 +2289,7 @@ function makeOps(md) {
             const _hv = GFX._hv || (GFX._hv = new THREE.Vector3()); R.hand.getWorldPosition(_hv); av.bd.worldToLocal(_hv); av.gun.position.set(_hv.x - 0.02, _hv.y + (kind === 1 ? 0.05 : 0.03), _hv.z - 0.04 + 0.06 * (av.kick || 0)); av.gun.rotation.x = av.aimP || 0;
             av.fl.position.set(av.gun.position.x, av.gun.position.y + 0.02 + Math.sin(av.aimP || 0) * 0.42, av.gun.position.z - Math.cos(av.aimP || 0) * 0.42);
           }
-          R.main.forEach(mt => { if (R.hum) { mt.color.setRGB(1, 1, 1).lerp(av.suit.color, team ? 0.5 : 0.28); mt.emissive.copy(av.suit.emissive).multiplyScalar(0.25); } else { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); } });
+          R.main.forEach(mt => { if (R.ppl) mt.emissive.copy(av.suit.emissive).multiplyScalar(0.25); else if (R.hum) { mt.color.setRGB(1, 1, 1).lerp(av.suit.color, team ? 0.5 : 0.28); mt.emissive.copy(av.suit.emissive).multiplyScalar(0.25); } else { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); } });
         } else av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
         av.wasAlive = alive;
         av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb && av.rb.act.Death ? 2.4 : 1.4)));

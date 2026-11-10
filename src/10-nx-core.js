@@ -258,7 +258,7 @@ vec3 nxRoom( vec3 wp, vec3 v, vec3 n, float rough, float localE ) {
   // The probes live in one small texture that the shader reads by world position, so materials can be shared freely.
   patchDynamic(mat, S, o) {
     o = o || {}; const T = S.tier, hasSun = !!S.W.sun, shadow = hasSun && T.shadow > 0 && !o.noShadow, room = T.refl > 0;
-    mat.userData.nx = 2;
+    mat.userData.nx = 2; const ex = mat.userData.exObc;
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, S.uni);
       sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec3 vNxW;")
@@ -283,8 +283,9 @@ vec3 nxRoom( vec3 wp, vec3 v, vec3 n, float rough, float localE ) {
   }
 #endif
 ` + (hasSun ? (shadow ? "  if ( nxS > 0.004 ) nxS *= nxDynShadow( vNxW + inverseTransformDirection( nonPerturbedNormal, viewMatrix ) * 0.04 );\n" : "") + NX.GLSL_SUN : ""));
+      if (ex) ex.call(mat, sh);   // a material's own extra (e.g. the people's clothing colours) on top of the engine light
     };
-    mat.customProgramCacheKey = () => "nxD" + (hasSun ? 1 : 0) + (shadow ? 1 : 0) + (room ? 1 : 0);
+    mat.customProgramCacheKey = () => "nxD" + (hasSun ? 1 : 0) + (shadow ? 1 : 0) + (room ? 1 : 0) + (ex ? mat.userData.exKey : "");
     mat.needsUpdate = true;
     return mat;
   },

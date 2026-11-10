@@ -17,6 +17,10 @@ https://polyhaven.com  https://ambientcg.com  https://gitlab.com/zach-geek/afram
   brick-*     generated for this project (CC0): brick bond composited from the Poly Haven "rock_05" and "sandstone_cracks"
               scans above (photo detail tinted per brick, mortar, height baked to a normal map). Not a scan of a real brick wall.
 trooper.glb: "Sci-Fi Soldier" rigged character from Grab3D (https://grab3d.com/models/characters/sci-fi-soldier/), CC0 1.0. Decimated to 33k triangles, textures resized to 1024.
+person-businessman.glb: "Businessman" rigged character from Grab3D (https://grab3d.com/models/characters/businessman/), CC0 1.0. Decimated to about 46k triangles, textures resized.
+person-man.glb: "Man" rigged character from Grab3D (https://grab3d.com/models/characters/man/), CC0 1.0. Decimated to about 39k triangles, textures resized.
+person-woman.glb: "Woman" rigged character from Grab3D (https://grab3d.com/models/characters/woman/), CC0 1.0. Decimated to about 43k triangles, textures resized.
+person-*-mask.png: clothing/skin/hair part masks made for this game from the Grab3D textures above (same license).
 trooper-lod.glb: the same soldier simplified to 10k triangles (meshoptimizer), used in crowded matches and on modest graphics cards.
 gun-pistol.glb: "Service Pistol" from Poly Haven (https://polyhaven.com/a/service_pistol), CC0 1.0. Trimmed to one variant, 1k textures.
 gun-sniper.glb: "Bolt Action Rifle 7.62" from Poly Haven (https://polyhaven.com/a/bolt_action_rifle_7_62), CC0 1.0. Trimmed, 1k textures.
