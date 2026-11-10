@@ -32,7 +32,7 @@ const SFX = {
   },
   // recorded samples (CC0, see sfx/CREDITS.txt); every caller falls back to the synth until a sample has loaded
   // menus (real switches), announcements (war drums, crowd), hits, cases, air and electricity: see sfx/CREDITS.txt
-  NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1 laser1 laser2 land1 eng-idle.wav eng-mid.wav shot-lmg shot-scout far-pistol far-smg far-rifle far-carbine far-sniper far-shotgun far-heavy far-lmg far-scout bolt-up bolt-back bolt-fwd bolt-down clip1 clip2 bullet1 rl-ar",
+  NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1 laser1 laser2 land1 eng-idle.wav eng-mid.wav shot-lmg shot-scout far-pistol far-smg far-rifle far-carbine far-sniper far-shotgun far-heavy far-lmg far-scout bolt-up bolt-back bolt-fwd bolt-down clip1 clip2 bullet1 rl-ar gun-pistol gun-heavy gun-smg gun-rifle gun-carbine gun-sniper gun-shotgun gun-lmg gun-scout gunm-pistol gunm-heavy gunm-smg gunm-rifle gunm-carbine gunm-sniper gunm-shotgun gunm-lmg gunm-scout",
   S: {}, _ld: 0,
   load() {
     const a = this.ctx; if (!a || this._ld) return; this._ld = 1;
@@ -70,17 +70,21 @@ const SFX = {
   muffle(k) { const B = this._bus; if (!B || k === B.mk || (k > 0 && Math.abs(k - B.mk) < 0.02)) return; B.mk = k; B.lp.frequency.setTargetAtTime(20000 * Math.pow(0.04, k), B.a.currentTime, 0.12); },
   dest(a) { return this.bus(a).master; },
   // an impulse response made of decaying noise with a few early echoes: length in seconds, damping 0..1 (1 = dull)
-  ir(a, len, damp, early) {
+  ir(a, len, damp, early, taps) {
     const sr = a.sampleRate, n = Math.floor(sr * len), b = a.createBuffer(2, n, sr);
     for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); let lp = 0; const k = 1 - damp * 0.9;
       for (let i = 0; i < n; i++) { const t = i / n, e = Math.pow(1 - t, 2.2) * Math.exp(-t * 2.4); lp += ((Math.random() * 2 - 1) - lp) * (k * (1 - t * 0.7) + 0.02); d[i] = lp * e * (i < sr * 0.006 ? i / (sr * 0.006) : 1); }
+      // outdoors: slap-back off the buildings around, later and softer each time
+      if (taps) taps.forEach(([at0, g0]) => { const at = Math.floor(sr * (at0 + (c ? 0.013 : 0) + Math.random() * 0.01)), ln = Math.floor(sr * 0.05); let q0 = 0; for (let q = 0; q < ln && at + q < n; q++) { q0 += ((Math.random() * 2 - 1) - q0) * 0.35; d[at + q] += q0 * g0 * Math.pow(1 - q / ln, 2); } });
       for (let j = 0; j < early; j++) { const at = Math.floor(sr * (0.011 + Math.random() * 0.07)), g = 0.5 - j * 0.06; for (let q = 0; q < 40 && at + q < n; q++) d[at + q] += (Math.random() * 2 - 1) * g * (1 - q / 40); } }
     return b;
   },
-  SPACES: { room: [0.55, 0.5, 5, 0.14], hall: [1.05, 0.4, 6, 0.17], vault: [1.3, 0.35, 6, 0.19], street: [0.9, 0.6, 3, 0.1], open: [0.6, 0.7, 2, 0.06], dry: [0.3, 0.6, 2, 0.04] },
+  SPACES: { room: [0.55, 0.5, 5, 0.14], hall: [1.05, 0.4, 6, 0.17], vault: [1.3, 0.35, 6, 0.19], street: [1.6, 0.6, 3, 0.16, [[0.09, 0.9], [0.17, 0.7], [0.29, 0.55], [0.46, 0.4], [0.7, 0.28], [1.0, 0.18]]], open: [1.8, 0.65, 2, 0.15, [[0.12, 0.8], [0.23, 0.6], [0.38, 0.5], [0.6, 0.36], [0.9, 0.24], [1.3, 0.14]]], dry: [0.3, 0.6, 2, 0.04] },
+  // the rooms as they were before the gun sound rework, for the old/new switch on the sound page
+  OLD_SPACES: { room: [0.55, 0.5, 5, 0.14], hall: [1.05, 0.4, 6, 0.17], vault: [1.3, 0.35, 6, 0.19], street: [0.9, 0.6, 3, 0.1], open: [0.6, 0.7, 2, 0.06], dry: [0.3, 0.6, 2, 0.04] },
   space(kind) {
-    this._space = this.SPACES[kind] ? kind : "room"; const B = this._bus; if (!B) return;
-    if (B.kind !== this._space) { const P = this.SPACES[this._space]; try { B.rev.buffer = this.ir(B.a, P[0], P[1], P[2]); } catch (e) {} B.wet.gain.value = P[3]; B.kind = this._space; }
+    this._space = this.SPACES[kind] ? kind : "room"; const B = this._bus; if (!B) return; const key = this._space + (this.legacy ? "-old" : "");
+    if (B.kind !== key) { const P = (this.legacy ? this.OLD_SPACES : this.SPACES)[this._space]; try { B.rev.buffer = this.ir(B.a, P[0], P[1], P[2], P[4]); } catch (e) {} B.wet.gain.value = P[3]; B.kind = key; }
   },
   out(a, vol, pan, wet = 1) {
     const B = this.bus(a), g = a.createGain(); g.gain.value = vol; let n = g;
@@ -175,7 +179,13 @@ const SFX = {
   },
   // a round passing close to your head
   whiz(pan) {
-    const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.34, pan, 0.4), s = a.createBufferSource(); s.buffer = this.noiseBuf(a);
+    const a = this.ensure(); if (!a) return;
+    if (!this.legacy) { // the crack of a round breaking the sound barrier past your ear: a sharp N-shaped pressure wave
+      const sr = a.sampleRate, n = Math.floor(sr * 0.006), b = this._crack || (this._crack = a.createBuffer(1, n, sr)), d = b.getChannelData(0);
+      if (!this._crackOk) { this._crackOk = 1; const w = Math.floor(sr * 0.0012); for (let i = 0; i < n; i++) d[i] = i < w ? 1 - 2 * i / w : 0; for (let i = w; i < n; i++) d[i] += (Math.random() * 2 - 1) * 0.3 * Math.exp(-(i - w) / (sr * 0.0012)); }
+      const s = a.createBufferSource(); s.buffer = b; const hp = a.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 900; s.connect(hp).connect(this.out(a, 0.55, pan, 0.25)); s.start();
+    }
+    const t = a.currentTime, o = this.out(a, 0.34, pan, 0.4), s = a.createBufferSource(); s.buffer = this.noiseBuf(a);
     const f = a.createBiquadFilter(); f.type = "bandpass"; f.Q.value = 3.5; f.frequency.setValueAtTime(4200, t); f.frequency.exponentialRampToValueAtTime(900, t + 0.13);
     const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.2);
   },
@@ -236,8 +246,19 @@ const SFX = {
   shot(kind, vol = 1, pan = 0, far = 0) {
     const a = this.ensure(); if (!a || vol < 0.01) return;
     if (kind === "laser") { this.samp(Math.random() < 0.5 ? "laser1" : "laser2", 0.55 * vol, pan, 0.94 + Math.random() * 0.12, far * 0.7, 0, 0.5) || this.tone(1500, 0.2, "sine", 0.05 * vol, -1100); return; }
-    // every gun plays its own recording: close up the near take, far away the same gun recorded from a distance, muffled further with range
     const G = this.GUNS[kind];
+    if (G && !this.legacy) { // layered: the gun's own crack and body, a low punch, and its sound coming back off the surroundings
+      const r = G[1] * (0.97 + Math.random() * 0.06), v = G[0] * vol * 1.35, out = this._space === "open" || this._space === "street";
+      const dl = far > 0 ? far * 50 / 343 : 0;   // sound travels: a shot 50 m away is heard 0.15 s after it is fired
+      if (far > 0.45) { if (this.samp("far-" + kind, v * (0.8 + far * 0.25), pan, r, Math.max(0, far - 0.45) * 1.1, dl, out ? 0.45 : 0.3)) { if (G[2] && far < 0.8) this.bolt(v * 0.2 * (1 - far), pan, G[2] + dl); return; } }
+      else if (this.samp((far > 0 ? "gunm-" : "gun-") + kind, far > 0 ? v * 0.8 : v * 1.15, pan, r, far * 0.8, dl, 0.1 + far * 0.3)) {
+        const tv = v * (out ? 0.3 : 0.14) * (1 - far);
+        this.samp("far-" + kind, tv, clamp(pan - 0.45, -1, 1), r, 0.3 + far * 0.3, dl + (out ? 0.07 : 0.03), out ? 0.55 : 0.4);
+        this.samp("far-" + kind, tv * 0.75, clamp(pan + 0.45, -1, 1), r * 0.985, 0.4 + far * 0.3, dl + (out ? 0.15 : 0.055), out ? 0.65 : 0.45);
+        if (far < 0.35) this.thump(v * (1 - far * 2.6) * (G[3] || 1), pan, dl);
+        if (G[2]) this.bolt(vol * (far > 0 ? 0.3 * (1 - far) : 0.75), pan, G[2] + dl); return; }
+    }
+    // every gun plays its own recording: close up the near take, far away the same gun recorded from a distance, muffled further with range
     if (G) { const r = G[1] * (0.97 + Math.random() * 0.06), v = G[0] * vol;
       if (far > 0.45 && this.samp("far-" + kind, v * (0.75 + far * 0.25), pan, r, Math.max(0, far - 0.45) * 1.1, 0, 0.3)) { if (G[2] && far < 0.8) this.bolt(v * 0.25 * (1 - far), pan, G[2]); return; }
       if (this.samp("shot-" + kind, v, pan, r, far * 0.8, 0, 0.12 + far * 0.25)) { if (G[2]) this.bolt(vol * (far > 0 ? 0.3 * (1 - far) : 0.75), pan, G[2]); return; } }
@@ -252,7 +273,20 @@ const SFX = {
     if (far < 0.6) { const c = a.createBufferSource(); c.buffer = this.noiseBuf(a); const hp = a.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 4000; const cg = a.createGain(); cg.gain.setValueAtTime(0.6 * (1 - far), t); cg.gain.exponentialRampToValueAtTime(0.0001, t + 0.025); c.connect(hp).connect(cg).connect(o); c.start(t, Math.random(), 0.04); }
   },
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles)]
-  GUNS: { pistol: [0.5, 1], heavy: [0.62, 0.9], smg: [0.5, 1], rifle: [0.62, 1], carbine: [0.6, 1], lmg: [0.62, 0.94], sniper: [0.66, 1, 0.42], scout: [0.6, 1, 0.36], shotgun: [0.64, 1] },
+  // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles), weight of the low punch]
+  GUNS: { pistol: [0.5, 1, 0, 0.5], heavy: [0.62, 0.92, 0, 1.1], smg: [0.48, 1, 0, 0.45], rifle: [0.62, 1, 0, 0.8], carbine: [0.6, 1, 0, 0.7], lmg: [0.62, 0.95, 0, 0.9], sniper: [0.68, 1, 0.42, 1.4], scout: [0.6, 1, 0.36, 1.1], shotgun: [0.66, 1, 0, 1.3] },
+  legacy: false,
+  // the low punch you feel in your chest: field recordings of guns have little below 80 Hz
+  thump(vol, pan = 0, delay = 0) {
+    const a = this.ensure(); if (!a || vol < 0.03) return; const t = a.currentTime + delay, o = this.out(a, Math.min(1, vol) * 0.55, pan, 0);
+    const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.setValueAtTime(115, t); os.frequency.exponentialRampToValueAtTime(42, t + 0.09);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.14); os.connect(g).connect(o); os.start(t); os.stop(t + 0.16);
+  },
+  // ringing ears after a blast close by (k 0..1)
+  ring(k) {
+    const a = this.ensure(); if (!a || k < 0.05) return; const t = a.currentTime, o = this.out(a, 0.05 * k, 0, 0);
+    [3720, 3790].forEach((f, i) => { const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.value = f; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(i ? 0.5 : 1, t + 0.25); g.gain.exponentialRampToValueAtTime(0.0001, t + 1.5 + 2.5 * k); os.connect(g).connect(o); os.start(t); os.stop(t + 4.2); });
+  },
   // working a rifle bolt: up, back, forward, down (recorded on a real bolt-action rifle)
   bolt(vol = 0.7, pan = 0, at = 0, open = 1, shut = 1) {
     if (vol < 0.02) return; const r = () => 0.97 + Math.random() * 0.06;
@@ -398,6 +432,8 @@ const SFX = {
       ["Countdown beat", p("count")], ["Go", p("go")], ["Game starting", p("start")], ["Victory", p("win")], ["Defeat", p("lose")], ["Payload planted", p("alarm")], ["Pickup", p("pickup")],
       ["Hit marker", () => s.hit(0)], ["Headshot marker", () => s.hit(1)], ["Kill", () => s.kill(0)], ["Headshot kill", () => s.kill(1)], ["You are hit", () => s.hurt(30)], ["Heartbeat", () => s.heart(0.8)],
       ["Pistol", () => s.shot("pistol")], ["SMG", () => s.shot("smg")], ["Rifle", () => s.shot("rifle")], ["Carbine", () => s.shot("carbine")], ["Heavy pistol", () => s.shot("heavy")], ["Shotgun", () => s.shot("shotgun")], ["LMG", () => s.shot("lmg")], ["Sniper", () => s.shot("sniper")], ["Scout", () => s.shot("scout")],
+      ["Rifle outdoors (rooftop)", () => { s.space("open"); s.shot("rifle"); }], ["Sniper outdoors (rooftop)", () => { s.space("open"); s.shot("sniper"); }], ["Rifle in a big hall", () => { s.space("hall"); s.shot("rifle"); }], ["Rifle in an office", () => { s.space("room"); s.shot("rifle"); }],
+      ["Enemy rifle 15 m away", () => s.shot("rifle", 0.75, 0.4, 0.3)], ["Bullet cracks past you", () => s.whiz(0.5)], ["Close explosion (ears ring)", () => { s.blast(1, 0, 0, 0); if (!s.legacy) s.ring(1); }],
       ["Rifle far away", () => s.shot("rifle", 0.6, 0, 0.8)], ["Sniper far away", () => s.shot("sniper", 0.6, 0, 0.8)], ["SMG far away", () => s.shot("smg", 0.6, 0, 0.8)], ["Laser shot", () => s.shot("laser")], ["Jump", () => s.jump(0.6)], ["Landing (short drop)", () => s.land(0.3)], ["Landing (big drop)", () => s.land(1)], ["Distant shot", () => s.shot("rifle", 0.7, 0.4, 0.9)],
       ["Reload pistol", () => s.reload("pistol", 1.5)], ["Reload magnum", () => s.reload("deagle", 2.2)], ["Reload SMG", () => s.reload("smg", 2.0)], ["Reload rifle", () => s.reload("rifle", 2.4)], ["Reload carbine", () => s.reload("carbine", 2.2)],
       ["Reload LMG", () => s.reload("lmg", 5.0)], ["Reload sniper", () => s.reload("sniper", 3.4)], ["Reload scout", () => s.reload("scout", 2.8)], ["Reload shotgun", () => s.reload("shotgun", 3)], ["Sniper bolt", () => s.bolt(0.8)], ["Empty click / pickup clank", () => s.clank(0.5)], ["Shell case", () => s.casing(1)],

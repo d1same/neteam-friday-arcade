@@ -1945,6 +1945,8 @@ function makeOps(md) {
       const F = V.fps, T = THREE; if (!F || !F.vfx) return;
       const big = kind === 1, S0 = big ? 2.1 : kind === 4 ? 0.75 : 1, gy = oHAt(x, z), by0 = kind === 4 ? Math.max(gy, y - 0.6) : 0, low = GFX.lowEnd(), q = low ? 0.5 : 1, [d, pan] = this.sfxAt(F, x, z);
       SFX.blast(clamp(1.15 - d / (big ? 90 : 60), 0.15, 1), pan, big ? 1 : 0, clamp(d / 60, 0, 1));
+      // close by, it leaves your ears ringing and the world muffled for a few seconds
+      { const dk = clamp(1 - d / (big ? 12 : 7), 0, 1); if (dk > 0.15 && !SFX.legacy) { F.deaf = Math.max(F.deaf || 0, dk); SFX.ring(dk); } }
       F.shake = Math.max(F.shake || 0, clamp((big ? 1.5 : 1.1) * (1 - d / (big ? 45 : 26)), 0, 1.5));
       F.boomL.position.set(x, by0 + 1.8 * S0, z); F.boomL.intensity = (big ? 110 : 55); F.boomL.distance = 22 * S0; F.boomL.userData.k = F.boomL.intensity / 0.55;
       // white-hot core flash
@@ -2389,7 +2391,8 @@ function makeOps(md) {
       if (F.nx) F.nx.update(dt, t);
       { const hp = mypl && mypl[1] ? mypl[0] : 100, low = me >= 0 && hp < 35 ? (35 - hp) / 35 : 0; F.lowK = lerp(F.lowK || 0, low, 0.06);
         F.hbT = (F.hbT || 0) - dt; if (low > 0 && F.hbT <= 0) { SFX.heart(0.45 + low * 0.5); F.hbT = 1.05 - low * 0.4; F.hbP = 1; } F.hbP = Math.max(0, (F.hbP || 0) - dt * 2.4);
-        SFX.muffle(F.lowK > 0.03 ? F.lowK * 0.55 : 0); }
+        F.deaf = Math.max(0, (F.deaf || 0) - dt / 3.5); const mf = Math.max(F.lowK > 0.03 ? F.lowK * 0.55 : 0, F.deaf > 0.02 ? Math.min(0.8, F.deaf * 0.85) : 0);
+        SFX.muffle(mf > 0.02 ? mf : 0); }
       if (F.post) { F.post.comp.uniforms.hurt.value = Math.min(1, (F.hurtT || 0) * 2.2 + (F.lowK || 0) * (0.16 + 0.2 * (F.hbP || 0))); F.post.render(F.scene, F.cam, t); }
       else F.renderer.render(F.scene, F.cam);
     },

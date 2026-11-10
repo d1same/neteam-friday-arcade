@@ -1017,8 +1017,9 @@ function soundTest() {
   let d = $("#sndTest");
   if (!d) {
     d = document.createElement("div"); d.id = "sndTest"; d.className = "snd-test";
-    d.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Sound test</h4></div><button type="button" class="set-x" aria-label="Close">✕</button></header><p>Press a sound to hear it. Tell us the names of the ones that are wrong.</p><div class="snd-grid"></div>';
+    d.innerHTML = '<header><div><span class="set-eyebrow">Neteam Friday Arcade</span><h4>Sound test</h4></div><button type="button" class="set-x" aria-label="Close">✕</button></header><p>Press a sound to hear it. Tell us the names of the ones that are wrong.</p><label class="snd-ab"><input type="checkbox" data-old> Play the old sounds (to compare)</label><div class="snd-grid"></div>';
     const grid = d.querySelector(".snd-grid");
+    d.querySelector("[data-old]").addEventListener("change", (e) => { SFX.legacy = e.target.checked; SFX.space(SFX._space); });
     SFX.LIST().forEach(([name, fn]) => { const b = document.createElement("button"); b.type = "button"; b.textContent = name; b.addEventListener("click", () => { if (!SFX.on) { toast("Sound is off. Turn it on with the speaker button."); return; } SFX.ensure(); try { fn(); } catch (e) { console.error(e); } }); grid.appendChild(b); });
     d.querySelector(".set-x").addEventListener("click", () => { d.hidden = true; if (location.hash === "#sounds") history.replaceState(null, "", location.pathname + location.search); });
     ["mousedown", "pointerdown", "click"].forEach(ev => d.addEventListener(ev, (e) => e.stopPropagation()));
