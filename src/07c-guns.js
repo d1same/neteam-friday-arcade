@@ -11,8 +11,8 @@ const GUNS = {
     grain.repeat.set(6, 6); const nrm = GFX.normal(grain, 0.6);
     const wood = GFX.tex(128, 64, (x, w, h) => { x.fillStyle = "#6b4226"; x.fillRect(0, 0, w, h); for (let i = 0; i < 60; i++) { x.strokeStyle = Math.random() < 0.5 ? "rgba(40,22,10,.35)" : "rgba(150,100,60,.25)"; x.lineWidth = 0.6 + Math.random() * 1.6; const y = Math.random() * h; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w * 0.3, y + (Math.random() - 0.5) * 8, w * 0.6, y + (Math.random() - 0.5) * 8, w, y + (Math.random() - 0.5) * 6); x.stroke(); } });
     wood.repeat.set(3, 3);
-    const cloth = GFX.tex(64, 64, (x, w, h) => { x.fillStyle = "#24272c"; x.fillRect(0, 0, w, h); for (let y = 0; y < h; y += 2) for (let c = 0; c < w; c += 2) { x.fillStyle = (c + y) % 4 ? "rgba(0,0,0,.14)" : "rgba(255,255,255,.07)"; x.fillRect(c, y, 1, 1); } });
-    cloth.repeat.set(4, 8);
+    // scanned cloth and leather from the map texture sets
+    const scan = (name, kind, ru, rv, srgb) => { const t = new T.TextureLoader().load((typeof NX !== "undefined" && NX.url ? NX.url("t-" + name + "-" + kind + ".jpg") : "models/t-" + name + "-" + kind + ".jpg")); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(ru, rv); t.anisotropy = 4; if (srgb) t.colorSpace = T.SRGBColorSpace; return t; };
     return this._m = {
       steel: S({ color: 0x2b2e33, metalness: 0.92, roughness: 0.36, normalMap: nrm, normalScale: new T.Vector2(0.25, 0.25) }),
       blued: S({ color: 0x1a1c20, metalness: 0.85, roughness: 0.42, normalMap: nrm, normalScale: new T.Vector2(0.3, 0.3) }),
@@ -23,9 +23,9 @@ const GUNS = {
       wood: S({ map: wood, color: 0xffffff, metalness: 0, roughness: 0.55 }),
       brass: S({ color: 0xc9a03a, metalness: 1, roughness: 0.3 }),
       lens: S({ color: 0x1a2a55, metalness: 0.9, roughness: 0.05, emissive: 0x223a88, emissiveIntensity: 0.5 }),
-      glove: S({ color: 0x1c1d20, metalness: 0, roughness: 0.82, normalMap: nrm, normalScale: new T.Vector2(0.7, 0.7) }),
-      knuckle: S({ color: 0x2c2e33, metalness: 0.1, roughness: 0.55 }),
-      sleeve: S({ map: cloth, color: 0xffffff, metalness: 0, roughness: 0.92 }),
+      glove: S({ color: 0x33363b, metalness: 0, roughness: 0.78, normalMap: scan("leather", "n", 3, 3), normalScale: new T.Vector2(0.9, 0.9) }),
+      knuckle: S({ color: 0x4a4e56, metalness: 0.25, roughness: 0.5 }),
+      sleeve: S({ map: scan("fabric", "c", 1, 1, true), color: 0x8f9a8c, metalness: 0, roughness: 0.95, normalMap: scan("fabric", "n", 1, 1), normalScale: new T.Vector2(1.2, 1.2) }),
     };
   },
   // extruded side profile: pts are [forward, up] pairs; th = thickness (left-right)
@@ -37,20 +37,29 @@ const GUNS = {
   cyl(T, r0, r1, u0, u1, v, mat, seg = 16, x = 0) { const g = new T.CylinderGeometry(r1, r0, Math.abs(u1 - u0), seg); g.rotateX(-Math.PI / 2); const m = new T.Mesh(g, mat); m.position.set(x, v, -(u0 + u1) / 2); return m; },
   box(T, du, dv, dx, mat, u, v, x = 0) { const m = new T.Mesh(new T.BoxGeometry(dx, dv, du), mat); m.position.set(x, v, -u); return m; },
   // forearm + gloved hand. Hand at the group's origin, forearm runs along +Z to the elbow.
+  // The sleeve is a turned shape with a cuff and a few folds; the glove has a padded back, knuckle guard and a wrist strap.
   arm(T, hex) {
     const M = this.mats(T), g = new T.Group(), h = new T.Group();
-    const fore = new T.Mesh(new T.CylinderGeometry(0.034, 0.046, 0.42, 14), M.sleeve); fore.rotation.x = Math.PI / 2; fore.position.z = 0.28;
-    const cuff = new T.Mesh(new T.CylinderGeometry(0.039, 0.039, 0.035, 14), M.glove); cuff.rotation.x = Math.PI / 2; cuff.position.z = 0.075;
-    const band = new T.Mesh(new T.CylinderGeometry(0.0412, 0.0425, 0.018, 14), new T.MeshStandardMaterial({ color: new T.Color(hex || "#ff8a3d").multiplyScalar(0.6), roughness: 0.7 })); band.rotation.x = Math.PI / 2; band.position.z = 0.2;
-    // fist: back of the hand, four curled fingers, thumb
-    const palm = new T.Mesh(new T.BoxGeometry(0.036, 0.09, 0.085), M.glove); palm.position.set(0, 0, 0.012);
-    const pad = new T.Mesh(new T.BoxGeometry(0.012, 0.06, 0.05), M.knuckle); pad.position.set(0.022, 0.005, 0.012);
-    for (let k = 0; k < 4; k++) {
-      const y = 0.034 - k * 0.0225, a = new T.Mesh(new T.CapsuleGeometry(0.0105, 0.03, 3, 8), M.glove), b = new T.Mesh(new T.CapsuleGeometry(0.0098, 0.026, 3, 8), M.glove);
-      a.rotation.x = Math.PI / 2; a.position.set(-0.006, y, -0.048); b.rotation.z = Math.PI / 2; b.position.set(-0.03, y, -0.062); h.add(a, b);
+    if (!this._armG) {
+      const pr = []; for (let k = 0; k <= 22; k++) { const f = k / 22, z = 0.065 + f * 0.47, r = 0.0375 + f * 0.017 + 0.0022 * Math.sin(f * 21) * (0.3 + f) + (f < 0.07 ? 0.0035 : 0); pr.push(new T.Vector2(r, z)); }
+      const sl = new T.LatheGeometry(pr, 18); sl.rotateX(Math.PI / 2); const uv = sl.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * 1.1, uv.getY(i) * 1.9);
+      this._armG = { sleeve: sl, back: new T.SphereGeometry(1, 14, 10), fin: new T.CapsuleGeometry(0.0108, 0.03, 3, 8), fin2: new T.CapsuleGeometry(0.01, 0.026, 3, 8), th: new T.CapsuleGeometry(0.0118, 0.04, 3, 8) };
     }
-    const th = new T.Mesh(new T.CapsuleGeometry(0.0115, 0.04, 3, 8), M.glove); th.rotation.x = Math.PI / 2 - 0.5; th.position.set(-0.012, 0.052, -0.02);
-    h.add(palm, pad, th); g.add(fore, cuff, band, h); g.userData.hand = h;
+    const A = this._armG, fore = new T.Mesh(A.sleeve, M.sleeve);
+    const cuff = new T.Mesh(new T.CylinderGeometry(0.0395, 0.041, 0.04, 16), M.glove); cuff.rotation.x = Math.PI / 2; cuff.position.z = 0.062;
+    const strap = new T.Mesh(new T.CylinderGeometry(0.0412, 0.0412, 0.02, 16), M.knuckle); strap.rotation.x = Math.PI / 2; strap.position.z = 0.066;
+    const band = new T.Mesh(new T.CylinderGeometry(0.047, 0.049, 0.022, 16), new T.MeshStandardMaterial({ color: new T.Color(hex || "#ff8a3d").multiplyScalar(0.7), roughness: 0.6 })); band.rotation.x = Math.PI / 2; band.position.z = 0.3;
+    // fist: palm, padded back of the hand, four curled fingers with a knuckle guard, thumb
+    const palm = new T.Mesh(new T.BoxGeometry(0.034, 0.088, 0.084), M.glove); palm.position.set(0, 0, 0.012);
+    const back = new T.Mesh(A.back, M.glove); back.scale.set(0.02, 0.046, 0.046); back.position.set(0.012, 0, 0.012);
+    const pad = new T.Mesh(new T.BoxGeometry(0.01, 0.062, 0.046), M.knuckle); pad.position.set(0.026, 0.004, 0.016);
+    for (let k = 0; k < 4; k++) {
+      const y = 0.034 - k * 0.0225, a = new T.Mesh(A.fin, M.glove), b = new T.Mesh(A.fin2, M.glove), kn = new T.Mesh(A.back, M.knuckle);
+      a.rotation.x = Math.PI / 2; a.position.set(-0.006, y, -0.048); b.rotation.z = Math.PI / 2; b.position.set(-0.03, y, -0.062);
+      kn.scale.set(0.009, 0.0105, 0.012); kn.position.set(0.012, y, -0.034); h.add(a, b, kn);
+    }
+    const th = new T.Mesh(A.th, M.glove); th.rotation.x = Math.PI / 2 - 0.5; th.position.set(-0.012, 0.052, -0.02);
+    h.add(palm, back, pad, th); g.add(fore, cuff, strap, band, h); g.userData.hand = h;
     return g;
   },
   // point an arm: hand at `hand`, forearm toward `elbow` (both in the gun's space), roll around the forearm

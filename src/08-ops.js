@@ -1105,6 +1105,7 @@ function makeOps(md) {
         });
         const end = [me.x + dir[0] * t, EY + dir[1] * t, me.z + dir[2] * t]; lastEnd = end;
         if (k < 3) this.addTracer(V, start, end, W0.laser ? V.ro[V.meIdx].hex : W0.col, hitIdx < 0, W0.laser);
+        if (hitIdx < 0 && prh[1] < 0 && !W0.laser) this.impact(V, end, dir);
         if (hitIdx < 0 && prh[1] >= 0) { F.claims.push([++F.claimN, -1 - prh[1], 0, F.cur]); this.chips(V, end, OPS_PROPS[prh[1]].t); }
         if (hitIdx >= 0) {
           const pls = V.g.pl, mine = pls[V.meIdx];
@@ -1542,6 +1543,13 @@ function makeOps(md) {
       const flash = new T.PointLight(0xffd59a, 0, 9, 2); flash.position.set(0.22, -0.12, -0.9); cam.add(flash); F.flash = flash;
       F.tracers = []; F.parts = [];
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
+      // bullet holes: one mesh holding a ring of small quads, oldest overwritten first
+      { const N = GFX.lowEnd() ? 60 : 180, g = new T.BufferGeometry(), uv = new Float32Array(N * 12); for (let i = 0; i < N; i++) uv.set([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], i * 12);
+        g.setAttribute("position", new T.BufferAttribute(new Float32Array(N * 18), 3)); g.setAttribute("uv", new T.BufferAttribute(uv, 2));
+        const tex = GFX.tex(64, 64, (x, w, h) => { x.clearRect(0, 0, w, h); const c = w / 2; let gr = x.createRadialGradient(c, c, 2, c, c, 30); gr.addColorStop(0, "rgba(0,0,0,.5)"); gr.addColorStop(0.5, "rgba(8,8,8,.28)"); gr.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = gr; x.fillRect(0, 0, w, h);
+          x.strokeStyle = "rgba(0,0,0,.6)"; x.lineWidth = 1.2; for (let k = 0; k < 7; k++) { const a = k / 7 * 6.28 + Math.random(), r = 12 + Math.random() * 14; x.beginPath(); x.moveTo(c + Math.cos(a) * 6, c + Math.sin(a) * 6); x.lineTo(c + Math.cos(a + 0.2) * r * 0.6, c + Math.sin(a + 0.2) * r * 0.6); x.lineTo(c + Math.cos(a - 0.1) * r, c + Math.sin(a - 0.1) * r); x.stroke(); }
+          x.fillStyle = "rgba(0,0,0,.96)"; x.beginPath(); for (let k = 0; k < 10; k++) { const a = k / 10 * 6.28, r = 7 + Math.random() * 3.5; x.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r); } x.fill(); });
+        const m = new T.Mesh(g, new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, side: T.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })); m.frustumCulled = false; m.renderOrder = 1; scene.add(m); F.holes = { m, N, n: 0 }; }
       F.partM = new T.SpriteMaterial({ map: GFX.glowTex(), transparent: true, blending: T.AdditiveBlending, depthWrite: false });
       // real-time shadows from the key light: characters, walls and props ground the scene
       if (!low && F.key && !F.nx) {
@@ -1755,10 +1763,25 @@ function makeOps(md) {
       }
       F.vfx = F.vfx.filter(o => o.life > 0);
     },
+    // a bullet lands on the world: a hole in the surface, a kick of dust
+    impact(V, end, dir) {
+      const F = V.fps, K = F && F.holes; if (!K || !F.ready) return;
+      const top = OPS_M.ceilH || OPS_M.wallH || OWH, out = OPS_M.theme === "desert" || OPS_M.theme === "roof"; let n = null;
+      if (end[1] < 0.08) n = [0, 1, 0];
+      else if (oSolid(end[0] + dir[0] * 0.12, end[2] + dir[2] * 0.12)) { const fx = end[0] / CS, fz = end[2] / CS; n = Math.abs(fx - Math.round(fx)) < Math.abs(fz - Math.round(fz)) ? [dir[0] > 0 ? -1 : 1, 0, 0] : [0, 0, dir[2] > 0 ? -1 : 1]; }
+      else if (!out && end[1] > top - 0.08) n = [0, -1, 0];
+      if (!n) return;
+      const u = n[1] ? [1, 0, 0] : n[0] ? [0, 0, 1] : [1, 0, 0], v = n[1] ? [0, 0, 1] : [0, 1, 0], a = Math.random() * 6.28, ca = Math.cos(a), sa = Math.sin(a), sz = 0.055 + Math.random() * 0.03;
+      const U = [(u[0] * ca + v[0] * sa) * sz, (u[1] * ca + v[1] * sa) * sz, (u[2] * ca + v[2] * sa) * sz], W2 = [(v[0] * ca - u[0] * sa) * sz, (v[1] * ca - u[1] * sa) * sz, (v[2] * ca - u[2] * sa) * sz];
+      const c = [end[0] + n[0] * 0.012, end[1] + n[1] * 0.012, end[2] + n[2] * 0.012], P = K.m.geometry.attributes.position, o = (K.n++ % K.N) * 6;
+      const pt = (i, su, sv) => P.setXYZ(o + i, c[0] + U[0] * su + W2[0] * sv, c[1] + U[1] * su + W2[1] * sv, c[2] + U[2] * su + W2[2] * sv);
+      pt(0, -1, -1); pt(1, 1, -1); pt(2, 1, 1); pt(3, -1, -1); pt(4, 1, 1); pt(5, -1, 1); P.needsUpdate = true;
+      if (!GFX.lowEnd() && F.vfx.length < 90) this.puff(V, c[0] + n[0] * 0.06, c[1] + n[1] * 0.06, c[2] + n[2] * 0.06, OPS_M.theme === "desert" ? 0xc7a777 : 0x9c9c9a, 1, 0.13, 0.42, 0.12);
+    },
     burst(V, at, hex, n, spd) {
       const F = V.fps, T = THREE; if (!F || !F.ready) return;
       for (let k = 0; k < n; k++) {
-        const m = new T.Sprite(F.partM.clone()); m.material.color = new T.Color(hex).multiplyScalar(2.2); const s = 0.08 + Math.random() * 0.1; m.scale.set(s, s, 1);
+        const m = new T.Sprite(F.partM.clone()); m.material.color = new T.Color(hex).multiplyScalar(5); const s = 0.028 + Math.random() * 0.04; m.scale.set(s, s, 1);
         m.position.set(at[0], at[1], at[2]); F.scene.add(m);
         F.parts.push({ m, v: [(Math.random() - 0.5) * spd, Math.random() * spd * 0.8, (Math.random() - 0.5) * spd], life: 0.25 + Math.random() * 0.25, max: 0.5 });
       }
@@ -1978,7 +2001,9 @@ function makeOps(md) {
             const wcol = (OW[shot[4]] || OW[0]).col; av.flT = 0.05;
             const ga = a + Math.PI, sx = av.x - Math.sin(ga) * 0.62 + Math.cos(ga) * 0.36, sz = av.z - Math.cos(ga) * 0.62 - Math.sin(ga) * 0.36;
             const W1 = OW[shot[4]] || OW[0];
-            if (!W1.melee && !W1.rocket) this.addTracer(V, [sx, 0.97 + (av.jh || 0), sz], [shot[1], shot[2], shot[3]], W1.laser ? r.hex : wcol, true, W1.laser); else if (W1.melee) av.flT = 0;
+            if (!W1.melee && !W1.rocket) { this.addTracer(V, [sx, 0.97 + (av.jh || 0), sz], [shot[1], shot[2], shot[3]], W1.laser ? r.hex : wcol, true, W1.laser);
+              if (!W1.laser) { const dx = shot[1] - sx, dy = shot[2] - 0.97, dz = shot[3] - sz, dl = Math.hypot(dx, dy, dz) || 1; this.impact(V, [shot[1], shot[2], shot[3]], [dx / dl, dy / dl, dz / dl]); } }
+            else if (W1.melee) av.flT = 0;
             const d = Math.hypot(av.x - F.me.x, av.z - F.me.z);
             const pan = this.panOf(F, av.x, av.z, d);
             if (Math.hypot(shot[1] - F.me.x, shot[3] - F.me.z) < 2.5 || W1.melee && d < 3.5) F.lastAttacker = { x: av.x, z: av.z, t: performance.now() };
