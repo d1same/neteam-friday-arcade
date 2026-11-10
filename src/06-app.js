@@ -144,6 +144,12 @@ function hostTick(dtMs) {
     const p = pm[r.k], i = p && p.presence && p.presence.in;
     return i && i.s === S.id ? i : null;
   });
+  // people watching this match from the arcade wait for a free place (a bot's) at the next round or respawn
+  if (S.ph === "play" && mod.seat && (S.jqT = (S.jqT || 0) + dtMs) > 1000) {
+    S.jqT = 0;
+    S.joinQ = lobbyPeers().filter(p => p.presence.watch === S.id && !S.ro.some(r => r.k === p.peer) && !(p.presence.rdy && p.presence.rdy.s === S.id && p.presence.rdy.v === -1))
+      .map(p => ({ k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], u: p.by || (typeof p.presence.uid === "string" ? p.presence.uid.slice(0, 80) : null) }));
+  }
   if (S.ph === "ready") {
     // the host is a normal player here: nothing starts until everyone (host included) has tapped Ready,
     // then a short countdown lets anyone change their vote or un-ready
@@ -187,8 +193,8 @@ function finishSession() {
   S.res = rank.map(o => {
     const r = S.ro[o.i];
     let pt = 0, hp = 0;
-    if (!r.b && !o.gone) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
-    return { i: o.i, l: o.gone && !r.b ? o.label + " · left" : o.label, pt, hp, rec: o.rec, gone: !!o.gone };
+    if (!r.b && !o.gone && !o.late) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
+    return { i: o.i, l: o.gone && !r.b ? o.label + " · left" : o.late && !r.b ? o.label + " · joined late" : o.label, pt, hp, rec: o.rec, gone: !!(o.gone || o.late) };
   });
   S.board = mod.board ? mod.board(S) : null;
   S.ph = "results"; S.phT = 20000;
@@ -260,6 +266,8 @@ function enterGame(host) {
   V.ready = h.ph === "ready";
   if (V.ready) { V.myRdy = 0; V.myVote = ""; setPresence({ rdy: { s: h.id, v: V.myRdy, mv: "" }, in: null }); }
   else mod.clientEnter(V);
+  // watching a match you're not in: say so, and the host gives you a bot's place at the next round or respawn
+  setPresence({ watch: meIdx < 0 && !V.ready && mod.seat ? h.id : null });
   APP.view = "game"; APP.myIn = null; document.body.classList.add("playing");
   try { const a = document.activeElement; if (a && a !== document.body) a.blur(); getSelection().removeAllRanges(); } catch (e) {}
   $("#lobbyView").hidden = true; $("#gameView").hidden = false;
@@ -275,7 +283,7 @@ function exitGame() {
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
-  setPresence({ in: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
+  setPresence({ in: null, watch: null, rdy: APP.optOut ? { s: APP.optOut, v: -1 } : null });
   const st = $("#sndTest"); if (st && st.parentNode !== document.body) document.body.appendChild(st);
   $("#gameView").hidden = true; $("#lobbyView").hidden = false; updateLobby();
   $("#mindPanel").hidden = true; $("#dashBtn").hidden = true; if ($("#socPanel")) $("#socPanel").hidden = true;
@@ -339,6 +347,12 @@ function gameFrame(dt, t) {
   if (host.h !== V.lastH) { V.lastH = host.h; V.h = host.h; V.g = host.h.g; V.recvAt = now(); }
   // the ready room is over: re-enter with the real roster (players or spectators)
   if (V.ready && host.h.ph !== "ready") { enterGame(host); V = APP.V; V.lastH = host.h; V.h = host.h; V.g = host.h.g; }
+  // late joiners: a bot's place was handed to someone. If it's me, come in as a player; otherwise update the names
+  if (!V.ready && Array.isArray(host.h.ro) && host.h.ro.length === V.ro.length) {
+    const myPeer = NET.myPeerLabel();
+    if (V.meIdx < 0 && host.h.ro.some(r => r && r.k === myPeer)) { enterGame(host); V = APP.V; V.lastH = host.h; V.h = host.h; V.g = host.h.g; }
+    else { let ch = false; host.h.ro.forEach((r, i) => { const o = V.ro[i]; if (r && o && r.k !== o.k && typeof r.k === "string") { Object.assign(o, { k: r.k, n: cleanNick(r.n) || "Tech", c: validChar(r.c) || o.c, u: r.u, b: r.b ? 1 : 0, boss: 0 }); ch = true; if (V.mod.rosterChanged) try { V.mod.rosterChanged(V, i); } catch (e) {} } }); if (ch) buildChips(V); }
+  }
   V.age = now() - V.recvAt;
   if (V.ready) { readyFrame(V, dt, t); return; }
   const mod = V.mod, ph = V.h.ph;

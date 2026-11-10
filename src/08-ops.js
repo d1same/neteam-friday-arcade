@@ -510,6 +510,15 @@ function makeOps(md) {
       });
     },
     say(S, a) { const g = S.g; g.ann = a.concat([++g.aseq]); },
+    seat: true,
+    // hand bot i's place to the first person waiting to join (keeps the bot's side and colour)
+    takeSeat(S, i) {
+      const q = S.joinQ && S.joinQ.shift(); if (!q) return false; const r = S.ro[i], p = S.g.P[i];
+      if (!r || !r.b || S.ro.some(o => o.k === q.k)) return false;
+      Object.assign(r, { k: q.k, n: q.n, c: q.c, u: q.u, b: 0, boss: 0 });
+      p.bot = null; p.k = p.d = p.as = p.dmg = p.hsk = p.pln = p.dfs = 0; p.hold = 0; p.lastClaim = 0; p.idle = 0; p.seen = 0; p.gone = 0; p.budget = 0; p.lastSh = undefined; p.joinT = S.g.t;
+      this.say(S, [9, i]); return true;
+    },
     swapSides(S) {
       const g = S.g; g.half = 1; g.sc = [g.sc[1], g.sc[0]]; g.ls = [0, 0];
       g.P.forEach(p => { p.tm = 1 - p.tm; p.cr = 800; p.w = -1; p.pw = 0; p.arm = 0; p.gr = [0, 0]; p.alive = 0; if (p.bot) p.bot.site = 0; });
@@ -518,6 +527,14 @@ function makeOps(md) {
     startRound(S) {
       const g = S.g; g.rd++; g.ph = "buy"; g.pt = this.BUY; g.bomb = { st: 0, x: 0, z: 0, t: 0, site: 0 }; g.pr = this.propsFresh(); g.gb = []; g.gn = []; g.sm = []; OPS_SMOKES = g.sm; g.rsite = Math.random() < 0.5 ? 0 : 1;
       const spots = [shuffle(OPS_CELLS.r.slice()), shuffle(OPS_CELLS.u.slice())], k = [0, 0];
+      // late joiners take a bot's place on the side with fewer people, with that side's average money
+      while (S.joinQ && S.joinQ.length) {
+        const hum = [0, 0]; g.P.forEach(p => { if (!p.bot && !p.gone) hum[p.tm]++; });
+        const t = hum[0] <= hum[1] ? 0 : 1, i = [t, 1 - t].map(tt => g.P.findIndex(p => p.bot && p.tm === tt)).find(x => x >= 0);
+        if (i == null || i < 0 || !this.takeSeat(S, i)) break;
+        const p = g.P[i], mates = g.P.filter((q, j) => j !== i && q.tm === p.tm && !q.bot);
+        p.cr = mates.length ? Math.round(mates.reduce((a, q) => a + q.cr, 0) / mates.length / 50) * 50 : 800; p.w = -1; p.pw = 0; p.arm = 0; p.gr = [0, 0]; p.alive = 0;
+      }
       g.P.forEach((p, i) => {
         if (!p.alive || g.rd === 1) { p.w = -1; p.pw = 0; p.arm = 0; p.gr = [0, 0]; if (p.bot) p.bot.rs = {}; }
         else if (p.bot && p.bot.rs && Object.keys(p.bot.rs).length && p.cr >= AMMO_COST) { p.cr -= AMMO_COST; p.bot.rs = {}; }   // bots buy ammo too
@@ -637,7 +654,7 @@ function makeOps(md) {
         }
         if (!p.alive) {
           if (!p.bot && inputs[i]) this.claims(S, i, inputs[i], g.t - (p.dieT == null ? -9 : p.dieT) < 0.3);
-          if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) this.spawnFFA(S, i); }
+          if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) { if (p.bot && S.joinQ && S.joinQ.length) this.takeSeat(S, i); this.spawnFFA(S, i); } }
           return;
         }
         if (p.bot) { this.botTick(S, i, dt); return; }
@@ -809,9 +826,10 @@ function makeOps(md) {
     done(S) { const g = S.g, hs = g.P.filter(p => !p.bot); if (hs.length && hs.every(p => p.gone)) return true; return team ? g.over : troph ? (g.t >= this.DUR || g.P.some(p => p.hold >= this.HOLD)) : (g.t >= this.DUR || g.P.some(p => p.k >= this.GOAL)); },
     rank(S) {
       // anyone who left before the end goes to the bottom and earns no place or league points
-      if (troph) return S.g.P.map((p, i) => ({ i, gone: p.gone, v: Math.floor(p.hold), de: p.d, k: p.k, label: Math.floor(p.hold) + "s held · " + p.k + " elim" + (p.k === 1 ? "" : "s"), rec: Math.floor(p.hold) })).sort((a, b) => (a.gone - b.gone) || (b.v - a.v) || (b.k - a.k) || (a.de - b.de));
+      const late = (p) => p.joinT != null && p.joinT > S.g.t * 0.5 ? 1 : 0;
+      if (troph) return S.g.P.map((p, i) => ({ i, gone: p.gone, late: late(p), v: Math.floor(p.hold), de: p.d, k: p.k, label: Math.floor(p.hold) + "s held · " + p.k + " elim" + (p.k === 1 ? "" : "s"), rec: Math.floor(p.hold) })).sort((a, b) => (a.gone - b.gone) || (b.v - a.v) || (b.k - a.k) || (a.de - b.de));
       const g = S.g, win = g.sc[0] === g.sc[1] ? -1 : g.sc[0] > g.sc[1] ? 0 : 1;
-      return g.P.map((p, i) => ({ i, gone: p.gone, v: p.k, de: p.d, w: team && p.tm === win ? 1 : 0, label: (team ? TEAM[p.tm].short + " · " : "") + p.k + " elim" + (p.k === 1 ? "" : "s") + " · " + p.d + " death" + (p.d === 1 ? "" : "s"), rec: p.k }))
+      return g.P.map((p, i) => ({ i, gone: p.gone, late: late(p), v: p.k, de: p.d, w: team && p.tm === win ? 1 : 0, label: (team ? TEAM[p.tm].short + " · " : "") + p.k + " elim" + (p.k === 1 ? "" : "s") + " · " + p.d + " death" + (p.d === 1 ? "" : "s"), rec: p.k }))
         .sort((a, b) => (a.gone - b.gone) || (b.w - a.w) || (b.v - a.v) || (a.de - b.de));
     },
     board(S) {
@@ -883,6 +901,8 @@ function makeOps(md) {
       loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
       this.bind(V);
     },
+    // someone took a bot's place: their name and face over the head
+    rosterChanged(V, i) { const F = V.fps, av = F && F.avatars && F.avatars[i], r = V.ro[i]; if (!av || !r || !av.spr) return; const old = av.spr.material.map; av.spr.material.map = frenzy.charTex(r.c, r.hex, r.n); av.spr.material.needsUpdate = true; if (old && old.dispose) old.dispose(); },
     clientExit(V) {
       const F = V.fps; if (!F) return; F.gone = true;
       (F.unbind || []).forEach(f => f());
@@ -2500,6 +2520,7 @@ function makeOps(md) {
       if (F.toasts.length > 5) F.toasts.splice(0, F.toasts.length - 5);
       if (g.ann && g.ann[g.ann.length - 1] !== F.annSeen) {
         F.annSeen = g.ann[g.ann.length - 1]; const a = g.ann;
+        if (a[0] === 9 && V.ro[a[1]]) F.ann = { big: V.ro[a[1]].n.toUpperCase() + " JOINED", sub: team ? "IN FOR A BOT · " + TEAM[(g.pl && g.pl[a[1]] ? g.pl[a[1]][2] : 0)].n.toUpperCase() : "IN FOR A BOT", col: "#3ddc97", life: 2.5 };
         if (a[0] === 1) F.ann = { big: a[2] ? "HALFTIME · SWITCH SIDES" : "ROUND " + a[1], sub: team ? (a[2] ? "ROUND " + a[1] + " · YOU NOW " : "") + (tm === 0 ? "ATTACK" : "DEFEND") : "", col: "#f5f1e6", life: a[2] ? 4.5 : 3 };
         if (a[0] === 2) { F.ann = { big: "PAYLOAD PLANTED", sub: "SITE " + (a[1] ? "B" : "A"), col: "#ff4d5e", life: 3 }; SFX.play("alarm"); }
         if (a[0] === 3) { const mine = pl && a[1] === tm; F.ann = { big: TEAM[a[1]].n.toUpperCase() + " WINS", sub: OPS_ANN[a[2]], col: TEAM[a[1]].hex, life: 4.5 }; SFX.play(mine ? "win" : "lose"); }
