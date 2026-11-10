@@ -163,7 +163,7 @@ const race = {
       } else {
         const inp = inputs[i];
         if (inp) { p.idle = 0; p.seen = 1; p.gone = 0; } else if (go) { p.idle += dt; if (p.idle > (p.seen ? 10 : 25)) p.gone = 1; }
-        if (inp && go && Number.isInteger(inp.use) && inp.use !== p.useSeq) { p.useSeq = inp.use; if (p.it) this.useItem(S, i); }
+        if (inp && go && Number.isInteger(inp.use) && inp.use !== p.useSeq) { p.useSeq = inp.use; if (p.it && !p.fin) this.useItem(S, i); }
         if (inp && go && Number.isInteger(inp.fire) && inp.fire !== p.fireSeq) { p.fireSeq = inp.fire; this.shoot(S, i); }
         if (inp && go && Number.isFinite(inp.x) && Number.isFinite(inp.z)) {
           // the car goes where its driver says it is. (This used to ignore any jump of 60+ track samples, so one long
@@ -228,6 +228,7 @@ const race = {
   },
   hit(S, j, kind, from) {
     const g = S.g, q = g.P[j]; if (!q || q.fin) return;
+    if (kind === 7) { if (g.t - (q.blT == null ? -9 : q.blT) < 1.2) return; q.blT = g.t; }   // a blaster burst slows you once, not six times
     if (q.sh > 0) { g.ev.push([++g.evN, 6, from, j]); return; }
     q.hitN++; q.hitK = kind; q.hitF = from; if (from >= 0 && from !== j && g.P[from]) g.P[from].hl++;
     if (q.bot) {
@@ -276,9 +277,9 @@ const race = {
     const steer = clamp(-da * 2.4, -1, 1);
     const vt = RC_MAX * (1 - Math.min(0.5, ahead * 0.9));
     // gentle rubber band so bots stay in the mix
-    const leader = Math.max(...g.P.filter(q => !q.bot).map(q => q.dist), -1e9);
-    const rb = leader > -1e8 ? clamp((leader - p.dist) / 120, -0.12, 0.1) : 0;
-    p.skill = clamp(b.skill + rb, 0.7, 1.08);
+    const hs = g.P.filter(q => !q.bot && !q.gone).map(q => q.dist), near = hs.length ? hs.reduce((a, d) => Math.abs(d - p.dist) < Math.abs(a - p.dist) ? d : a) : null;
+    const rb = near != null ? clamp((near - p.dist) / 120, -0.12, 0.06) : 0;
+    p.skill = clamp(b.skill + rb, 0.7, 1.0);
     const gas = p.v > vt * p.skill + 2 && !(p.bo > 0) ? -0.4 : 1;
     { let tow = 0; const sa = Math.sin(p.a), ca = Math.cos(p.a); if (p.v > 24) g.P.forEach((q, j) => { if (j === i) return; const dx = q.x - p.x, dz = q.z - p.z, fw = dx * sa + dz * ca; if (fw > 3 && fw < 22 && Math.abs(dx * ca - dz * sa) < 2.2) tow = Math.max(tow, 1 - (fw - 3) / 19); }); p.tow = lerp(p.tow || 0, tow, 1 - Math.exp(-dt * (tow > (p.tow || 0) ? 1.6 : 4))); }
     rcDrive(p, dt, gas, steer, ahead > 0.35 && p.v > 30, true);
@@ -298,8 +299,8 @@ const race = {
   rank(S) {
     const g = S.g;
     return g.P.map((p, i) => ({ i, p, best: p.lt.length ? Math.min(...p.lt) : 0 }))
-      .sort((a, b) => (a.p.fin || 99) - (b.p.fin || 99) || b.p.dist - a.p.dist)
-      .map(o => ({ i: o.i, v: o.p.fin ? -o.p.ft : o.p.dist, label: o.p.fin ? "Finished " + (o.p.ft / 1000).toFixed(1) + " s" + (o.best ? " · best lap " + (o.best / 1000).toFixed(2) : "") : "DNF · lap " + Math.min(RC_LAPS, o.p.ld + 1) + "/" + RC_LAPS, rec: o.best }));
+      .sort((a, b) => ((a.p.gone && !a.p.fin) - (b.p.gone && !b.p.fin)) || (a.p.fin || 99) - (b.p.fin || 99) || b.p.dist - a.p.dist)   // quitters who never finished go last
+      .map(o => ({ i: o.i, gone: o.p.gone && !o.p.fin ? 1 : 0, v: o.p.fin ? -o.p.ft : o.p.dist, label: o.p.fin ? "Finished " + (o.p.ft / 1000).toFixed(1) + " s" + (o.best ? " · best lap " + (o.best / 1000).toFixed(2) : "") : "DNF · lap " + Math.min(RC_LAPS, o.p.ld + 1) + "/" + RC_LAPS, rec: o.best }));
   },
   board(S) {
     const g = S.g;
@@ -474,8 +475,9 @@ const race = {
     // keys are all-or-nothing: wind the wheel on and off instead of snapping it (quick to centre, quicker still to swap sides)
     if (!F.stick) { const cur = F.st || 0, rate = (steer === 0 ? 9 : steer * cur < 0 ? 14 : 5.5) * dt; steer = F.st = cur + clamp(steer - cur, -rate, rate); } else F.st = steer;
     // perfect start: get on the gas in the last half second before GO
-    if (!go) { if (gas > 0.5 && !F.gasWas) F.gasAt = performance.now(); F.gasWas = gas > 0.5; F.wasWait = V.h.ph === "play"; }
-    else if (F.wasWait) { F.wasWait = false; const el = F.gasWas && F.gasAt && !F.coarse ? performance.now() - F.gasAt : -1; if (el > 40 && el < 560 && !(g.t > 5)) { c.bo = Math.max(c.bo || 0, 1.2); c.boEv = (c.boEv || 0) + 1; F.toast = { s: "PERFECT START", sub: "", life: 1.3, col: "#4cc9f0" }; } }
+    // (one press only: tapping the gas over and over in the last seconds doesn't count)
+    if (!go) { if (gas > 0.5 && !F.gasWas) { F.gasAt = performance.now(); if (g.t != null && g.t > -2) F.gasN = (F.gasN || 0) + 1; } F.gasWas = gas > 0.5; F.wasWait = V.h.ph === "play"; }
+    else if (F.wasWait) { F.wasWait = false; const el = F.gasWas && F.gasAt && !F.coarse ? performance.now() - F.gasAt : -1; if (el > 40 && el < 560 && !(g.t > 5) && (F.gasN || 0) <= 1) { c.bo = Math.max(c.bo || 0, 1.2); c.boEv = (c.boEv || 0) + 1; F.toast = { s: "PERFECT START", sub: "", life: 1.3, col: "#4cc9f0" }; } }
     if (!go) { gas = 0; c.v = 0; }
     if (fin) { gas = Math.max(0, gas) * 0.3; }
     // hits from other players' items (the host decides, we feel it here)

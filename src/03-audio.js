@@ -41,6 +41,8 @@ const SFX = {
     });
   },
   // play a sample: far 0..1 muffles it; returns false when it is not loaded so the caller can synthesise instead
+  // how loud something is at d metres: about -6 dB per doubling of distance past R metres (R = 0 m gives 1)
+  fall(d, R = 8) { return Math.pow(R / (R + Math.max(0, d)), 1.3); },
   samp(name, vol = 1, pan = 0, rate = 1, far = 0, delay = 0, wet = 1) {
     const a = this.ensure(); if (!a) return true; this.load(); const b = this.S[name]; if (!b) return false; if (vol < 0.01) return true;
     const s = a.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; let n = s;
@@ -285,9 +287,13 @@ const SFX = {
     if (G && !this.legacy) { // layered: the gun's own crack and body, a low punch, and its sound coming back off the surroundings
       const r = G[1] * (0.97 + Math.random() * 0.06), v = G[0] * vol * 1.35, out = this._space === "open" || this._space === "street";
       const dl = far > 0 ? far * 50 / 343 : 0;   // sound travels: a shot 50 m away is heard 0.15 s after it is fired
-      if (far > 0.45) { if (this.samp("far-" + kind, v * (0.8 + far * 0.25), pan, r, Math.max(0, far - 0.45) * 1.1, dl, out ? 0.45 : 0.3)) { if (G[2] && far < 0.8) this.bolt(v * 0.2 * (1 - far), pan, G[2] + dl); return; } }
-      else if (this.samp((far > 0 ? "gunm-" : "gun-") + kind, far > 0 ? v * 0.8 : v * 1.15, pan, r, far * 0.8, dl, 0.1 + far * 0.3)) {
-        const tv = v * (out ? 0.3 : 0.14) * (1 - far);
+      // the caller has already turned the level down for distance (SFX.fall). Here: which recording, and how muffled.
+      // Close (under 10 m): the near take, like your own gun. Mid range: the single-mic take. Past 35 m: the distant recording,
+      // which carries its own echo, so it gets little reverb. Muffling only starts past about 20 m.
+      const lpF = Math.max(0, far - 0.4) * 1.3;
+      if (far > 0.7) { if (this.samp("far-" + kind, v * 0.9, pan, r, lpF, dl, 0.12)) { if (G[2] && far < 0.8) this.bolt(v * 0.2 * (1 - far), pan, G[2] + dl); return; } }
+      else if (this.samp((far > 0.2 ? "gunm-" : "gun-") + kind, v * 1.15, pan, r, lpF, dl, 0.1 + far * 0.2)) {
+        const tv = v * (out ? 0.18 : 0.08) * (1 - far);   // the room answering back: a touch of it, so the shot itself stays up front
         this.samp("far-" + kind, tv, clamp(pan - 0.45, -1, 1), r, 0.3 + far * 0.3, dl + (out ? 0.07 : 0.03), out ? 0.55 : 0.4);
         this.samp("far-" + kind, tv * 0.75, clamp(pan + 0.45, -1, 1), r * 0.985, 0.4 + far * 0.3, dl + (out ? 0.15 : 0.055), out ? 0.65 : 0.45);
         if (far < 0.35 && G[3]) this.thump(v * (1 - far * 2.6) * (G[3] || 1), pan, dl);
@@ -309,7 +315,8 @@ const SFX = {
   },
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles)]
   // [volume, playback rate, bolt worked this long after the shot (bolt-action rifles), weight of the low punch]
-  GUNS: { pistol: [0.44, 1, 0, 0], heavy: [0.64, 1, 0, 1], smg: [0.44, 1, 0, 0], rifle: [0.6, 1, 0, 0.55], carbine: [0.56, 1, 0, 0.3], lmg: [0.64, 1, 0, 0.8], sniper: [0.72, 1, 0.42, 1.3], scout: [0.6, 1, 0.36, 0.7], shotgun: [0.7, 1, 0, 1.2] },
+  // pistol and SMG recordings are thin in the low end (6 to 10 dB under the rifle), so they get more level and some punch, or they sound far away
+  GUNS: { pistol: [0.6, 1, 0, 0.6], heavy: [0.64, 1, 0, 1], smg: [0.52, 1, 0, 0.4], rifle: [0.6, 1, 0, 0.55], carbine: [0.56, 1, 0, 0.3], lmg: [0.64, 1, 0, 0.8], sniper: [0.72, 1, 0.42, 1.3], scout: [0.6, 1, 0.36, 0.7], shotgun: [0.7, 1, 0, 1.2] },
   // pre-PR15 table, kept for the old/new switch on the sound page
   GUNS_OLD: { pistol: [0.5, 1, 0, 0.5], heavy: [0.62, 0.92, 0, 1.1], smg: [0.48, 1, 0, 0.45], rifle: [0.62, 1, 0, 0.8], carbine: [0.6, 1, 0, 0.7], lmg: [0.62, 0.95, 0, 0.9], sniper: [0.68, 1, 0.42, 1.4], scout: [0.6, 1, 0.36, 1.1], shotgun: [0.66, 1, 0, 1.3] },
   legacy: false,
