@@ -6,7 +6,9 @@
 //
 // url defaults to http://localhost:4802. Columns: fps = average, low = the slowest 1% of frames as a frame rate,
 // hitch = frames longer than 50 ms, js = time the page's own code takes per frame (of which draw = sending the picture
-// to the graphics card), res = the resolution the 3D picture is drawn at after the quality level and dynamic resolution.
+// to the graphics card), gpu = time the graphics card itself needs per frame where the browser reports it, res = the
+// resolution the 3D picture is drawn at after the quality level and dynamic resolution. The same numbers show live in
+// the game with F8.
 let pw; try { pw = require("playwright-core"); } catch (e) { try { pw = require("playwright"); } catch (e2) { console.error("Install playwright-core first: npm i playwright-core"); process.exit(1); } }
 const argv = process.argv.slice(2), flag = (n) => argv.includes("--" + n), opt = (n, d) => { const i = argv.indexOf("--" + n); return i >= 0 && argv[i + 1] ? argv[i + 1] : d; };
 const url = argv.find(a => /^https?:/.test(a)) || "http://localhost:4802";
@@ -33,7 +35,7 @@ async function one(browser, R) {
   const ctx = await browser.newContext({ viewport: { width: W, height: H }, deviceScaleFactor: DPR });
   const p = await ctx.newPage(), errs = [];
   p.on("pageerror", e => errs.push(String(e.message).slice(0, 160)));
-  await p.addInitScript((r) => { localStorage.setItem("nfa-gfx", JSON.stringify(Object.assign({ q: r.q }, r.nx === 0 ? { nx: 0 } : {}))); localStorage.setItem("nfa-sound", "false"); }, R);
+  await p.addInitScript((r) => { localStorage.setItem("nfa-gfx", JSON.stringify(Object.assign({ q: r.q, fps: 1 }, r.nx === 0 ? { nx: 0 } : {}))); localStorage.setItem("nfa-sound", "false"); }, R);
   const out = Object.assign({}, R);
   try {
     await p.goto(url); await p.waitForSelector("#editor[open]", { timeout: 30000 });
@@ -52,19 +54,21 @@ async function one(browser, R) {
       window.gameFrame = function (a, b) { const s = performance.now(); og(a, b); js += performance.now() - s; };
       if (target) target.render = function () { const s = performance.now(); od.apply(target, arguments); draw += performance.now() - s; };
       else r.render = function () { const s = performance.now(); rr.apply(r, arguments); draw += performance.now() - s; };
-      r.info.autoReset = false; r.info.reset();
+      const own = typeof NX !== "undefined" && NX.perf && F.nx ? NX.perf : null; let calls = 0, tris = 0, gpu = 0, gn = 0;
+      if (!own) { r.info.autoReset = false; r.info.reset(); }
       const tick = () => {
         const n = performance.now(); ts.push(n - last); last = n;
+        if (own) { calls += own.calls; tris += own.tris; if (own.gpuMs >= 0) { gpu += own.gpuMs; gn++; } }
         if (n - t0 < secs * 1000) return requestAnimationFrame(tick);
         window.gameFrame = og; if (target) target.render = od; else r.render = rr;
         const N = ts.length, sum = ts.reduce((a, b) => a + b, 0), s = ts.slice().sort((a, b) => a - b), I = r.info.render, tgt = F.post && F.post.scene;
         const dbg = gl.getExtension("WEBGL_debug_renderer_info");
         res({ fps: +(1000 * N / sum).toFixed(1), low: +(1000 / s[Math.min(N - 1, Math.floor(N * 0.99))]).toFixed(1), worst: +s[N - 1].toFixed(0), hitch: ts.filter(x => x > 50).length,
-          js: +(js / N).toFixed(1), draw: +(draw / N).toFixed(1), calls: Math.round(I.calls / N), tris: Math.round(I.triangles / N),
+          js: +(js / N).toFixed(1), draw: +(draw / N).toFixed(1), calls: Math.round((own ? calls : I.calls) / N), tris: Math.round((own ? tris : I.triangles) / N), gpuMs: gn ? +(gpu / gn).toFixed(1) : "",
           res: tgt ? tgt.width + "x" + tgt.height : r.domElement.width + "x" + r.domElement.height, drs: typeof NX !== "undefined" && F.nx ? +NX.drs.k.toFixed(2) : 1,
           tier: typeof NX !== "undefined" && F.nx ? NX.tier().name : "old", gpu: String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)).slice(0, 90),
           tex: r.info.memory.textures, heap: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 0, players: (APP.V.ro || []).length });
-        r.info.autoReset = true;
+        if (!own) r.info.autoReset = true;
       };
       requestAnimationFrame(tick);
     }), SECS));
@@ -77,13 +81,13 @@ async function one(browser, R) {
 (async () => {
   const browser = await launch(), rows = [];
   console.log(`Friday Arcade benchmark · ${url} · ${W}x${H} @${DPR} · ${browser.version()} · ${flag("headed") ? "headed" : "headless"}`);
-  const pad = (v, n) => String(v == null ? "" : v).padEnd(n);
-  console.log(["game", "map", "asked", "ran as", "fps", "low", "worst ms", "hitch", "js ms", "draw ms", "calls", "tris", "res", "drs", "load s"].map((h, i) => pad(h, [11, 10, 7, 7, 7, 7, 9, 6, 6, 8, 6, 8, 10, 5, 6][i])).join(""));
+  const pad = (v, n) => String(v == null ? "" : v).padEnd(n), COLS = [11, 10, 7, 7, 7, 7, 9, 6, 6, 8, 7, 6, 8, 10, 5, 6];
+  console.log(["game", "map", "asked", "ran as", "fps", "low", "worst ms", "hitch", "js ms", "draw ms", "gpu ms", "calls", "tris", "res", "drs", "load s"].map((h, i) => pad(h, COLS[i])).join(""));
   for (const R of RUNS.filter(r => !only || r.game === only || r.map === only || r.q === only)) {
     const o = await one(browser, R); rows.push(o);
     if (o.error) { console.log(pad(R.game, 11) + pad(R.map, 10) + pad(R.q, 7) + "FAILED: " + o.error); continue; }
     if (rows.filter(x => x.gpu).length === 1) console.log("graphics card: " + o.gpu);
-    console.log([R.game, R.map, R.q + (R.nx === 0 ? "*" : ""), o.tier, o.fps, o.low, o.worst, o.hitch, o.js, o.draw, o.calls, o.tris, o.res, o.drs, o.load].map((v, i) => pad(v, [11, 10, 7, 7, 7, 7, 9, 6, 6, 8, 6, 8, 10, 5, 6][i])).join("") + (o.pageErrors ? "  page errors: " + o.pageErrors.join(" | ") : ""));
+    console.log([R.game, R.map, R.q + (R.nx === 0 ? "*" : ""), o.tier, o.fps, o.low, o.worst, o.hitch, o.js, o.draw, o.gpuMs, o.calls, o.tris, o.res, o.drs, o.load].map((v, i) => pad(v, COLS[i])).join("") + (o.pageErrors ? "  page errors: " + o.pageErrors.join(" | ") : ""));
   }
   console.log("* = the renderer from before the overhaul");
   if (opt("json", "")) require("fs").writeFileSync(opt("json", ""), JSON.stringify(rows, null, 1));

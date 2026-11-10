@@ -1,4 +1,4 @@
-// ---------- sound (synthesised, starts after first interaction) ----------
+// ---------- sound (recorded samples with synthesised fallbacks, starts after first interaction) ----------
 const SFX = {
   on: store("nfa-sound") !== false,
   ctx: null,
@@ -31,19 +31,26 @@ const SFX = {
     s.connect(f).connect(g).connect(this.dest(a)); s.start();
   },
   // recorded samples (CC0, see sfx/CREDITS.txt); every caller falls back to the synth until a sample has loaded
+  // menus (real switches), announcements (war drums, crowd), hits, cases, air and electricity: see sfx/CREDITS.txt
+  NEW: "ui-tick ui-on ui-off ui-deny drum1 drum-go drum-win drum-low crowd1 applause1 thud1 thwack1 thwack2 tick1 tink1 casing1 casing2 casing3 metal2 fall1 pickup1 air1 air2 steam1 zap1 zap2 power-down shield1",
   S: {}, _ld: 0,
   load() {
     const a = this.ctx; if (!a || this._ld) return; this._ld = 1;
-    ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall").split(" ").forEach((n) => {
+    ("shot-pistol shot-heavy shot-smg shot-rifle shot-carbine shot-sniper shot-shotgun shot-far rl-pistol rl-rifle rl-shell rl-pump click1 click2 step1 step2 step3 step4 step5 boom1 boom2 boom3 swing1 swing2 hit-wood hit-glass hit-metal hit-wall " + this.NEW).split(" ").forEach((n) => {
       fetch("sfx/" + n + ".mp3").then(r => r.ok ? r.arrayBuffer() : null).then(b => b && a.decodeAudioData(b, (buf) => { this.S[n] = buf; }, () => {})).catch(() => {});
     });
   },
   // play a sample: far 0..1 muffles it; returns false when it is not loaded so the caller can synthesise instead
-  samp(name, vol = 1, pan = 0, rate = 1, far = 0, delay = 0) {
+  samp(name, vol = 1, pan = 0, rate = 1, far = 0, delay = 0, wet = 1) {
     const a = this.ensure(); if (!a) return true; this.load(); const b = this.S[name]; if (!b) return false; if (vol < 0.01) return true;
     const s = a.createBufferSource(); s.buffer = b; s.playbackRate.value = rate; let n = s;
     if (far > 0.05) { const f = a.createBiquadFilter(); f.type = "lowpass"; f.frequency.value = 14000 * Math.pow(1 - Math.min(far, 0.95), 2) + 500; n = s.connect(f); }
-    n.connect(this.out(a, vol, pan)); s.start(a.currentTime + delay); return true;
+    n.connect(this.out(a, vol, pan, wet)); s.start(a.currentTime + delay); return true;
+  },
+  // a soft dry tap of noise: what a menu or event sound falls back to in the first second, before its recording has loaded
+  tap(vol = 0.3, freq = 1800) {
+    const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, vol * 0.4, 0, 0), s = a.createBufferSource(); s.buffer = this.noiseBuf(a);
+    const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = freq; f.Q.value = 1.1; const g = a.createGain(); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.05); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.07);
   },
   _nb: null,
   noiseBuf(a) { if (this._nb && this._nb.sampleRate === a.sampleRate) return this._nb; const n = a.sampleRate * 1.5, b = a.createBuffer(1, n, a.sampleRate), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1; return (this._nb = b); },
@@ -145,7 +152,8 @@ const SFX = {
   impact(kind, vol, pan) {
     const a = this.ensure(); if (!a || vol < 0.02) return; const t = a.currentTime; if (t - this._it < 0.045) return; this._it = t;
     if (!this.samp(kind ? "hit-metal" : "hit-wall", vol * (kind ? 0.5 : 0.75), pan, 0.85 + Math.random() * 0.5)) { const o = this.out(a, vol * 0.25, pan), s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = kind ? 3200 : 1300; f.Q.value = 1; const g = a.createGain(); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.1); }
-    if (Math.random() < (kind ? 0.3 : 0.12)) { const o = a.createOscillator(), g = a.createGain(), f0 = 1800 + Math.random() * 2200; o.type = "sine"; o.frequency.setValueAtTime(f0, t + 0.02); o.frequency.exponentialRampToValueAtTime(f0 * (0.35 + Math.random() * 0.2), t + 0.42); g.gain.setValueAtTime(0.0001, t + 0.02); g.gain.exponentialRampToValueAtTime(0.5, t + 0.035); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.44); o.connect(g).connect(this.out(a, vol * 0.1, pan)); o.start(t + 0.02); o.stop(t + 0.46); }
+    // now and then the round sings off the surface: air noise through a narrow filter that falls away (a pure tone here sounded like a cartoon)
+    if (Math.random() < (kind ? 0.2 : 0.07)) { const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain(), f0 = 2400 + Math.random() * 2600; s.buffer = this.noiseBuf(a); f.type = "bandpass"; f.Q.value = 22; f.frequency.setValueAtTime(f0, t + 0.02); f.frequency.exponentialRampToValueAtTime(f0 * (0.4 + Math.random() * 0.2), t + 0.4); g.gain.setValueAtTime(0.0001, t + 0.02); g.gain.exponentialRampToValueAtTime(1, t + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.42); s.connect(f).connect(g).connect(this.out(a, vol * 0.5, pan)); s.start(t + 0.02, Math.random(), 0.45); }
   },
   // a round passing close to your head
   whiz(pan) {
@@ -155,17 +163,21 @@ const SFX = {
   },
   // a spent case ringing on the floor
   casing(vol = 0.5, big = 0) {
+    { const d = 0.42 + Math.random() * 0.12, pn = (Math.random() - 0.3) * 0.6, r = (big ? 0.8 : 1.25) + Math.random() * 0.3;   // recorded brass on a hard floor: one bounce, then a smaller one
+      if (this.samp("casing" + (1 + (Math.random() * 3 | 0)), vol * 0.2, pn, r, 0, d)) { this.samp("casing" + (1 + (Math.random() * 3 | 0)), vol * 0.09, pn, r * 1.12, 0, d + 0.09 + Math.random() * 0.06); return; } }
     const a = this.ensure(); if (!a) return; const t = a.currentTime + 0.42 + Math.random() * 0.12, o = this.out(a, vol * 0.05, (Math.random() - 0.3) * 0.6);
     [0, 0.07 + Math.random() * 0.05, 0.2].forEach((d, k) => { const os = a.createOscillator(), g = a.createGain(), f = (big ? 1900 : 4300) + Math.random() * 1500; os.type = "sine"; os.frequency.setValueAtTime(f, t + d); g.gain.setValueAtTime(0.0001, t + d); g.gain.exponentialRampToValueAtTime(1 / (k + 1), t + d + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.09); os.connect(g).connect(o); os.start(t + d); os.stop(t + d + 0.1); });
   },
-  // you dropped someone: a dry thud with a bright ping over it (higher for a headshot)
+  // you dropped someone: a dry recorded thwack over a low thud, with a helmet tick for a headshot
   kill(head) {
+    if (this.samp("thwack1", 0.75, 0, head ? 1.1 : 0.94, 0, 0, 0.15)) { this.samp("thud1", 0.55, 0, 0.9, 0, 0.01, 0); if (head) this.samp("tink1", 0.5, 0, 0.9, 0, 0.02, 0.15); return; }
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.3, 0, 0);
     const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(190, t); th.frequency.exponentialRampToValueAtTime(70, t + 0.12); tg.gain.setValueAtTime(0.9, t); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.18);
     [head ? 1760 : 1175, head ? 2637 : 1568].forEach((f, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = f; g.gain.setValueAtTime(0.0001, t + k * 0.06); g.gain.exponentialRampToValueAtTime(0.5, t + k * 0.06 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t + k * 0.06 + 0.3); os.connect(g).connect(o); os.start(t + k * 0.06); os.stop(t + k * 0.06 + 0.32); });
   },
-  // your round landed: a dry tick, brighter and doubled for a head
+  // your round landed: a dry recorded tick, a metal one for a head
   hit(head) {
+    if (this.samp(head ? "tink1" : "tick1", head ? 0.42 : 0.4, 0, 0.94 + Math.random() * 0.12, 0, 0, 0)) return;
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, 0.26, 0, 0);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = head ? 5200 : 3400; f.Q.value = 2.2;
     const g = a.createGain(); g.gain.setValueAtTime(0.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.045); s.connect(f).connect(g).connect(o); s.start(t, Math.random(), 0.06);
@@ -188,8 +200,9 @@ const SFX = {
     const os = a.createOscillator(), g = a.createGain(); os.type = "sine"; os.frequency.setValueAtTime(120, t); os.frequency.exponentialRampToValueAtTime(52, t + 0.12); g.gain.setValueAtTime(1, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); os.connect(g).connect(o); os.start(t); os.stop(t + 0.18);
     [[1100, 1.2, 0.8, 0.14], [3100, 2.5, 0.35, 0.3]].forEach(([fr, q, lv, len]) => { const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(fr, t); f.frequency.exponentialRampToValueAtTime(fr * 0.6, t + len); f.Q.value = q; const ng = a.createGain(); ng.gain.setValueAtTime(lv, t); ng.gain.exponentialRampToValueAtTime(0.0001, t + len); s.connect(f).connect(ng).connect(o); s.start(t, Math.random(), len + 0.02); });
   },
-  // a crowd going up: a swell of voices with a few whistles
+  // a crowd going up (recorded)
   cheer(vol = 0.5) {
+    if (this.samp("crowd1", Math.min(1, vol * 1.1), 0, 0.96 + Math.random() * 0.08, 0, 0, 0.5)) return;
     const a = this.ensure(); if (!a) return; const t = a.currentTime, o = this.out(a, vol * 0.35, 0, 0.6);
     [[700, 0.6], [1250, 0.8], [2100, 0.9]].forEach(([fr, q], k) => { const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); s.loop = true; s.playbackRate.value = 0.7 + k * 0.2; const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.value = fr; f.Q.value = q;
       const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.7 / (k + 1), t + 0.5 + k * 0.15); g.gain.setTargetAtTime(0.0001, t + 1.4, 0.7); s.connect(f).connect(g).connect(o); s.start(t, Math.random()); s.stop(t + 4.5); });
@@ -228,7 +241,7 @@ const SFX = {
       const sg = a.createGain(); sg.gain.value = 0.85; src.connect(lp).connect(sg).connect(o); src.start(t);
       const th = a.createOscillator(), tg = a.createGain(); th.type = "sine"; th.frequency.setValueAtTime(92, t); th.frequency.exponentialRampToValueAtTime(48, t + 0.09);
       tg.gain.setValueAtTime(0.0001, t); tg.gain.exponentialRampToValueAtTime(fl === "sand" ? 0.3 : 0.55, t + 0.008); tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.13); th.connect(tg).connect(o); th.start(t); th.stop(t + 0.15);
-      if (fl === "metal") { const pg = a.createOscillator(), pgn = a.createGain(); pg.type = "triangle"; pg.frequency.value = 780 + Math.random() * 500; pgn.gain.setValueAtTime(0.0001, t); pgn.gain.exponentialRampToValueAtTime(0.07, t + 0.006); pgn.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); pg.connect(pgn).connect(o); pg.start(t); pg.stop(t + 0.18); }
+      if (fl === "metal") this.samp("metal2", vol * 0.07, pan, 1.5 + Math.random() * 0.5);
       const n = a.createBufferSource(); n.buffer = this.noiseBuf(a); const bp = a.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 700 + Math.random() * 300; bp.Q.value = 0.7;
       const ng = a.createGain(); ng.gain.setValueAtTime(0.0001, t + 0.05); ng.gain.exponentialRampToValueAtTime(fl === "sand" ? 0.3 : 0.1, t + 0.075); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.19);
       n.connect(bp).connect(ng).connect(o); n.start(t + 0.05, Math.random(), 0.16);
@@ -260,7 +273,7 @@ const SFX = {
     const a = this.ensure(); if (!a || !this.on || vol < 0.01) return; const t = a.currentTime, o = this.out(a, 0.3 * vol, pan);
     const s = a.createBufferSource(); s.buffer = this.noiseBuf(a); s.loop = true; const f = a.createBiquadFilter(); f.type = "bandpass"; f.frequency.setValueAtTime(5200, t); f.frequency.exponentialRampToValueAtTime(2200, t + 2.2); f.Q.value = 0.6;
     const g = a.createGain(); g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(1, t + 0.06); g.gain.exponentialRampToValueAtTime(0.0001, t + 2.6); s.connect(f).connect(g).connect(o); s.start(t); s.stop(t + 2.7);
-    this.tone(180, 0.08, "square", 0.05 * vol);
+    this.samp("air1", 0.5 * vol, pan, 0.8);   // the pop of the canister
   },
   // prop breaking: 0 wood/cardboard crunch, 1 glass + electrical pop
   crash(kind = 0, vol = 0.6, pan = 0) {
@@ -286,23 +299,52 @@ const SFX = {
     return ok;
   },
   clank(vol = 0.3, pan = 0) { const a = this.ensure(); if (!a) return; if (this.samp(Math.random() < 0.5 ? "click1" : "click2", vol * 1.6, pan, 0.9 + Math.random() * 0.2)) return; const t = a.currentTime, o = this.out(a, vol * 0.3, pan); [1200, 1850, 2600].forEach((fq, k) => { const os = a.createOscillator(), g = a.createGain(); os.type = "triangle"; os.frequency.value = fq * (0.97 + Math.random() * 0.06); g.gain.setValueAtTime(0.5 / (k + 1), t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.12 + k * 0.03); os.connect(g).connect(o); os.start(t); os.stop(t + 0.25); }); },
+  // ---- named event sounds. Menus are real switches and clicks, announcements are war drums and a crowd: no beeps or
+  // jingles. Until a recording has loaded (the first second) a soft tap of noise stands in.
   play(name) {
     if (!this.on) return;
+    const u = (n, vol, rate, delay, wet) => this.samp(n, vol, 0, rate || 1, 0, delay || 0, wet || 0) || (delay ? 0 : this.tap(vol * 0.6));
     switch (name) {
-      case "blip": this.tone(660, 0.07, "square", 0.05); break;
-      case "pop": this.tone(420, 0.09, "sine", 0.12, 380); break;
-      case "count": this.tone(440, 0.14, "square", 0.06); break;
-      case "go": this.tone(880, 0.25, "square", 0.07); this.tone(1320, 0.25, "square", 0.04, 0, 0.05); break;
-      case "start": [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.12, "square", 0.05, 0, i * 0.08)); break;
-      case "win": [523, 659, 784, 1046, 784, 1046].forEach((f, i) => this.tone(f, 0.16, "triangle", 0.09, 0, i * 0.11)); break;
-      case "right": this.tone(740, 0.08, "triangle", 0.09); this.tone(1110, 0.12, "triangle", 0.08, 0, 0.06); break;
-      case "wrong": this.tone(220, 0.22, "sawtooth", 0.05, -90); break;
-      case "bump": this.tone(160, 0.12, "sine", 0.16, -60); this.noise(0.08, 0.05, 1200); break;
-      case "dash": this.noise(0.18, 0.06, 2400); break;
-      case "fall": this.tone(600, 0.6, "sine", 0.08, -520); break;
-      case "boom": this.noise(0.4, 0.14, 700); this.tone(90, 0.3, "sine", 0.15, -40); break;
-      case "join": this.tone(587, 0.08, "triangle", 0.07); this.tone(880, 0.1, "triangle", 0.06, 0, 0.07); break;
-      case "early": this.tone(180, 0.35, "square", 0.06, -60); break;
+      case "blip": u("ui-tick", 0.55); break;
+      case "pop": u("ui-off", 0.5); break;
+      case "right": u("ui-on", 0.6); break;
+      case "join": u("ui-on", 0.45, 1.2); break;
+      case "wrong": case "early": u("ui-deny", 0.65); break;
+      case "count": u("drum1", 0.85, 1, 0, 0.15); break;
+      case "go": u("drum-go", 1, 1, 0, 0.2); break;
+      case "start": u("ui-on", 0.55); u("drum1", 0.75, 1, 0.09, 0.15); break;
+      case "win": u("drum-win", 1, 1, 0, 0.2); this.samp("crowd1", 0.45, 0, 1, 0, 0.3, 0.4); break;
+      case "lose": u("drum-low", 0.95, 1, 0, 0.2); this.samp("power-down", 0.3, 0, 0.9, 0, 0.12, 0.3); break;
+      case "alarm": u("drum-low", 0.8, 1.15, 0, 0.2); u("ui-deny", 0.5, 1, 0.05); break;
+      case "pickup": u("pickup1", 0.4, 0.9 + Math.random() * 0.15); break;
+      case "bump": this.samp("thud1", 0.75, 0, 0.9 + Math.random() * 0.2) || this.tap(0.4, 500); break;
+      case "dash": this.samp("air1", 0.5, 0, 1.1) || this.tap(0.3, 3000); break;
+      case "fall": this.samp("fall1", 0.6) || this.tap(0.4, 700); break;
+      case "boom": this.blast(0.8, 0, 0, 0.25); break;
     }
+  },
+  // ---- one-shots that used to be beeps
+  // jump pad: a burst of compressed air and the deck kicking
+  pad(vol = 0.6) { if (!this.samp("air1", vol * 0.8, 0, 0.75 + Math.random() * 0.1, 0, 0, 0.4)) this.whoosh(vol, 0, 1); this.samp("thud1", vol * 0.5, 0, 1.25, 0, 0, 0.2); },
+  // something hard meeting metal: a hook that found nothing, a car nudging a barrier
+  clack(vol = 0.4, pan = 0, rate = 1) { this.samp("metal2", vol, pan, rate * (0.92 + Math.random() * 0.16)) || this.tap(vol * 0.6, 2600); },
+  // an electric discharge: sharp crack for a shot or a spark, the longer one for an EMP or a bolt landing
+  zap(vol = 0.5, pan = 0, long = 0) { this.samp(long ? "zap2" : "zap1", vol * (long ? 0.9 : 0.7), pan, 0.92 + Math.random() * 0.16, 0, 0, 0.6) || this.tap(vol * 0.6, 5200); if (long) this.samp("zap1", vol * 0.5, pan, 0.8, 0, 0, 0.6); },
+  // steam letting go (an overheated gun), a shield coming up, something powering down
+  steam(vol = 0.5) { this.samp("steam1", vol * 0.6, 0, 1, 0, 0, 0.3) || this.hiss(vol * 0.5, 0); },
+  shield(vol = 0.5) { this.samp("shield1", vol * 0.7, 0, 1, 0, 0, 0.4) || this.whoosh(vol * 0.6, 0, 1); },
+  // names for the sound test (Settings): what each one is and how to play it
+  LIST() {
+    const s = this, p = (n) => () => s.play(n);
+    return [["Menu tick", p("blip")], ["Menu confirm / ready", p("right")], ["Menu back / not ready", p("pop")], ["Denied / warning", p("wrong")], ["Someone joined", p("join")],
+      ["Countdown beat", p("count")], ["Go", p("go")], ["Game starting", p("start")], ["Victory", p("win")], ["Defeat", p("lose")], ["Payload planted", p("alarm")], ["Pickup", p("pickup")],
+      ["Hit marker", () => s.hit(0)], ["Headshot marker", () => s.hit(1)], ["Kill", () => s.kill(0)], ["Headshot kill", () => s.kill(1)], ["You are hit", () => s.hurt(30)], ["Heartbeat", () => s.heart(0.8)],
+      ["Pistol", () => s.shot("pistol")], ["SMG", () => s.shot("smg")], ["Rifle", () => s.shot("rifle")], ["Carbine", () => s.shot("carbine")], ["Heavy pistol", () => s.shot("heavy")], ["Shotgun", () => s.shot("shotgun")], ["Sniper", () => s.shot("sniper")], ["Laser shot", () => { s.shot("sniper"); s.zap(0.6); }], ["Distant shot", () => s.shot("rifle", 0.7, 0.4, 0.9)],
+      ["Reload rifle", () => s.reload("rifle", 2.4)], ["Reload pistol", () => s.reload("pistol", 1.6)], ["Reload shotgun", () => s.reload("shotgun", 3)], ["Empty click / pickup clank", () => s.clank(0.5)], ["Shell case", () => s.casing(1)],
+      ["Footstep", () => s.step(0.9, 0, 0)], ["Bullet on wall", () => s.impact(0, 0.8, 0)], ["Bullet on metal", () => s.impact(1, 0.8, 0)], ["Bullet passing", () => s.whiz(0.3)], ["Knife swing", () => s.swish(0.6)],
+      ["Grenade", () => s.blast(0.9, 0, 0, 0)], ["Big explosion", () => s.blast(1, 0, 1, 0)], ["Far explosion", () => s.blast(0.7, 0.3, 0, 0.8)], ["Smoke grenade", () => s.hiss(0.7, 0)], ["Crate breaks", () => s.crash(0, 0.7)], ["Glass breaks", () => s.crash(1, 0.7)],
+      ["Jump pad", () => s.pad(0.7)], ["Hook misses", () => s.clack(0.4, 0, 1.3)], ["Fall / you died", p("fall")], ["Body bump", p("bump")],
+      ["Car scrape", () => s.scrape(0.7, 0)], ["Nitro", () => s.whoosh(0.9, 0, 1)], ["EMP / bolt lands", () => s.zap(0.7, 0, 1)], ["Spark", () => s.zap(0.5)], ["Gun overheats", () => s.steam(0.7)], ["Shield", () => s.shield(0.7)], ["Crowd", () => s.cheer(0.8)],
+      ["Engine: idle to full and back (3 s)", () => { const e = s.engine(1); if (!e) return; const t0 = performance.now(), iv = setInterval(() => { const k = (performance.now() - t0) / 3000; if (k >= 1) { clearInterval(iv); e.stop(); return; } const r = k < 0.6 ? k / 0.6 : 1 - (k - 0.6) / 0.4; e.set(0.1 + r * 0.9, k < 0.6 ? 1 : 0.1, 0.5, 0, 1); }, 30); }]];
   },
 };

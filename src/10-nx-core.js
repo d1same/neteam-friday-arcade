@@ -34,22 +34,95 @@ const NX = {
   },
   tier() {
     const g = store("nfa-gfx") || {}, q = g.q || "auto", named = ["low", "medium", "high", "ultra"].indexOf(q);
-    const i = named >= 0 ? named : NX.autoTier();
+    // Auto corrects itself: a PC that could not hold its level last game (see drsTick) starts one lower on this card
+    const adj = named < 0 && g.adjGpu === NX.gpu() ? Math.min(0, +g.adj || 0) : 0;
+    const i = named >= 0 ? named : Math.max(0, NX.autoTier() + adj);
     return Object.assign({ i, auto: named < 0 }, NX.TIERS[i]);
   },
+  // ---- the display's refresh interval. Frames can never come faster than the display shows them, so a 30 Hz screen
+  // (Remote Desktop, some docks and TVs) must not be mistaken for a slow graphics card. The shortest steady average seen
+  // is the display; menus are light enough to trust in both directions, a match can only confirm a faster display.
+  hz: { ms: 16.67, acc: 0, n: 0, known: false },
+  hzTick(dtMs, light) {
+    const H = NX.hz; if (!(dtMs > 1) || dtMs > 120) { H.acc = 0; H.n = 0; return; }
+    H.acc += dtMs; if (++H.n < 24) return; const a = H.acc / H.n; H.acc = 0; H.n = 0;
+    if (!H.known || a < H.ms) { if (light || a < H.ms) { H.ms = a; H.known = true; } }
+    else if (light) H.ms += (a - H.ms) * 0.25;
+  },
+  // the frame time dynamic resolution aims for: 60 a second, or the display's own rate when that is slower
+  frameGoal() { return Math.min(42, Math.max(16.67, NX.hz.ms)); },
   // dynamic resolution: when frames take too long the picture is drawn a little smaller and scaled up, and it grows back
   // when there is room. Frame times are locked to the display's refresh, so "room" can only be found by trying: a step up
   // that drops frames is taken back and the next try waits twice as long.
-  drs: { k: 1, acc: 0, n: 0, hold: 4, cool: 6, up: 0 },
-  drsReset() { const D = NX.drs; D.k = 1; D.acc = 0; D.n = 0; D.hold = 4; D.cool = 6; D.up = 0; },
+  drs: { k: 1, acc: 0, n: 0, hold: 4, cool: 6, up: 0, sum: 0, cnt: 0, told: false },
+  drsReset() { const D = NX.drs; D.k = 1; D.acc = 0; D.n = 0; D.hold = 4; D.cool = 6; D.up = 0; D.sum = 0; D.cnt = 0; D.told = false; },
   drsTick(dtMs) {
     const D = NX.drs; if (!(dtMs > 0) || dtMs > 250) return D.k; D.acc += dtMs; D.n++; if (D.n < 30) return D.k;
-    const avg = D.acc / D.n; D.acc = 0; D.n = 0;
-    if (avg > 20.5 && D.k > 0.5) { if (D.up) D.cool = Math.min(64, D.cool * 2); D.up = 0; D.k = Math.max(0.5, D.k * (avg > 30 ? 0.8 : 0.9)); D.hold = D.cool; }
+    const avg = D.acc / D.n, goal = NX.frameGoal(); D.acc = 0; D.n = 0;
+    if (avg > goal * 1.23 && D.k > 0.5) { if (D.up) D.cool = Math.min(64, D.cool * 2); D.up = 0; D.k = Math.max(0.5, D.k * (avg > goal * 1.8 ? 0.8 : 0.9)); D.hold = D.cool; }
     else if (D.hold > 0) D.hold--;
-    else if (avg < 17.6 && D.k < 1) { D.k = Math.min(1, D.k + 0.1); D.up = 1; D.hold = 2; }
+    else if (avg < goal * 1.056 && D.k < 1) { D.k = Math.min(1, D.k + 0.1); D.up = 1; D.hold = 2; }
     else D.up = 0;
+    // Auto level: half a minute spent mostly at a much smaller picture means this level is too heavy for this card.
+    // A level lower at full size looks better and runs smoother, so the next game starts one lower.
+    D.sum += D.k; D.cnt++;
+    if (!D.told && D.cnt >= 50 && D.sum / D.cnt < 0.72) {
+      D.told = true; const g = store("nfa-gfx") || {}, T = NX.tier();
+      if (T.auto && T.i > 0) {
+        store("nfa-gfx", Object.assign(g, { adj: (g.adjGpu === NX.gpu() ? Math.min(0, +g.adj || 0) : 0) - 1, adjGpu: NX.gpu() }));
+        if (typeof toast === "function") toast("This PC is struggling at " + (T.name === "medium" ? "Medium" : T.name === "high" ? "High" : "Ultra") + " graphics. The next game starts one level lower (Settings to change).", 6000);
+      }
+    }
     return D.k;
+  },
+
+  // ---- frame rate display (F8, or the switch in Settings): what this PC really gets, half a second at a time
+  perf: { on: null, el: null, ts: [], hist: [], js: 0, draw: 0, n: 0, t0: 0, gl: null, ext: null, q: null, pend: [], gAcc: 0, gN: 0, gpuMs: -1, d0: 0, calls: 0, tris: 0, res: "", k: 1, live: 0 },
+  perfOn() { const P = NX.perf; if (P.on === null) P.on = (store("nfa-gfx") || {}).fps === 1 || /[#?&]fps\b/.test(location.href); return P.on; },
+  perfSet(on) { const P = NX.perf; P.on = !!on; store("nfa-gfx", Object.assign(store("nfa-gfx") || {}, { fps: on ? 1 : 0 })); if (P.el) P.el.hidden = !on; P.ts.length = 0; P.hist.length = 0; },
+  gpuName() { return NX.gpu().replace(/^ANGLE \((?:[^,]+, )?/, "").replace(/ \(0x[0-9a-f]+\).*$/i, "").replace(/ Direct3D.*$| OpenGL.*$|, .*$/i, "").replace(/\)$/, "").slice(0, 60) || "unknown graphics card"; },
+  // once per animation frame from the page loop. jsMs = time the game's own code took this frame (drawing included)
+  perfFrame(dtMs, jsMs, host, inGame) {
+    NX.hzTick(dtMs, !inGame);
+    const P = NX.perf; if (!NX.perfOn()) return;
+    if (!P.el) { P.el = document.createElement("div"); P.el.className = "perf-box"; P.el.setAttribute("aria-hidden", "true"); }
+    if (P.el.parentNode !== host) host.appendChild(P.el);
+    if (dtMs > 0 && dtMs < 2000) P.ts.push(dtMs); P.js += jsMs; P.n++;
+    const now = performance.now(); if (now - P.t0 < 500 || !P.ts.length) return; P.t0 = now;
+    const N = P.ts.length, avg = P.ts.reduce((a, b) => a + b, 0) / N;
+    P.hist = P.hist.concat(P.ts).slice(-480); const s = P.hist.slice().sort((a, b) => a - b), low = s[Math.min(s.length - 1, Math.floor(s.length * 0.99))];
+    const T = NX.tier(), lvl = ({ low: "Performance", medium: "Medium", high: "High", ultra: "Ultra" })[T.name] + (T.auto ? " (auto)" : "");
+    const rows = [Math.round(1000 / avg) + " FPS   " + avg.toFixed(1) + " ms   slowest " + Math.round(low) + " ms"];
+    if (inGame && now - P.live < 1500) {
+      if (P.gN) { P.gpuMs = P.gAcc / P.gN; P.gAcc = 0; P.gN = 0; }
+      rows.push("script " + (P.js / P.n).toFixed(1) + " ms (drawing " + (P.draw / P.n).toFixed(1) + ")" + (P.gpuMs >= 0 ? "   graphics card " + P.gpuMs.toFixed(1) + " ms" : ""));
+      rows.push(P.res + "   " + Math.round(T.scale * 100) + "% x " + P.k.toFixed(2) + "   " + lvl);
+      rows.push(P.calls + " draw calls   " + (P.tris > 9999 ? Math.round(P.tris / 1000) + "k" : P.tris) + " triangles");
+    } else rows.push("graphics: " + lvl);
+    rows.push(NX.gpuName() + "   display " + Math.round(1000 / NX.hz.ms) + " Hz");
+    P.el.textContent = rows.join("\n"); P.el.hidden = false;
+    P.ts.length = 0; P.js = 0; P.draw = 0; P.n = 0;
+  },
+  // around one frame's drawing (called by the post chain): draw-call counts and, where the browser offers it, real graphics card time
+  perfBegin(r) {
+    const P = NX.perf;
+    if (!P.on) { if (!r.info.autoReset) r.info.autoReset = true; return; }
+    r.info.autoReset = false; r.info.reset(); P.d0 = performance.now();
+    const gl = r.getContext();
+    if (P.gl !== gl) { P.gl = gl; P.q = null; P.pend = []; P.gpuMs = -1; P.gAcc = 0; P.gN = 0; try { P.ext = gl.getExtension("EXT_disjoint_timer_query_webgl2"); } catch (e) { P.ext = null; } }
+    if (P.ext && !P.q && P.pend.length < 4) { try { P.q = gl.createQuery(); gl.beginQuery(P.ext.TIME_ELAPSED_EXT, P.q); } catch (e) { P.q = null; P.ext = null; } }
+  },
+  perfEnd(r, w, h, k) {
+    const P = NX.perf; if (!P.on || !P.d0) return;
+    const gl = r.getContext(); P.draw += performance.now() - P.d0; P.d0 = 0; P.live = performance.now();
+    P.calls = r.info.render.calls; P.tris = r.info.render.triangles; P.res = w + " x " + h; P.k = k;
+    if (!P.ext || P.gl !== gl) return;
+    try {
+      if (P.q) { gl.endQuery(P.ext.TIME_ELAPSED_EXT); P.pend.push(P.q); P.q = null; }
+      while (P.pend.length && gl.getQueryParameter(P.pend[0], gl.QUERY_RESULT_AVAILABLE)) {
+        const q = P.pend.shift(); if (!gl.getParameter(P.ext.GPU_DISJOINT_EXT)) { P.gAcc += gl.getQueryParameter(q, gl.QUERY_RESULT) / 1e6; P.gN++; } gl.deleteQuery(q);
+      }
+    } catch (e) { P.ext = null; }
   },
 
   // ---- loading. Everything a map needs is counted so the loading screen can show real progress.

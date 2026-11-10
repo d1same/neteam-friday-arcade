@@ -53,12 +53,17 @@ const GFX = {
     mat.customProgramCacheKey = () => "paint" + (tex ? 1 : 0) + (shade ? shade.join("_") : "");
     mat.needsUpdate = true;
   },
+  // model files still on their way. A match waits for them (briefly) so soldiers and guns are there, lit and compiled,
+  // when the loading screen lifts, instead of popping in with a freeze a few seconds into the round
+  pending: 0,
+  track(p) { GFX.pending++; const done = () => { GFX.pending--; }; p.then(done, done); return p; },
+  whenLoaded(maxMs) { return new Promise((res) => { const t0 = performance.now(); let calm = 0; const tick = () => { calm = GFX.pending > 0 ? 0 : calm + 1; if (calm >= 2 || performance.now() - t0 > maxMs) res(); else setTimeout(tick, 40); }; tick(); }); },
   operator() {
     if (GFX._op) return GFX._op;
-    GFX._op = new Promise((res) => {
+    GFX._op = GFX.track(new Promise((res) => {
       const go = () => { try { new THREE_EXTRAS.GLTFLoader().load("models/operator.glb", (g) => res(g), null, () => res(null)); } catch (e) { res(null); } };
       if (window.THREE_EXTRAS) go(); else { const s = document.createElement("script"); s.src = "vendor/three-extras.min.js?v=2"; s.onload = go; s.onerror = () => res(null); document.head.append(s); }
-    });
+    }));
     return GFX._op;
   },
   // realistic rigged CC0 soldier (see models/CREDITS.txt) with walk and run clips.
@@ -66,7 +71,7 @@ const GFX = {
   soldier(lite) {
     const k = lite ? 1 : 0, C = GFX._sol || (GFX._sol = []); if (C[k]) return C[k];
     const load = (f) => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/" + f, (g) => res(g), null, () => res(null)); } catch (e) { res(null); } });
-    return C[k] = GFX.operator().then(() => load(lite ? "trooper-lod.glb?v=1" : "trooper.glb")).then((g) => g || !lite ? g : load("trooper.glb"));
+    return C[k] = GFX.track(GFX.operator().then(() => load(lite ? "trooper-lod.glb?v=1" : "trooper.glb")).then((g) => g || !lite ? g : load("trooper.glb")));
   },
   // a cloud of glowing points drawn in one call (sparks, chips of light): emit() adds one, update() moves and fades them all
   cloud(scene, N, size) {
@@ -82,11 +87,17 @@ const GFX = {
       } };
   },
   // quality: phones get a lighter pipeline
-  // render resolution: the device's native pixel density times the player's scale (Settings), capped for safety
-  pxRatio() { const g = store("nfa-gfx") || {}, rs = clamp(+g.rs || (this.lowEnd() ? 0.75 : 1), 0.5, 1.5); return Math.min(3, (devicePixelRatio || 1) * rs); },
+  // render resolution: the device's native pixel density times the player's scale (Settings). A 4K or high-density
+  // laptop screen has four times the pixels of a 1080p one, far more than an office graphics card can shade, so the
+  // picture is capped per quality level (about 1600x900, 1920x1080, 2560x1440, 4K) and the screen scales it up.
+  pxRatio(w, h) {
+    const g = store("nfa-gfx") || {}, rs = clamp(+g.rs || (this.lowEnd() ? 0.75 : 1), 0.5, 1.5); let pr = Math.min(3, (devicePixelRatio || 1) * rs);
+    if (w > 0 && h > 0) { const cap = Math.sqrt([1.45e6, 2.1e6, 3.7e6, 8.3e6][NX.tier().i] / (w * h)) * Math.max(1, rs); if (pr > cap) pr = Math.max(0.5, cap); }
+    return pr;
+  },
   // size the 3D canvas to fill the whole stage (the 16:10 HUD canvas floats centred on top of it)
   fitStage(F, cam) {
-    const box = $("#stagebox"), gc = $("#gameCanvas"), w = box.clientWidth || 960, h = box.clientHeight || 600, pr = this.pxRatio();
+    const box = $("#stagebox"), gc = $("#gameCanvas"), w = box.clientWidth || 960, h = box.clientHeight || 600, pr = this.pxRatio(w, h);
     if (F.w !== w || F.h !== h || F.pr !== pr) { F.w = w; F.h = h; F.pr = pr; F.renderer.setPixelRatio(pr); F.renderer.setSize(w, h, false); Object.assign(F.cv.style, { width: w + "px", height: h + "px", left: "0px", top: "0px", borderRadius: "0" }); cam.aspect = w / h; cam.updateProjectionMatrix(); }
     const gw = parseFloat(gc.style.width) || 960, gh = parseFloat(gc.style.height) || 600; F.gw = gw; F.gh = gh; pinToStage(F, gw, gh);
   },

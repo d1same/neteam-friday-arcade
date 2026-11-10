@@ -414,6 +414,28 @@ const race = {
     P.setXYZ(o, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 1, a[0] + nx, y, a[1] + nz); P.setXYZ(o + 2, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 3, a[0] - nx, y, a[1] - nz); P.setXYZ(o + 4, b[0] + nx, y, b[1] + nz); P.setXYZ(o + 5, b[0] - nx, y, b[1] - nz); P.needsUpdate = true;
   },
   // sparks: one cloud of points for the whole race (dozens fly whenever a bolt lands, and each used to be drawn on its own)
+  // one hidden frame with a sample of every weapon and crash effect in it, so the first drift, bolt or blast of the race
+  // does not freeze the picture while the graphics card compiles its shader
+  warmUp(V) {
+    const F = V.fps, T = THREE; if (!F || !F.post || !F.post.warm) return;
+    const snd = SFX.on, sh = F.shake, p = rcAt(0, 0), x = p[0], z = p[1], tmp = new T.Group(); SFX.on = false; F.wfx = F.wfx || [];
+    try {
+      this.boom(V, x, z); this.sparks(V, x, z, 0xffb347, 2);
+      const box = new T.BoxGeometry(1, 1, 1), smoke = this.smokeTex(F), glow = GFX.glowTex();
+      [new T.MeshBasicMaterial({ color: 0xffffff }), new T.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }), new T.MeshStandardMaterial({ color: 0x808080 }), F.spillM].forEach(m => { if (!m) return; const o = new T.Mesh(box, m); o.scale.setScalar(0.01); tmp.add(o); });
+      [new T.SpriteMaterial({ map: glow, transparent: true, depthWrite: false }), new T.SpriteMaterial({ map: smoke, transparent: true, depthWrite: false }), new T.SpriteMaterial({ map: smoke, transparent: true, depthWrite: false, fog: false })].forEach(m => { const o = new T.Sprite(m); o.scale.setScalar(0.01); tmp.add(o); });
+      tmp.add(new T.Line(new T.BufferGeometry().setFromPoints([new T.Vector3(0, 0, 0), new T.Vector3(0.01, 0, 0)]), new T.LineBasicMaterial({ color: 0xffffff, transparent: true })));
+      tmp.position.set(x, 1, z); F.scene.add(tmp);
+    } catch (e) { console.warn("[nx] effect samples", e); }
+    if (F.nx) F.nx.adopt(F.scene);
+    F.post.warm(F.scene, F.cam3);
+    try {
+      F.scene.remove(tmp); tmp.children.forEach(o => { if (o.material !== F.spillM) o.material.dispose(); });
+      for (const o of F.wfx) { F.scene.remove(o.m); o.m.material.dispose(); } F.wfx = [];
+      if (F.spk) F.spk.update(10, 14);
+    } catch (e) { console.warn("[nx] effect samples", e); }
+    if (F.boomL) F.boomL.intensity = 0; F.shake = sh; SFX.on = snd;
+  },
   sparks(V, x, z, col, n) {
     const F = V.fps, K = F.spk || (F.spk = GFX.cloud(F.scene, 480, 0.13)), c = (GFX._bc || (GFX._bc = new THREE.Color())).set(col).multiplyScalar(4);
     for (let i = 0; i < n; i++) { const a = Math.random() * 6.28, sp = 3 + Math.random() * 7; K.emit(x, 1, z, Math.cos(a) * sp, 1 + Math.random() * 5, Math.sin(a) * sp, 0.3 + Math.random() * 0.3, c.r, c.g, c.b); }
@@ -431,7 +453,7 @@ const race = {
   reset(V) {
     const F = V.fps; if (!F || !F.me) return;
     const c = F.me, n = rcNearest(c.x, c.z, c.i), p = rcAt(n.i, 0);
-    c.x = p[0]; c.z = p[1]; c.a = rcHead(n.i); c.v = Math.min(c.v, 8); c.slip = 0; c.dc = 0; SFX.play("pop");
+    c.x = p[0]; c.z = p[1]; c.a = rcHead(n.i); c.v = Math.min(c.v, 8); c.slip = 0; c.dc = 0; SFX.play("dash");
   },
   clientInput(V, dt, inp) {
     const F = V.fps; if (!F || !F.ready) return null;
@@ -461,19 +483,19 @@ const race = {
       if (F.hitSeen == null) F.hitSeen = q[8];
       if (q[8] !== F.hitSeen) {
         F.hitSeen = q[8]; const k = q[9], src = F.remote[q[11]], who = V.ro[q[11]] ? V.ro[q[11]].n : "";
-        if (k === 1) { c.slow = 2.6; F.shake = 0.4; SFX.tone(1400, 0.35, "sawtooth", 0.06, -1200); F.toast = { s: "EMP'D", sub: who, life: 1.4, col: "#4cc9f0" }; }
+        if (k === 1) { c.slow = 2.6; F.shake = 0.4; SFX.zap(0.8, 0, 1); SFX.samp("power-down", 0.35, 0, 1.15); F.toast = { s: "EMP'D", sub: who, life: 1.4, col: "#4cc9f0" }; }
         if (k === 2) { c.spin = 0.9; c.spinDir = Math.random() < 0.5 ? -1 : 1; c.v *= 0.5; F.shake = 0.3; SFX.play("bump"); F.toast = { s: "SPILL!", sub: who, life: 1.2, col: "#d08a4a" }; }
-        if (k === 7) { c.slow = Math.max(c.slow || 0, 0.5); c.v *= 0.85; F.shake = Math.max(F.shake, 0.22); SFX.tone(900, 0.12, "square", 0.05, -600); F.toast = { s: "ZAPPED", sub: who, life: 0.9, col: "#4cc9f0" }; F.zapT = 0.35; }
+        if (k === 7) { c.slow = Math.max(c.slow || 0, 0.5); c.v *= 0.85; F.shake = Math.max(F.shake, 0.22); SFX.zap(0.65); F.toast = { s: "ZAPPED", sub: who, life: 0.9, col: "#4cc9f0" }; F.zapT = 0.35; }
         if (k === 8) { c.spin = 1.1; c.spinDir = Math.random() < 0.5 ? -1 : 1; c.v *= 0.35; F.shake = 1; F.toast = { s: "PACKET BOMB!", sub: who, life: 1.4, col: "#ffb347" }; }
         if (k === 9) { F.blindT = 2.6; c.slow = Math.max(c.slow || 0, 0.4); F.toast = { s: "SMOKED", sub: who, life: 1.2, col: "#c9ced8" }; }
         if (k === 3) { c.slow = 0.9; c.v *= 0.55; F.shake = 0.6; SFX.play("boom"); if (src) { const dx = c.x - src.x, dz = c.z - src.z, d = Math.hypot(dx, dz) || 1; c.x += dx / d * 2.5; c.z += dz / d * 2.5; } F.toast = { s: "PUNCHED", sub: who, life: 1.2, col: "#ff6a1a" }; }
       }
       if (F.boSeen == null) F.boSeen = q[12];
       if (q[12] !== F.boSeen) { F.boSeen = q[12]; c.bo = Math.max(c.bo || 0, 2.2); c.boEv = (c.boEv || 0) + 1; }
-      if (q[7] && q[7] !== F.lastIt) SFX.play("right"); F.lastIt = q[7];
+      if (q[7] && q[7] !== F.lastIt) SFX.play("pickup"); F.lastIt = q[7];
     }
     if (F.firing && go && !fin && q && !q[14] && performance.now() - F.fireAt > 320) { F.fireAt = performance.now(); F.sq.fire = ++F.fireSeq; }
-    if (q && q[14] && F.firing && !F.ohWarn) { F.ohWarn = 1; SFX.tone(220, 0.2, "square", 0.05, -80); } if (q && !q[14]) F.ohWarn = 0;
+    if (q && q[14] && F.firing && !F.ohWarn) { F.ohWarn = 1; SFX.steam(0.7); } if (q && !q[14]) F.ohWarn = 0;
     const ev = c.boEv || 0;
     // slipstream: tucked in behind another car you gain on it
     { let tow = 0; const sa = Math.sin(c.a), ca = Math.cos(c.a); if (c.v > 24 && go) Object.keys(F.remote).forEach(k => { if (+k === me) return; const o = F.remote[k], dx = o.x - c.x, dz = o.z - c.z, fw = dx * sa + dz * ca; if (fw > 3 && fw < 22 && Math.abs(dx * ca - dz * sa) < 2.2) tow = Math.max(tow, 1 - (fw - 3) / 19); });
@@ -646,7 +668,8 @@ const race = {
       this.buildDyn(V, scene);
       scene.traverse(o => { if (o.isMesh && !o.userData.nxStatic && o.material && o.material.isMeshStandardMaterial && !(o.geometry && o.geometry.type === "PlaneGeometry")) o.castShadow = true; });
       S.adopt(scene);
-      F.ready = true;
+      // wait for the driver models, then prepare every shader behind the loading screen (see NXP warm)
+      return GFX.whenLoaded(7000).then(() => { if (V.fps !== F || APP.V !== V) return; this.warmUp(V); F.ready = true; });
     }).catch((e) => { console.error("[nx] race build failed", e); F.failed = true; });
   },
   // ---- everything that moves: cars, pickups, spills, effects
@@ -766,16 +789,16 @@ const race = {
       if (k === 1 && b) { // lightning bolt from shooter to target
         const pts = []; for (let s2 = 0; s2 <= 10; s2++) { const f = s2 / 10; pts.push(new T.Vector3(lerp(a.x, b.x, f) + (s2 % 10 ? (Math.random() - 0.5) * 1.6 : 0), 1.4 + (s2 % 10 ? (Math.random() - 0.5) * 1.2 : 0), lerp(a.z, b.z, f) + (s2 % 10 ? (Math.random() - 0.5) * 1.6 : 0))); }
         const ln = new T.Line(new T.BufferGeometry().setFromPoints(pts), new T.LineBasicMaterial({ color: new T.Color(1.2, 3, 4), transparent: true }));
-        F.scene.add(ln); F.fx.push({ m: ln, life: 0.35, kind: "line" }); b.zapT = 2.4; SFX.tone(1800, 0.25, "sawtooth", 0.05 * vol, -1500);
+        F.scene.add(ln); F.fx.push({ m: ln, life: 0.35, kind: "line" }); b.zapT = 2.4; SFX.zap(0.8 * vol, 0, 1);
       }
       if (k === 3) { const ring = new T.Mesh(F.ringG, new T.MeshBasicMaterial({ color: new T.Color(3, 1.2, 0.3), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); ring.position.set(a.x, 0.3, a.z); F.scene.add(ring); F.fx.push({ m: ring, life: 0.5, kind: "ring" }); SFX.noise(0.3, 0.12 * vol, 500); SFX.tone(70, 0.3, "sine", 0.15 * vol, -30); F.shake = Math.max(F.shake || 0, 0.25 * vol); }
-      if (k === 2) SFX.tone(300, 0.15, "sine", 0.06 * vol, -150);
-      if (k === 7) { SFX.tone(1500, 0.09, "sawtooth", 0.05 * vol, -900); SFX.tone(2400, 0.05, "square", 0.025 * vol, -1200); a.flashT = 0.08; }
-      if (k === 10 || k === 12) { const ev2 = g.ev.find(e => e[0] === n); if (ev2 && ev2[4] != null) this.sparks(V, ev2[4], ev2[5], k === 10 ? 0x9fe8ff : 0xffd59a, k === 10 ? 18 : 8); if (k === 10) SFX.tone(600, 0.1, "square", 0.05 * vol, -300); }
+      if (k === 2) SFX.samp("thud1", 0.4 * vol, 0, 1.5);
+      if (k === 7) { SFX.shot("smg", 0.5 * vol, 0, clamp(1 - vol, 0, 0.9)); a.flashT = 0.08; }
+      if (k === 10 || k === 12) { const ev2 = g.ev.find(e => e[0] === n); if (ev2 && ev2[4] != null) this.sparks(V, ev2[4], ev2[5], k === 10 ? 0x9fe8ff : 0xffd59a, k === 10 ? 18 : 8); if (k === 10) SFX.zap(0.55 * vol); }
       if (k === 11) { const ev2 = g.ev.find(e => e[0] === n); if (ev2 && ev2[4] != null) this.boom(V, ev2[4], ev2[5]); }
       if (k === 13) SFX.swish(0.6 * vol);
       if (k === 14) SFX.hiss(vol, 0);
-      if (k === 4 || k === 6) SFX.tone(k === 6 ? 900 : 600, 0.25, "triangle", 0.06 * vol, 500);
+      if (k === 4) SFX.shield(0.6 * vol); if (k === 6) { SFX.clack(0.6 * vol, 0, 0.8); SFX.zap(0.35 * vol); }
     });
     for (const o of F.fx) { o.life -= dt; if (o.kind === "ring") { const s2 = 1 + (0.5 - o.life) * 22; o.m.scale.set(s2, 1, s2); } o.m.material.opacity = Math.max(0, o.life * 2.5); if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); if (o.kind === "line") o.m.geometry.dispose(); } }
     F.fx = F.fx.filter(o => o.life > 0);
@@ -864,9 +887,9 @@ const race = {
       const sumPrev = q[1] ? null : 0;
       ctx.fillText("BEST " + (q[4] ? (q[4] / 1000).toFixed(2) : "--.--"), W - 28, 68);
       // lap toasts
-      if (q[1] > F.lastLd && !done) { F.toast = { s: q[1] === RC_LAPS - 1 ? "FINAL LAP" : "LAP " + (q[1] + 1), sub: q[6] ? (q[6] / 1000).toFixed(2) + " s" : "", life: 2.2, col: q[1] === RC_LAPS - 1 ? "#ff6b57" : "#ffd23f" }; SFX.play("right"); }
+      if (q[1] > F.lastLd && !done) { F.toast = { s: q[1] === RC_LAPS - 1 ? "FINAL LAP" : "LAP " + (q[1] + 1), sub: q[6] ? (q[6] / 1000).toFixed(2) + " s" : "", life: 2.2, col: q[1] === RC_LAPS - 1 ? "#ff6b57" : "#ffd23f" }; SFX.play("count"); }
       F.lastLd = q[1];
-      if (done && !F.finShown) { F.finShown = true; SFX.cheer(done === 1 ? 1 : 0.6); F.toast = { s: done === 1 ? "WINNER!" : "FINISHED " + done + (["", "ST", "ND", "RD"][done] || "TH"), sub: (q[3] / 1000).toFixed(2) + " s", life: 4, col: done === 1 ? "#ffd23f" : "#3ddc97" }; SFX.play(done === 1 ? "win" : "right"); }
+      if (done && !F.finShown) { F.finShown = true; SFX.samp("applause1", done === 1 ? 0.7 : 0.45, 0, 1, 0, 0.25, 0.5); F.toast = { s: done === 1 ? "WINNER!" : "FINISHED " + done + (["", "ST", "ND", "RD"][done] || "TH"), sub: (q[3] / 1000).toFixed(2) + " s", life: 4, col: done === 1 ? "#ffd23f" : "#3ddc97" }; SFX.play(done === 1 ? "win" : "count"); }
       // wrong way
       if (F.lastDist != null && q[0] < F.lastDist - 1 && !done) F.wrongT = Math.min(2, F.wrongT + dt * 3); else F.wrongT = Math.max(0, F.wrongT - dt);
       F.lastDist = q[0];
