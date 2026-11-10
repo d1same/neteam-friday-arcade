@@ -154,8 +154,10 @@ const race = {
         if (inp && go && Number.isInteger(inp.use) && inp.use !== p.useSeq) { p.useSeq = inp.use; if (p.it) this.useItem(S, i); }
         if (inp && go && Number.isInteger(inp.fire) && inp.fire !== p.fireSeq) { p.fireSeq = inp.fire; this.shoot(S, i); }
         if (inp && go && Number.isFinite(inp.x) && Number.isFinite(inp.z)) {
+          // the car goes where its driver says it is. (This used to ignore any jump of 60+ track samples, so one long
+          // network stall left that car frozen for the rest of the race.) Progress is rate-limited below instead.
           const n = rcNearest(inp.x, inp.z, p.i);
-          if (Math.abs(rcWrap(n.i - p.i)) < 60) { p.x = inp.x; p.z = inp.z; p.a = +inp.a || 0; p.v = +inp.v || 0; p.i = n.i; p.bo = inp.bo ? 1 : 0; }
+          p.x = inp.x; p.z = inp.z; p.a = +inp.a || 0; p.v = clamp(+inp.v || 0, -12, RC_BOOST + 4); p.i = n.i; p.bo = inp.bo ? 1 : 0;
         }
       }
       if (!go) return;
@@ -166,7 +168,10 @@ const race = {
       // coffee spills
       for (const hz of g.hz) if (!hz.gone && Math.hypot(hz.x - p.x, hz.z - p.z) < 2.1 && !(hz.own === i && g.t - hz.t0 < 1.2)) { hz.gone = 1; this.hit(S, i, 2, hz.own); }
       if (p.fin) return;
-      p.dist += rcWrap(p.i - prevI);
+      // forward progress can't be credited faster than a boosting car could really cover it (with slack for lag)
+      p.pb = Math.min(110, (p.pb == null ? 110 : p.pb) + dt * 45);
+      let adv = rcWrap(p.i - prevI); if (adv > 0) { adv = Math.min(adv, Math.floor(p.pb)); p.pb -= adv; }
+      p.dist += adv;
       const ld = p.dist < 0 ? 0 : Math.floor(p.dist / RC.N);
       if (ld > p.ld) { const prevT = p.lt.reduce((s, v) => s + v, 0); p.lt.push(Math.round(g.t * 1000) - prevT); p.ld = ld;
         if (ld >= RC_LAPS) { p.fin = ++g.place; p.ft = Math.round(g.t * 1000); if (!g.firstFin) g.firstFin = g.t; } }
@@ -275,7 +280,7 @@ const race = {
       bt: g.P.map(p => p.bot ? [+p.x.toFixed(2), +p.z.toFixed(2), +p.a.toFixed(3), +p.v.toFixed(1), p.bo > 0 ? 1 : 0, +(p.slip || 0).toFixed(2)] : 0) };
   },
   timeLeft(S) { const g = S.g; if (g.t < 0) return -g.t * 1000; if (g.firstFin) return Math.max(0, (g.firstFin + this.GRACE - g.t) * 1000); return (this.LIMIT - g.t) * 1000; },
-  done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b && !p.gone); return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
+  done(S) { const g = S.g; const humans = g.P.filter((p, i) => !S.ro[i].b && !p.gone); if (!humans.length && g.t > 0 && S.ro.some(r => !r.b)) return true; return g.t >= this.LIMIT || (g.firstFin && g.t >= g.firstFin + this.GRACE) || (humans.length && humans.every(p => p.fin)); },
   mapList() { const sub = { dusk: "Dusk", dawn: "Sunrise", neon: "Neon night", storm: "Storm" }, d = { manhattan: "flowing", midtown: "tight grid", bridge: "long and fast", harbor: "sweepers", neon: "hairpins", queens: "high speed" }; return Object.keys(RC_TRACKS).map(id => ({ id, n: RC_TRACKS[id].n, sub: sub[RC_TRACKS[id].sky || "dusk"] + " · " + (d[id] || "") })); },
   rank(S) {
     const g = S.g;
@@ -327,7 +332,8 @@ const race = {
 
   // ---------------- client ----------------
   clientEnter(V) {
-    const F = V.fps = { ready: false, failed: false, me: null, rsq: -1, cam: 0, stick: null, brake: false, drift: false, remote: {}, useSeq: 0, hitSeen: null, boSeen: null, evSeen: null, hzM: {}, fx: [], lastBoEv: 0, fireSeq: 0, firing: false, fireAt: 0, blM: {}, bmM: {}, skM: {}, wfx: [], blindT: 0, toast: null, lastLd: 0, prevPos: 0, wrongT: 0, lastDist: null, shake: 0 };
+    const sq = this._seq && this._seq.sid === V.sid ? this._seq : (this._seq = { sid: V.sid, use: 0, fire: 0 });
+    const F = V.fps = { ready: false, failed: false, me: null, rsq: -1, cam: 0, stick: null, brake: false, drift: false, remote: {}, sq, useSeq: sq.use, hitSeen: null, boSeen: null, evSeen: null, hzM: {}, fx: [], lastBoEv: 0, fireSeq: sq.fire, firing: false, fireAt: 0, blM: {}, bmM: {}, skM: {}, wfx: [], blindT: 0, toast: null, lastLd: 0, prevPos: 0, wrongT: 0, lastDist: null, shake: 0 };
     loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
     const cv = $("#gameCanvas"), unb = F.unbind = [];
     const on = (el, ev, fn, o) => { el.addEventListener(ev, fn, o); unb.push(() => el.removeEventListener(ev, fn, o)); };
@@ -400,7 +406,7 @@ const race = {
     const ring = new T.Mesh(F.ringG, new T.MeshBasicMaterial({ color: new T.Color(2.4, 1.3, 0.5), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); ring.position.set(x, 0.1, z); F.scene.add(ring); F.wfx.push({ m: ring, life: 0.45, max: 0.45, s0: 0.5, s1: 8, op: 0.9 });
     this.sparks(V, x, z, 0xffb347, low ? 12 : 26);
   },
-  useItem2(V) { const F = V.fps, q = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !q || !q[7]) return; F.useSeq++; },
+  useItem2(V) { const F = V.fps, q = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!F || !q || !q[7]) return; F.sq.use = ++F.useSeq; },
   reset(V) {
     const F = V.fps; if (!F || !F.me) return;
     const c = F.me, n = rcNearest(c.x, c.z, c.i), p = rcAt(n.i, 0);
@@ -411,7 +417,11 @@ const race = {
     const me = V.meIdx; if (me < 0) return null;
     const g = V.g || {}, q = g.pl && g.pl[me];
     if (!F.me) {
-      const row = Math.floor(me / 2), side = me % 2 ? 1 : -1, idx = RC.N - 6 - row * 5, p = rcAt(idx, side * 3.6);
+      const row = Math.floor(me / 2), side = me % 2 ? 1 : -1;
+      let idx = RC.N - 6 - row * 5, lat = side * 3.6;
+      // coming back into a race that is under way: pick up where the host last had us, not back on the grid
+      if (q && g.t > 0 && q[0] > 0) { idx = ((q[0] % RC.N) + RC.N) % RC.N; lat = 0; }
+      const p = rcAt(idx, lat);
       F.me = { x: p[0], z: p[1], a: rcHead(idx), v: 0, i: idx, bo: 0, skill: 1 };
     }
     const c = F.me, go = g.t != null && g.t >= 0 && V.h.ph === "play", fin = q && q[2];
@@ -436,7 +446,7 @@ const race = {
       if (q[12] !== F.boSeen) { F.boSeen = q[12]; c.bo = Math.max(c.bo || 0, 2.2); c.boEv = (c.boEv || 0) + 1; }
       if (q[7] && q[7] !== F.lastIt) SFX.play("right"); F.lastIt = q[7];
     }
-    if (F.firing && go && !fin && q && !q[14] && performance.now() - F.fireAt > 320) { F.fireAt = performance.now(); F.fireSeq++; }
+    if (F.firing && go && !fin && q && !q[14] && performance.now() - F.fireAt > 320) { F.fireAt = performance.now(); F.sq.fire = ++F.fireSeq; }
     if (q && q[14] && F.firing && !F.ohWarn) { F.ohWarn = 1; SFX.tone(220, 0.2, "square", 0.05, -80); } if (q && !q[14]) F.ohWarn = 0;
     const ev = c.boEv || 0;
     rcDrive(c, dt, gas, steer, F.drift, false);

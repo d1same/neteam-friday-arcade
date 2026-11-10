@@ -480,14 +480,14 @@ function makeOps(md) {
       if (Math.hypot(p.x - p.ax, p.z - p.az) > 0.6) { p.actT = 0; return; }
       p.actT += dt;
       if (canPlant && p.actT >= this.PLANT) {
-        g.bomb = { st: 1, x: p.x, z: p.z, t: this.BOMB, site: ch === "a" ? 0 : 1, by: i }; p.pln++; p.actT = 0; p.cr = Math.min(9000, p.cr + 300);
+        g.bomb = { st: 1, x: p.x, z: p.z, t: this.BOMB, site: ch === "a" ? 0 : 1, by: i }; p.pln++; p.actT = 0; p.cr = Math.min(16000, p.cr + 300);
         this.say(S, [2, g.bomb.site]);
-      } else if (canDefuse && p.actT >= this.DEFUSE) { b.st = 2; p.dfs++; p.actT = 0; p.cr = Math.min(9000, p.cr + 300); }
+      } else if (canDefuse && p.actT >= this.DEFUSE) { b.st = 2; p.dfs++; p.actT = 0; p.cr = Math.min(16000, p.cr + 300); }
     },
     endRound(S, win, why) {
       const g = S.g; g.sc[win]++; g.ph = "post"; g.pt = this.POST;
       g.ls[win] = 0; g.ls[1 - win] = Math.min(4, g.ls[1 - win] + 1);
-      g.P.forEach(p => { p.cr = Math.min(9000, p.cr + (p.tm === win ? 3000 : 1400 + 500 * g.ls[1 - win])); p.actT = 0; });
+      g.P.forEach(p => { p.cr = Math.min(16000, p.cr + (p.tm === win ? 3000 : 1400 + 500 * g.ls[1 - win])); p.actT = 0; });
       this.say(S, [3, win, why]);
     },
     hostTick(S, dt, inputs) {
@@ -527,12 +527,12 @@ function makeOps(md) {
         // hit claims [id, target, head, weapon]
         if (Array.isArray(inp.hc) && g.ph === "live") {
           let mx = p.lastClaim;
-          for (const c of inp.hc) {
-            if (!Array.isArray(c) || !(c[0] > p.lastClaim)) continue;
+          for (const c of inp.hc.slice(-24)) {
+            if (!Array.isArray(c) || !Number.isFinite(c[0]) || !(c[0] > p.lastClaim)) continue;
             mx = Math.max(mx, c[0]);
             if ((c[1] | 0) < 0) { const k = -1 - (c[1] | 0), pp = OPS_PROPS[k], wi = c[3] | 0, W1 = OW[wi]; if (pp && W1 && this.owns(S, p, wi) && Math.hypot(pp.x - p.x, pp.z - p.z) < (W1.melee ? 3.4 : W1.range + 6)) this.hitProp(S, k, i, W1.dmg); continue; }
             const tg = c[1] | 0, q = P[tg], wi = c[3] | 0, W0 = OW[wi];
-            if (!q || !W0 || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
+            if (!q || !W0 || W0.rocket || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
             // one shot = one window; shotgun pellets share it
             if (g.t - p.lastHitT >= W0.rate * 0.55) { p.lastHitT = g.t; p.budget = W0.pel || 1; }
             if (!(p.budget > 0)) continue;
@@ -660,7 +660,7 @@ function makeOps(md) {
       };
     },
     timeLeft(S) { const g = S.g; if (!team) return (this.DUR - g.t) * 1000; return (g.bomb.st === 1 && g.ph === "live" ? g.bomb.t : g.pt) * 1000; },
-    done(S) { const g = S.g; return team ? g.over : troph ? (g.t >= this.DUR || g.P.some(p => p.hold >= this.HOLD)) : (g.t >= this.DUR || g.P.some(p => p.k >= this.GOAL)); },
+    done(S) { const g = S.g, hs = g.P.filter(p => !p.bot); if (hs.length && hs.every(p => p.gone)) return true; return team ? g.over : troph ? (g.t >= this.DUR || g.P.some(p => p.hold >= this.HOLD)) : (g.t >= this.DUR || g.P.some(p => p.k >= this.GOAL)); },
     rank(S) {
       if (troph) return S.g.P.map((p, i) => ({ i, v: Math.floor(p.hold), de: p.d, k: p.k, label: Math.floor(p.hold) + "s held · " + p.k + " elim" + (p.k === 1 ? "" : "s"), rec: Math.floor(p.hold) })).sort((a, b) => (b.v - a.v) || (b.k - a.k) || (a.de - b.de));
       const g = S.g, win = g.sc[0] === g.sc[1] ? -1 : g.sc[0] > g.sc[1] ? 0 : 1;
@@ -732,7 +732,7 @@ function makeOps(md) {
     clientEnter(V) {
       opsApplyTeamColors();
       const F = V.fps = { ready: false, failed: false, me: { x: OG * CS / 2, z: OG * CS / 2, a: 0, p: 0 }, rsq: -1, cur: 0, last: KNIFE, stepT: 0, ammo: OW.map(w => w.mag), reloadT: 0, fireCd: 0, firing: false, latch: false, scoped: false, bloom: 0, kick: 0,
-        shotN: 0, claimN: 0, claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: 0, buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
+        shotN: 0, claimN: Math.floor(now()), thSeq: Math.floor(now()), rkSeq: Math.floor(now()), claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: Math.floor(now()), buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
       loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
       this.bind(V);
     },
@@ -1028,6 +1028,7 @@ function makeOps(md) {
         else { this.reload(V); F.latch = true; }
       }
       const act = F.act && alive;
+      if (F.claims.length > 48) F.claims.splice(0, F.claims.length - 24);
       const out = { x: +F.me.x.toFixed(2), z: +F.me.z.toFixed(2), a: +F.me.a.toFixed(2), q: F.rsq, w: F.cur, sh: F.lastShot || 0, hc: F.claims.slice(-12), act: act ? 1 : 0, cr: F.cr > 0.5 ? 1 : 0, jh: +(F.jh || 0).toFixed(2), th: F.th || 0, rk: F.rk || 0, hk: F.hk ? F.hk.map(v => +v.toFixed(2)) : 0 };
       if (F.buyReq) out.buy = F.buyReq;
       return out;

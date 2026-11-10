@@ -7,6 +7,11 @@ services:
     volumes:
       - arcade-data:/data
     restart: unless-stopped
+    # the server runs as a non-root user and needs no extra privileges
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
 
 volumes:
   arcade-data:
