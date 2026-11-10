@@ -741,7 +741,7 @@ function renderMe() {
 const SHOT_V = 5;
 // map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
 const MAP_SHOT_V = 1;
-const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
+const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", capture: "Lasers + router", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;
   if (APP.heroSel === id) return; APP.heroSel = id;
@@ -849,7 +849,7 @@ const HOF = [
   ["Most kills in one match", o => o.bk, v => String(v)],
   ["Most damage", o => o.dmg, v => v >= 10000 ? Math.round(v / 1000) + "k" : v.toLocaleString()],
   ["Plants and defuses", o => o.obj, v => String(v)],
-  ["Golden Router time", o => o.hold, v => v >= 60 ? Math.floor(v / 60) + "m " + (v % 60) + "s" : v + "s"],
+  ["Router time", o => o.hold, v => v >= 60 ? Math.floor(v / 60) + "m " + (v % 60) + "s" : v + "s"],
   ["Matches played", o => o.games, v => String(v)],
 ];
 function renderBoard() {

@@ -114,7 +114,7 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .hero-rec b { font-family: var(--f-display); font-size: 20px; color: var(--bulb); }
 @media (max-width: 700px) { .hero { min-height: 340px; } .hero-in { padding: 20px 18px; } .hero-rec { display: none; } }
 /* games */
-.games { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.games { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 @media (max-width: 1240px) { .games { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .game-card img { width: 100%; aspect-ratio: 16 / 9; display: block; object-fit: cover; background: var(--ink-2); filter: saturate(.9) brightness(.82); transition: filter .2s, transform .35s; }
 .game-card:hover img, .game-card[aria-pressed="true"] img { filter: none; transform: scale(1.04); }

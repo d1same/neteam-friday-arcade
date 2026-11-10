@@ -104,7 +104,7 @@ const OPS_MAPS = {
   ] },
   // Laser Arena only: two tower roofs high over the city with nothing between them. v = open air (fall in and you are out),
   // ^ = booster that throws you across: jumps [pad x, pad z, landing x, landing z]
-  sky: { n: "Uplink", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["", ""], spawns: ["", ""],
+  sky: { n: "Uplink", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["", ""], spawns: ["", ""], homes: [[6, 8], [17, 15]],
     jumps: [[9, 4, 16, 4], [14, 5, 7, 5], [9, 11, 16, 11], [14, 12, 7, 12], [9, 18, 16, 18], [14, 19, 7, 19]],
     rows: [
     "##########vvvv##########",
@@ -214,6 +214,12 @@ function oCellH(cx, cz) { if (cx < 0 || cz < 0 || cx >= OG || cz >= OG) return 0
 function oHAt(x, z) { return oCellH(Math.floor(x / CS), Math.floor(z / CS)); }
 // open air (Uplink): no floor at all. Below roof level the side of the tower is a wall
 const OPS_DEEP = -99;
+// where the router sits when nobody has it: the map's "homes" (it alternates between them), else the T cells, else the middle
+function opsRouterHomes() {
+  if (OPS_M && OPS_M.homes) return OPS_M.homes.map(([cx, cz]) => [cx * CS + CS / 2, cz * CS + CS / 2]);
+  const tc = OPS_CELLS.T.length ? OPS_CELLS.T : [[OG >> 1, OG >> 1]];
+  return [[tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2]];
+}
 function oVoid(x, z) { return !!(OPS_M && OPS_M.sky) && oCh(x, z) === "v"; }
 function oFloorAt(x, z) { return oVoid(x, z) ? OPS_DEEP : oHAt(x, z); }
 function oDeckBlocks(x, z, r, feet) { if (!OPS_M || !OPS_M.open) return false; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) if (oFloorAt(x + a, z + b) > feet + 0.55) return true; return false; }
@@ -363,17 +369,18 @@ const OPS_EXTRA_BOTS = ["Kernel Bot", "Proxy Bot", "Daemon Bot", "Sudo Bot", "Ro
 function opsTeamCols(ro, tms) { const used = [0, 0]; ro.forEach((r, i) => { const t = tms[i] ? 1 : 0, cols = TEAM[t].cols; r.col = cols[used[t]++ % cols.length]; r.hex = PALETTE[r.col]; }); }
 
 function makeOps(md) {
-  const team = md === "team", troph = md === "trophy", laser = md === "laser", arena = troph || laser;
+  // md: "team" Breach, "ffa" Deathmatch, "trophy" Golden Router, "laser" Laser Arena, "capture" Capture the Router (lasers + the router)
+  const team = md === "team", gold = md === "trophy", cap = md === "capture", troph = gold || cap, laser = md === "laser" || cap, arena = troph || laser;
   return {
-    id: team ? "breach" : troph ? "golden" : laser ? "laser" : "deathmatch",
-    title: team ? "Breach Protocol" : troph ? "Golden Router" : laser ? "Laser Arena" : "Zero-Day Deathmatch",
-    tag: team ? "IT vs Business · 3D" : troph ? "Jump arena · hold the trophy · 3D" : laser ? "Lasers + grappling hook · 3D" : "Free-for-all shooter · 3D",
-    blurb: team ? "Red plants the payload. Blue stops it. First to 7 rounds." : troph ? "Grab the Golden Router and keep it. First to 90 seconds held wins." : laser ? "Every hit kills. Hook, jump and fly. First to 25 wins." : "Everyone for themselves. First to 25 wins.",
+    id: team ? "breach" : cap ? "capture" : troph ? "golden" : laser ? "laser" : "deathmatch",
+    title: team ? "Breach Protocol" : cap ? "Capture the Router" : troph ? "Golden Router" : laser ? "Laser Arena" : "Zero-Day Deathmatch",
+    tag: team ? "IT vs Business · 3D" : cap ? "Lasers + hold the router · 3D" : troph ? "Jump arena · hold the trophy · 3D" : laser ? "Lasers + grappling hook · 3D" : "Free-for-all shooter · 3D",
+    blurb: team ? "Red plants the payload. Blue stops it. First to 7 rounds." : cap ? "One-hit lasers. Grab the router and hold it. First to 60 seconds held wins." : troph ? "Grab the Golden Router and keep it. First to 90 seconds held wins." : laser ? "Every hit kills. Hook, jump and fly. First to 25 wins." : "Everyone for themselves. First to 25 wins.",
     how: [],
-    keys: troph ? ["WASD move", "Space jump (hold to bunny hop)", "Strafe in the air to speed up", "Walk over pads for guns, health, armor", "Rocket at your feet to rocket jump", "Touch the Golden Router to grab it", "4 / G frag"] : laser ? ["WASD move", "Space jump (hold to bunny hop)", "Right-click or F: grappling hook", "Click fire the laser · one hit kills", "Jump pads launch you up", "Uplink: boosters fly you over the gap · falling is out"] : team ? ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "E plant / defuse", "B buy"] : ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "B loadout", "Right-click scope / stab"],
+    keys: cap ? ["WASD move", "Space jump (hold to bunny hop)", "Click fire the laser · one hit kills", "Right-click or F: grappling hook", "Touch the router to grab it", "Holder: a one-hit shield, no hook", "Falling is out"] : troph ? ["WASD move", "Space jump (hold to bunny hop)", "Strafe in the air to speed up", "Walk over pads for guns, health, armor", "Rocket at your feet to rocket jump", "Touch the Golden Router to grab it", "4 / G frag"] : laser ? ["WASD move", "Space jump (hold to bunny hop)", "Right-click or F: grappling hook", "Click fire the laser · one hit kills", "Jump pads launch you up", "Uplink: boosters fly you over the gap · falling is out"] : team ? ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "E plant / defuse", "B buy"] : ["WASD move", "Space jump (onto boxes)", "C crouch (mid-jump for tall boxes)", "Shift walk (silent)", "1 2 3 weapons", "4 / G frag · 5 smoke", "B loadout", "Right-click scope / stab"],
     rec: troph ? { label: "Longest router hold", better: "max", fmt: v => v + "s" } : { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
-    BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: 300, GOAL: 25, HOLD: 90,
+    BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: cap ? 240 : 300, GOAL: 25, HOLD: cap ? 60 : 90,
     mapList() { return Object.keys(OPS_MAPS).filter(id => arena ? OPS_MAPS[id].only === "golden" || (laser && OPS_MAPS[id].only === "laser") : !OPS_MAPS[id].only).map(id => ({ id, n: OPS_MAPS[id].n, sub: OPS_MAPS[id].sky ? "Sky towers · fall = out · 2–10" : OPS_MAPS[id].only ? "Jump arena · 2–10" : id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
     fill(nHumans) { if (arena) return Math.max(6, Math.min(10, nHumans)); if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
@@ -388,10 +395,10 @@ function makeOps(md) {
         S.ro.forEach((r, i) => { if (!r.b) { P[i].tm = cnt[0] <= cnt[1] ? 0 : 1; cnt[P[i].tm]++; } });
         S.ro.forEach((r, i) => { if (r.b) { P[i].tm = cnt[0] <= cnt[1] ? 0 : 1; cnt[P[i].tm]++; } });
         opsTeamCols(S.ro, P.map(p => p.tm));
-      } else P.forEach((p, i) => { p.tm = i; p.w = troph ? -1 : laser ? LASER : 2; p.pw = 0; p.cur = troph ? 0 : laser ? LASER : 2; });
+      } else P.forEach((p, i) => { p.tm = i; p.w = gold ? -1 : laser ? LASER : 2; p.pw = 0; p.cur = gold ? 0 : laser ? LASER : 2; });
       OPS_SMOKES = [];
-      const tc = OPS_CELLS.T.length ? OPS_CELLS.T : [[OG >> 1, OG >> 1]], hx = tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, hz = tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2;
-      S.g = { gb: [], rk: [], rks: 0, wp: troph ? (OPS_M.picks || []).map(([cx, cz, it]) => ({ x: cx * CS + CS / 2, z: cz * CS + CS / 2, y: oCellH(cx, cz), it, rt: 0 })) : [], tr: troph ? { x: hx, z: hz, y: 0, hx, hz, by: -1, idle: 0 } : null, pr: this.propsFresh(), fx: [], fxs: 0, gn: [], sm: [], gns: 0, md, mp, t: 0, rd: 0, ph: team ? "buy" : "live", pt: 0, sc: [0, 0], P, bomb: { st: 0, x: 0, z: 0, t: 0, site: 0 }, kf: [], kseq: 0, ann: null, aseq: 0, ls: [0, 0], over: false, rsite: 0 };
+      const homes = opsRouterHomes(), hi = rint(0, homes.length - 1), [hx, hz] = homes[hi];
+      S.g = { gb: [], rk: [], rks: 0, wp: gold ? (OPS_M.picks || []).map(([cx, cz, it]) => ({ x: cx * CS + CS / 2, z: cz * CS + CS / 2, y: oCellH(cx, cz), it, rt: 0 })) : [], tr: troph ? { x: hx, z: hz, y: 0, hx, hz, hi, by: -1, idle: 0 } : null, pr: this.propsFresh(), fx: [], fxs: 0, gn: [], sm: [], gns: 0, md, mp, t: 0, rd: 0, ph: team ? "buy" : "live", pt: 0, sc: [0, 0], P, bomb: { st: 0, x: 0, z: 0, t: 0, site: 0 }, kf: [], kseq: 0, ann: null, aseq: 0, ls: [0, 0], over: false, rsite: 0 };
       if (team) this.startRound(S); else P.forEach((p, i) => this.spawnFFA(S, i, true));
     },
     // ---- breakable props (host)
@@ -490,15 +497,17 @@ function makeOps(md) {
       const g = S.g, tr = g.tr; if (!tr) return;
       if (tr.by >= 0) {
         const p = g.P[tr.by];
-        if (!p || !p.alive || p.gone) { const who = tr.by; tr.by = -1; tr.idle = 0; if (p) { p.hasTr = 0; tr.x = p.x; tr.z = p.z; } tr.y = oHAt(tr.x, tr.z); this.say(S, [7, who]); }
+        if (!p || !p.alive || p.gone) { const who = tr.by; tr.by = -1; tr.idle = 0; if (p) { p.hasTr = 0; p.sh = 0; tr.x = p.x; tr.z = p.z; } tr.y = oHAt(tr.x, tr.z); if (oVoid(tr.x, tr.z)) tr.idle = 9; this.say(S, [7, who]); }   // lost over the gap: back home in 3 s
         else { p.hold += dt; tr.x = p.x; tr.z = p.z; tr.y = p.jh || 0; }
         return;
       }
       tr.idle += dt;
-      if (tr.idle > 12 && Math.hypot(tr.x - tr.hx, tr.z - tr.hz) > 0.5) { tr.x = tr.hx; tr.z = tr.hz; tr.y = 0; tr.idle = 0; this.say(S, [8]); return; }
+      if (tr.idle > 12 && Math.hypot(tr.x - tr.hx, tr.z - tr.hz) > 0.5) {
+        const hm = opsRouterHomes(); if (hm.length > 1) { tr.hi = ((tr.hi || 0) + 1) % hm.length; [tr.hx, tr.hz] = hm[tr.hi]; }   // two homes: it goes back to the other side
+        tr.x = tr.hx; tr.z = tr.hz; tr.y = 0; tr.idle = 0; this.say(S, [8]); return; }
       let best = -1, bd = 1.35;
       g.P.forEach((q, j) => { if (!q.alive || q.gone) return; const d = Math.hypot(q.x - tr.x, q.z - tr.z); if (d < bd && Math.abs((q.jh || 0) - tr.y) < 1.4) { bd = d; best = j; } });
-      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; this.say(S, [6, best]); }   // the holder keeps every weapon
+      if (best >= 0) { const q = g.P[best]; tr.by = best; tr.idle = 0; q.hasTr = 1; if (cap) q.sh = 1; this.say(S, [6, best]); }   // with one-hit lasers the holder gets a shield that stops one hit   // the holder keeps every weapon
     },
     propsTick(S, dt) {
       const g = S.g;
@@ -564,7 +573,8 @@ function makeOps(md) {
       for (let k = 0; k < 24; k++) { const c = cellC(OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]); const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
       if (p.bot) p.bot.rs = {};
       p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.prot = g.t + 1.5; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
-      if (troph) { p.w = -1; p.pw = 0; p.cur = 0; p.gr = [1, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
+      p.sh = 0;
+      if (gold) { p.w = -1; p.pw = 0; p.cur = 0; p.gr = [1, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (laser) { p.w = LASER; p.pw = 0; p.cur = LASER; p.gr = [0, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.cur = p.w = [1, 2, 2, 3, 5, 7, 8, 9][rint(0, 7)]; p.pw = Math.random() < 0.5 ? 6 : 0; p.arm = 100; }
     },
@@ -573,6 +583,7 @@ function makeOps(md) {
       if (!q.alive) return;
       if (team && g.ph !== "live") return;   // a grenade that lands after the round is decided does nothing
       if (!team && from >= 0 && from !== tgt && g.t < (q.prot || 0)) return;   // a moment of spawn protection (ends when you shoot)
+      if (q.sh > 0 && from >= 0 && from !== tgt) { q.sh = 0; q.shT = g.t; if (q.bot) q.bot.alertT = 2.5; return; }   // the router holder's shield takes the first hit
       let dmg = raw != null ? raw : W0.dmg * (head ? W0.hs : 1);
       if (from >= 0 && from !== tgt && !W0.melee && !W0.laser && wi >= 0) { const f = g.P[from], dd = Math.hypot(f.x - q.x, f.z - q.z); dmg *= clamp(1.15 - dd / (W0.range * (W0.fo || 1.6)), 0.55, 1); }
       // armor (a vest) takes 45% of body damage; a headshot gets past it mostly, and the snipers punch through
@@ -817,7 +828,7 @@ function makeOps(md) {
       const g = S.g, b = g.bomb;
       return {
         md, mp: g.mp, rd: g.rd, hf: g.half ? 1 : 0, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
-        pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr, p.amS || 0]),
+        pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr, p.amS || 0, p.sh ? 1 : 0]),
         bt: g.P.map(p => p.bot ? (p.jh > 0.05 ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2), +p.jh.toFixed(2)] : [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)]) : 0),
         bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann, gb: (g.gb || []).map(e => e[0]), pr: g.pr.map((q, k) => { if (q.hp <= 0) return 0; const f = q.hp / OPROP[OPS_PROPS[k].t].hp; return f > 0.67 ? 1 : f > 0.34 ? 2 : 3; }).join(""), fx: g.fx,
         kb: g.P.map(p => p.kb || 0), rk: g.rk.map(r => [r.id, +r.x.toFixed(2), +r.y.toFixed(2), +r.z.toFixed(2)]), wp: g.wp.map(w => w.rt > 0 ? 0 : 1).join(""), tr: g.tr ? [+g.tr.x.toFixed(2), +g.tr.y.toFixed(2), +g.tr.z.toFixed(2), g.tr.by] : 0,
@@ -838,7 +849,7 @@ function makeOps(md) {
       const g = S.g;
       if (troph) {
         const rows = g.P.map((p, i) => ({ i, tm: -1, v: [Math.floor(p.hold), p.k, p.d, Math.round(p.dmg)] })).sort((a, b) => (b.v[0] - a.v[0]) || (b.v[1] - a.v[1]));
-        return { cols: ["HOLD", "K", "D", "DMG"], tips: ["Seconds holding the Golden Router", "Kills", "Deaths", "Damage dealt"], rows, mvp: rows.length ? rows[0].i : -1, teams: null, sub: "Golden Router · " + OPS_M.n };
+        return { cols: ["HOLD", "K", "D", "DMG"], tips: ["Seconds holding the Golden Router", "Kills", "Deaths", "Damage dealt"], rows, mvp: rows.length ? rows[0].i : -1, teams: null, sub: (cap ? "Capture the Router · " : "Golden Router · ") + OPS_M.n };
       }
       const rows = g.P.map((p, i) => {
         const kd = p.d ? p.k / p.d : p.k, hs = p.k ? Math.round(100 * p.hsk / p.k) : 0;
@@ -882,8 +893,8 @@ function makeOps(md) {
         drawChar(ctx, ro[1].c, W * 0.24, H * 0.42 + Math.sin(t * 3) * 14, 100, { t, color: ro[1].hex, phase: 1 });
         drawChar(ctx, ro[2].c, W * 0.78, H * 0.38 + Math.cos(t * 3) * 14, 100, { t, color: ro[2].hex, phase: 2 });
         if (laser) { ctx.strokeStyle = "#ff3df0"; ctx.lineWidth = 8; ctx.shadowColor = "#ff3df0"; ctx.shadowBlur = 24; ctx.beginPath(); ctx.moveTo(W * 0.3, H * 0.42); ctx.lineTo(W * 0.72, H * 0.38); ctx.stroke(); ctx.shadowBlur = 0; ctx.strokeStyle = "#cfd4de"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(W * 0.24, H * 0.35); ctx.lineTo(W * 0.5, H * 0.08); ctx.stroke(); }
-        else { ctx.save(); ctx.translate(W / 2, H * 0.52); ctx.shadowColor = "#ffc83d"; ctx.shadowBlur = 40; ctx.fillStyle = "#ffc83d"; ctx.fillRect(-90, -24, 180, 48); ctx.fillRect(-70, -90, 10, 70); ctx.fillRect(-5, -100, 10, 80); ctx.fillRect(60, -90, 10, 70); ctx.shadowBlur = 0; ctx.fillStyle = "#3ddc97"; for (let k = 0; k < 6; k++) ctx.fillRect(-60 + k * 22, 6, 10, 6); ctx.restore(); }
-        ctx.font = "700 56px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = laser ? "#ff3df0" : "#ffc83d"; ctx.fillText(laser ? "LASER ARENA" : "GOLDEN ROUTER", W / 2, H * 0.15);
+        if (troph) { ctx.save(); ctx.translate(W / 2, H * (cap ? 0.62 : 0.52)); ctx.shadowColor = "#ffc83d"; ctx.shadowBlur = 40; ctx.fillStyle = "#ffc83d"; ctx.fillRect(-90, -24, 180, 48); ctx.fillRect(-70, -90, 10, 70); ctx.fillRect(-5, -100, 10, 80); ctx.fillRect(60, -90, 10, 70); ctx.shadowBlur = 0; ctx.fillStyle = "#3ddc97"; for (let k = 0; k < 6; k++) ctx.fillRect(-60 + k * 22, 6, 10, 6); ctx.restore(); }
+        ctx.font = "700 56px 'Chakra Petch', sans-serif"; ctx.textAlign = "center"; ctx.fillStyle = laser ? "#ff3df0" : "#ffc83d"; ctx.fillText(cap ? "CAPTURE THE ROUTER" : laser ? "LASER ARENA" : "GOLDEN ROUTER", W / 2, H * 0.15);
       } else {
         drawChar(ctx, ro[1].c, W * 0.5, H * 0.58, 150, { t, color: ro[1].hex, mood: "shock" });
         drawChar(ctx, ro[2].c, W * 0.2, H * 0.66, 90, { t, color: ro[2].hex, phase: 1 });
@@ -1246,6 +1257,7 @@ function makeOps(md) {
     // grappling hook (Laser Arena): latch onto a wall or deck in front of you
     hook(V, on) {
       const F = V.fps, me = F.me; if (!F || !F.ready || !on) return; const pl = V.g && V.g.pl && V.g.pl[V.meIdx]; if (!pl || !pl[1]) return;
+      if (cap && pl[22]) { if (!(F.noHkT > 0)) { FX.text(W / 2, H * 0.62, "NO HOOK WHILE CARRYING THE ROUTER", "#ffd23f", 1.1); F.noHkT = 1; setTimeout(() => { F.noHkT = 0; }, 1000); } return; }
       const EY = F.eyeH || EYE, cp = Math.cos(me.p), dir = [-Math.sin(me.a) * cp, Math.sin(me.p), -Math.cos(me.a) * cp], h = Math.hypot(dir[0], dir[2]) || 1e-6, R = 34;
       let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, R) / h; const wallT = t, floorT = dir[1] < -1e-4 ? EY / -dir[1] : 1e9;
       t = oRayDecks([me.x, EY, me.z], dir, Math.min(t, floorT));
@@ -2196,12 +2208,12 @@ function makeOps(md) {
         F.pads.push({ ring, arrows, arc });
       }));
       // router home pedestal
-      const tc = OPS_CELLS.T; if (tc.length && troph) { const hx = tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, hz = tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2;
+      if (troph) opsRouterHomes().forEach(([hx, hz]) => {
         const ped = new T.Mesh(new T.CylinderGeometry(1.25, 1.45, 0.3, 6), mStd({ color: 0x23262e, metalness: 0.6, roughness: 0.35 })); ped.position.set(hx, 0.15, hz); scene.add(ped);
         GFX.skin(ped.material, "metal", 3, 1, { color: 0x4a4f5a, metal: 0.8, rough: 1.2 });
-        const tr = new T.Mesh(new T.CylinderGeometry(1.3, 1.3, 0.04, 6), mStd({ color: 0xffc83d, emissive: 0xffb000, emissiveIntensity: 1.2 })); tr.position.set(hx, 0.31, hz); scene.add(tr); }
+        const tr = new T.Mesh(new T.CylinderGeometry(1.3, 1.3, 0.04, 6), mStd({ color: 0xffc83d, emissive: 0xffb000, emissiveIntensity: 1.2 })); tr.position.set(hx, 0.31, hz); scene.add(tr); });
       // pickups
-      F.picks = (troph ? OPS_M.picks || [] : []).map(([cx, cz, it]) => {
+      F.picks = (gold ? OPS_M.picks || [] : []).map(([cx, cz, it]) => {
         const x = cx * CS + CS / 2, z = cz * CS + CS / 2, y = oCellH(cx, cz), col = it === "H" ? 0x3ddc97 : it === "A" ? 0x4cc9f0 : new T.Color(OW[it].col).getHex();
         const g = new T.Group(), baseM = mStd({ color: col, emissive: col, emissiveIntensity: 1.4, roughness: 0.4 });
         const base = new T.Mesh(new T.CylinderGeometry(0.62, 0.7, 0.08, 20), mStd({ color: 0x1b1d23, metalness: 0.6, roughness: 0.4 })); base.position.y = 0.04;
@@ -2229,6 +2241,7 @@ function makeOps(md) {
         scene.add(t0); F.trophy = t0;
         const bc = new T.Mesh(new T.CylinderGeometry(0.32, 0.32, 40, 16, 1, true), new T.MeshBasicMaterial({ color: new T.Color(2.4, 1.8, 0.5), transparent: true, opacity: 0.18, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
         scene.add(bc); F.beacon = bc;
+        if (cap) { const sm = new T.Mesh(new T.SphereGeometry(1.05, 24, 16), new T.MeshBasicMaterial({ color: new T.Color(0.9, 2.2, 3), transparent: true, opacity: 0.2, blending: T.AdditiveBlending, depthWrite: false })); sm.visible = false; scene.add(sm); F.trShield = sm; }
       }
       F.rkM = {}; F.cables = {};
     },
@@ -2246,6 +2259,9 @@ function makeOps(md) {
         if (by >= 0) { if (by === V.meIdx) { px = F.me.x; pz = F.me.z; py = (F.jh || 0) + 2.6; } else if (F.remote[by]) { const rm = F.remote[by]; px = rm.x; pz = rm.z; py = (rm.jh || 0) + 2.9; } }
         F.trophy.visible = F.beacon.visible = by !== V.meIdx; F.trophy.position.set(px, py, pz); F.trophy.rotation.y += dt * 1.4;
         F.beacon.position.set(px, py + 20, pz); F.beacon.material.opacity = (by >= 0 ? 0.26 : 0.16) + Math.sin(t * 5) * 0.04; F.trW = [px, py, pz]; F.trBy = by;
+        if (F.trShield) { const sh = by >= 0 && g.pl && g.pl[by] && g.pl[by][24] ? 1 : 0;
+          if (F.shWas && !sh && by >= 0) { const sx = by === V.meIdx ? F.me.x : px, sz = by === V.meIdx ? F.me.z : pz; SFX.shield(0.7 * SFX.fall(Math.hypot(sx - F.me.x, sz - F.me.z), 8)); }
+          F.shWas = sh; F.trShield.visible = !!sh && by !== V.meIdx; F.trShield.position.set(px, py - 1.9, pz); F.trShield.material.opacity = 0.16 + Math.sin(t * 6) * 0.05; }
       }
       const seen = {};
       (g.rk || []).forEach(([id, x, y, z]) => {
@@ -2598,7 +2614,7 @@ function makeOps(md) {
           ctx.save(); ctx.translate(ex, ey); ctx.fillStyle = "#ffd23f"; ctx.strokeStyle = "rgba(10,11,13,.85)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(9, 0); ctx.lineTo(0, 11); ctx.lineTo(-9, 0); ctx.closePath(); ctx.stroke(); ctx.fill();
           ctx.font = "700 11px 'JetBrains Mono', monospace"; ctx.lineWidth = 4; ctx.strokeText(Math.round(d) + "m", 0, 22); ctx.fillText(Math.round(d) + "m", 0, 22); ctx.restore();
         }
-        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · STAY ALIVE", W / 2, H - 104); }
+        if (pl && pl[22] && pl[1]) { const k = Math.min(1, mine / 10 / this.HOLD); box(W / 2 - 170, H - 118, 340, 40, 10, 0.78); ctx.fillStyle = "rgba(255,255,255,.12)"; ctx.fillRect(W / 2 - 150, H - 90, 300, 6); ctx.fillStyle = "#ffd23f"; ctx.fillRect(W / 2 - 150, H - 90, 300 * k, 6); ctx.font = "700 13px 'JetBrains Mono', monospace"; ctx.fillStyle = "#ffd23f"; ctx.fillText("YOU HAVE THE ROUTER · STAY ALIVE" + (cap ? (pl[24] ? " · SHIELD UP" : " · SHIELD GONE") : ""), W / 2, H - 104); }
       } else {
         const ranked = (g.pl || []).map((p, i) => ({ i, k: p[3], d: p[4] })).sort((a, b) => b.k - a.k || a.d - b.d);
         const lead = ranked[0], myRank = ranked.findIndex(o => o.i === me) + 1;
@@ -2795,4 +2811,5 @@ const opsTwist = (() => { let q, q2, pq, up; return (bone, ang) => {
 }; })();
 GAMES.golden = makeOps("trophy");
 GAMES.laser = makeOps("laser");
-GAME_ORDER.push("breach", "deathmatch", "golden", "laser");
+GAMES.capture = makeOps("capture");
+GAME_ORDER.push("breach", "deathmatch", "golden", "laser", "capture");
