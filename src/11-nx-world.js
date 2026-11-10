@@ -72,7 +72,7 @@ const NXW = (() => {
     // a theme is a function with optional settings on it: outdoor (open sky), H (wall height), blockH(x, z, ctx) = height of a solid cell
     const TH = NXW.themes[theme] || NXW.themes.office, outdoor = !!TH.outdoor;
     const H = M.wallH || TH.H || 3.2;
-    const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [] };
+    const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [], panes: [] };
     const ch = (x, z) => (x < 0 || z < 0 || x >= G || z >= G) ? "#" : rows[z][x];
     const solid = (x, z) => ch(x, z) === "#";
     const inb = (x, z) => x >= 0 && z >= 0 && x < G && z < G;
@@ -112,6 +112,8 @@ const NXW = (() => {
       const lu = Math.hypot(ux, uy, uz), lv = Math.hypot(vx, vy, vz), sc = o.fit ? null : matScale(key);
       const su = o.lm ? 1 : Math.max(1, Math.min(8, Math.ceil(lu / (o.seg || 1.1)))), sv = o.lm ? 1 : Math.max(1, Math.min(8, Math.ceil(lv / (o.seg || 1.1))));
       const base = b.nv, grp = o.lm ? -1 : vlGroups++;
+      // every glass quad is a pane the game can shatter: [key, first vertex, vertex count, corner, U, V]
+      if (MATS[key].kind === "glass") W.panes.push([key, base, (su + 1) * (sv + 1), [px, py, pz], [ux, uy, uz], [vx, vy, vz]]);
       // texture axes: world-planar so neighbouring pieces line up; "fit" stretches 0..1 over the quad (screens, signs)
       const an = [Math.abs(n0), Math.abs(n1), Math.abs(n2)], ax = an[1] > 0.7 ? 1 : an[0] > an[2] ? 0 : 2;
       for (let j = 0; j <= sv; j++) for (let i = 0; i <= su; i++) {

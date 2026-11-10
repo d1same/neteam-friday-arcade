@@ -4166,7 +4166,7 @@ const NXW = (() => {
     // a theme is a function with optional settings on it: outdoor (open sky), H (wall height), blockH(x, z, ctx) = height of a solid cell
     const TH = NXW.themes[theme] || NXW.themes.office, outdoor = !!TH.outdoor;
     const H = M.wallH || TH.H || 3.2;
-    const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [] };
+    const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [], panes: [] };
     const ch = (x, z) => (x < 0 || z < 0 || x >= G || z >= G) ? "#" : rows[z][x];
     const solid = (x, z) => ch(x, z) === "#";
     const inb = (x, z) => x >= 0 && z >= 0 && x < G && z < G;
@@ -4206,6 +4206,8 @@ const NXW = (() => {
       const lu = Math.hypot(ux, uy, uz), lv = Math.hypot(vx, vy, vz), sc = o.fit ? null : matScale(key);
       const su = o.lm ? 1 : Math.max(1, Math.min(8, Math.ceil(lu / (o.seg || 1.1)))), sv = o.lm ? 1 : Math.max(1, Math.min(8, Math.ceil(lv / (o.seg || 1.1))));
       const base = b.nv, grp = o.lm ? -1 : vlGroups++;
+      // every glass quad is a pane the game can shatter: [key, first vertex, vertex count, corner, U, V]
+      if (MATS[key].kind === "glass") W.panes.push([key, base, (su + 1) * (sv + 1), [px, py, pz], [ux, uy, uz], [vx, vy, vz]]);
       // texture axes: world-planar so neighbouring pieces line up; "fit" stretches 0..1 over the quad (screens, signs)
       const an = [Math.abs(n0), Math.abs(n1), Math.abs(n2)], ax = an[1] > 0.7 ? 1 : an[0] > an[2] ? 0 : 2;
       for (let j = 0; j <= sv; j++) for (let i = 0; i <= su; i++) {
@@ -6322,7 +6324,7 @@ function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq",
 let OPS_FEET = 0, OPS_STEP = 0.35;
 let OPS_JUMP = {}, OPS_ID = "", OPS_M = null, OPS_MAP = [], OG = 0, OPS_CELLS = null, OPS_SITE = null, OPS_PROPS = [], OPS_PALIVE = new Uint8Array(0);
 // breakable props: 0 hardware crate, 1 old monitor on a cart, 2 Li-ion UPS battery (explodes)
-const OPROP = [{ n: "crate", hp: 45, hx: 0.48, hz: 0.48, h: 0.96 }, { n: "monitor", hp: 25, hx: 0.42, hz: 0.34, h: 1.25 }, { n: "battery", hp: 30, hx: 0.38, hz: 0.38, h: 1.05 }];
+const OPROP = [{ n: "crate", hp: 100, hx: 0.48, hz: 0.48, h: 0.96 }, { n: "monitor", hp: 55, hx: 0.42, hz: 0.34, h: 1.25 }, { n: "battery", hp: 60, hx: 0.38, hz: 0.38, h: 1.05 }];
 // same layout on every machine: seeded from the map id, placed against walls, never in spawns
 function opsPlaceProps(id) {
   let sd = 0; for (const ch of id) sd = (sd * 31 + ch.charCodeAt(0)) >>> 0; sd = sd || 7;
@@ -6397,6 +6399,41 @@ function oPropBlock(x, z, r) { for (let i = 0; i < OPS_PROPS.length; i++) { cons
 function oPropTop(x, z, r, feet) { let g = 0; for (let i = 0; i < OPS_PROPS.length; i++) { const p = OPS_PROPS[i]; if (OPS_PALIVE[i] && p.h <= feet + OPS_STEP + 0.001 && p.h > g && Math.abs(x - p.x) < p.hx + r * 0.6 && Math.abs(z - p.z) < p.hz + r * 0.6) g = p.h; } return g; }
 function oPropAt(x, z, r) { for (let i = 0; i < OPS_PROPS.length; i++) { const p = OPS_PROPS[i]; if (OPS_PALIVE[i] && Math.abs(x - p.x) < p.hx + r && Math.abs(z - p.z) < p.hz + r) return i; } return -1; }
 // ray vs the standing props (3D slab test); returns [t, index] of the nearest hit before maxT
+// glass panes of the current map, taken from the world generator (every glass quad; the two faces of a screen are one pane).
+// {c centre, n normal, u/v unit edges, hu/hv half sizes, a area, r: [[material, first vertex, vertex count], ...]}
+let OPS_PANES = [], OPS_PANES_ID = "", OPS_PGONE = new Uint8Array(0);
+function opsPanesEnsure(W) {
+  if (OPS_PANES_ID === OPS_ID && (!W || OPS_PANES.src === W.sig)) return;
+  OPS_PANES = []; OPS_PANES_ID = OPS_ID; OPS_PGONE = new Uint8Array(0);
+  if (!OPS_M || typeof NXW === "undefined" || !NXW.themes[OPS_M.nx || OPS_M.theme]) return;
+  try { W = W || NXW.build(OPS_ID, OPS_M, { tex: NX_TEX }); } catch (e) { console.warn("[ops] no glass panes:", e && e.message); return; }
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  for (const [key, s0, cnt, P, U, V] of W.panes || []) {
+    const lu = Math.hypot(U[0], U[1], U[2]), lv = Math.hypot(V[0], V[1], V[2]); if (lu < 0.05 || lv < 0.05) continue;
+    const c = [P[0] + (U[0] + V[0]) / 2, P[1] + (U[1] + V[1]) / 2, P[2] + (U[2] + V[2]) / 2], u = U.map(x => x / lu), v = V.map(x => x / lv);
+    const n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    const same = OPS_PANES.find(q => Math.hypot(q.c[0] - c[0], q.c[1] - c[1], q.c[2] - c[2]) < 0.3 && Math.abs(dot(q.n, n)) > 0.9 && Math.abs(q.a - lu * lv) < 0.3);
+    if (same) same.r.push([key, s0, cnt]); else OPS_PANES.push({ c, n, u, v, hu: lu / 2, hv: lv / 2, a: lu * lv, r: [[key, s0, cnt]] });
+  }
+  // a strip lying on a bigger pane (frosting on a glass wall) goes with it
+  OPS_PANES.sort((a, b) => b.a - a.a);
+  for (let i = OPS_PANES.length - 1; i > 0; i--) { const q = OPS_PANES[i];
+    const big = OPS_PANES.slice(0, i).find(B => { if (Math.abs(dot(B.n, q.n)) < 0.9) return false; const r = [q.c[0] - B.c[0], q.c[1] - B.c[1], q.c[2] - B.c[2]]; return Math.abs(dot(r, B.n)) < 0.08 && Math.abs(dot(r, B.u)) < B.hu && Math.abs(dot(r, B.v)) < B.hv; });
+    if (big) { big.r.push(...q.r); OPS_PANES.splice(i, 1); } }
+  OPS_PANES.src = W.sig; OPS_PGONE = new Uint8Array(OPS_PANES.length);
+}
+// first unbroken pane along a ray, up to a little past maxT (glass sits just behind the face a bullet stops at): [t, pane or -1]
+function oRayPanes(o, d, maxT) {
+  let bt = maxT + 0.4, bi = -1;
+  for (let k = 0; k < OPS_PANES.length; k++) {
+    if (OPS_PGONE[k]) continue; const q = OPS_PANES[k], dn = d[0] * q.n[0] + d[1] * q.n[1] + d[2] * q.n[2]; if (Math.abs(dn) < 1e-4) continue;
+    const t = ((q.c[0] - o[0]) * q.n[0] + (q.c[1] - o[1]) * q.n[1] + (q.c[2] - o[2]) * q.n[2]) / dn; if (t <= 0.05 || t >= bt) continue;
+    const r = [o[0] + d[0] * t - q.c[0], o[1] + d[1] * t - q.c[1], o[2] + d[2] * t - q.c[2]];
+    if (Math.abs(r[0] * q.u[0] + r[1] * q.u[1] + r[2] * q.u[2]) > q.hu || Math.abs(r[0] * q.v[0] + r[1] * q.v[1] + r[2] * q.v[2]) > q.hv) continue;
+    bt = t; bi = k;
+  }
+  return [bt, bi];
+}
 function oRayProps(o, d, maxT) {
   let best = maxT, bi = -1;
   for (let i = 0; i < OPS_PROPS.length; i++) {
@@ -6505,12 +6542,13 @@ function makeOps(md) {
       } else P.forEach((p, i) => { p.tm = i; p.w = troph ? -1 : laser ? LASER : 2; p.pw = 0; p.cur = troph ? 0 : laser ? LASER : 2; });
       OPS_SMOKES = [];
       const tc = OPS_CELLS.T.length ? OPS_CELLS.T : [[OG >> 1, OG >> 1]], hx = tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, hz = tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2;
-      S.g = { rk: [], rks: 0, wp: troph ? (OPS_M.picks || []).map(([cx, cz, it]) => ({ x: cx * CS + CS / 2, z: cz * CS + CS / 2, y: oCellH(cx, cz), it, rt: 0 })) : [], tr: troph ? { x: hx, z: hz, y: 0, hx, hz, by: -1, idle: 0 } : null, pr: this.propsFresh(), fx: [], fxs: 0, gn: [], sm: [], gns: 0, md, mp, t: 0, rd: 0, ph: team ? "buy" : "live", pt: 0, sc: [0, 0], P, bomb: { st: 0, x: 0, z: 0, t: 0, site: 0 }, kf: [], kseq: 0, ann: null, aseq: 0, ls: [0, 0], over: false, rsite: 0 };
+      S.g = { gb: [], rk: [], rks: 0, wp: troph ? (OPS_M.picks || []).map(([cx, cz, it]) => ({ x: cx * CS + CS / 2, z: cz * CS + CS / 2, y: oCellH(cx, cz), it, rt: 0 })) : [], tr: troph ? { x: hx, z: hz, y: 0, hx, hz, by: -1, idle: 0 } : null, pr: this.propsFresh(), fx: [], fxs: 0, gn: [], sm: [], gns: 0, md, mp, t: 0, rd: 0, ph: team ? "buy" : "live", pt: 0, sc: [0, 0], P, bomb: { st: 0, x: 0, z: 0, t: 0, site: 0 }, kf: [], kseq: 0, ann: null, aseq: 0, ls: [0, 0], over: false, rsite: 0 };
       if (team) this.startRound(S); else P.forEach((p, i) => this.spawnFFA(S, i, true));
     },
     // ---- breakable props (host)
-    propsFresh() { OPS_PALIVE.fill(1); return OPS_PROPS.map(p => ({ hp: OPROP[p.t].hp, rt: 0, fu: 0, by: -1 })); },
+    propsFresh() { OPS_PALIVE.fill(1); opsPanesEnsure(); OPS_PGONE.fill(0); return OPS_PROPS.map(p => ({ hp: OPROP[p.t].hp, rt: 0, fu: 0, by: -1 })); },
     hitProp(S, k, by, dmg) { const q = S.g.pr[k]; if (!q || q.hp <= 0) return; q.hp -= dmg; if (by >= 0) q.by = by; if (q.hp <= 0) this.breakProp(S, k); },
+    breakPane(S, k) { const g = S.g; if (!OPS_PANES[k] || OPS_PGONE[k]) return; OPS_PGONE[k] = 1; (g.gb = g.gb || []).push([k, g.t]); },
     breakProp(S, k) { const g = S.g, q = g.pr[k], p = OPS_PROPS[k]; q.hp = 0; q.fu = 0; q.rt = team ? 0 : 40; OPS_PALIVE[k] = 0; if (p.t === 2) this.blast(S, p.x, p.z, q.by, 0); },
     // kind 0: battery (hurts players, credited to whoever set it off), kind 1: the payload (its own damage rules)
     blast(S, x, z, by, kind, y = 0, direct = -1) {
@@ -6530,6 +6568,9 @@ function makeOps(md) {
         const f = g.P[by], credit = by === j ? j : f && (!team || f.tm !== q.tm) ? by : -1;
         this.damage(S, j, credit, kind === 2 ? -3 : -2, false, kind === 2 ? 6 + 104 * Math.pow(1 - d / R, 1.15) : 8 + 120 * Math.pow(1 - d / R, 1.1));
       });
+      // glass in reach of the blast shatters (checked from a point just off the pane on the blast's side)
+      OPS_PANES.forEach((q, k) => { if (OPS_PGONE[k]) return; const dx = x - q.c[0], dy = y + 0.5 - q.c[1], dz = z - q.c[2], dd = Math.hypot(dx, dy, dz); if (dd > R * 0.75 + Math.max(q.hu, q.hv) * 0.5) return;
+        const sd = Math.sign(dx * q.n[0] + dz * q.n[2]) || 1; if (oLOS(x, z, q.c[0] + q.n[0] * 0.45 * sd, q.c[2] + q.n[2] * 0.45 * sd)) this.breakPane(S, k); });
       g.pr.forEach((q, k) => { if (q.hp <= 0) return; const p = OPS_PROPS[k]; if (Math.hypot(p.x - x, p.z - z) >= R * 0.9 || !oLOS(x, z, p.x, p.z) || y > p.h + 1.5) return; if (p.t === 2) { if (!q.fu) { q.fu = 0.16 + Math.random() * 0.22; q.by = by; } } else this.hitProp(S, k, by, 999); });
     },
     hostThrow(S, i, k, a, pt, crouch) {
@@ -6611,6 +6652,8 @@ function makeOps(md) {
     },
     propsTick(S, dt) {
       const g = S.g;
+      // broken glass is replaced after a minute when there are no rounds to reset it
+      if (!team && g.gb && g.gb.length && g.gb.some(e => g.t - e[1] > 60)) g.gb = g.gb.filter(e => { if (g.t - e[1] <= 60) return true; OPS_PGONE[e[0]] = 0; return false; });
       g.pr.forEach((q, k) => {
         if (q.fu > 0 && q.hp > 0) { q.fu -= dt; if (q.fu <= 0) this.hitProp(S, k, -1, 999); }
         if (!team && q.hp <= 0 && q.rt > 0) { q.rt -= dt; if (q.rt <= 0) { const p = OPS_PROPS[k]; if (g.P.some(o => o.alive && Math.abs(o.x - p.x) < p.hx + PR + 0.2 && Math.abs(o.z - p.z) < p.hz + PR + 0.2)) q.rt = 2; else { q.hp = OPROP[p.t].hp; q.by = -1; OPS_PALIVE[k] = 1; } } }
@@ -6618,7 +6661,7 @@ function makeOps(md) {
     },
     say(S, a) { const g = S.g; g.ann = a.concat([++g.aseq]); },
     startRound(S) {
-      const g = S.g; g.rd++; g.ph = "buy"; g.pt = this.BUY; g.bomb = { st: 0, x: 0, z: 0, t: 0, site: 0 }; g.pr = this.propsFresh(); g.gn = []; g.sm = []; OPS_SMOKES = g.sm; g.rsite = Math.random() < 0.5 ? 0 : 1;
+      const g = S.g; g.rd++; g.ph = "buy"; g.pt = this.BUY; g.bomb = { st: 0, x: 0, z: 0, t: 0, site: 0 }; g.pr = this.propsFresh(); g.gb = []; g.gn = []; g.sm = []; OPS_SMOKES = g.sm; g.rsite = Math.random() < 0.5 ? 0 : 1;
       const spots = [shuffle(OPS_CELLS.r.slice()), shuffle(OPS_CELLS.u.slice())], k = [0, 0];
       g.P.forEach((p, i) => {
         if (!p.alive || g.rd === 1) { p.w = -1; p.pw = 0; p.arm = 0; p.gr = [0, 0]; }
@@ -6733,6 +6776,7 @@ function makeOps(md) {
           for (const c of inp.hc.slice(-24)) {
             if (!Array.isArray(c) || !Number.isFinite(c[0]) || !(c[0] > p.lastClaim)) continue;
             mx = Math.max(mx, c[0]);
+            if ((c[1] | 0) <= -10000) { const k = -10000 - (c[1] | 0), q = OPS_PANES[k], W1 = OW[c[3] | 0]; if (q && W1 && this.owns(S, p, c[3] | 0) && Math.hypot(q.c[0] - p.x, q.c[2] - p.z) < (W1.melee ? 3.6 : W1.range + 8)) this.breakPane(S, k); continue; }
             if ((c[1] | 0) < 0) { const k = -1 - (c[1] | 0), pp = OPS_PROPS[k], wi = c[3] | 0, W1 = OW[wi]; if (pp && W1 && this.owns(S, p, wi) && Math.hypot(pp.x - p.x, pp.z - p.z) < (W1.melee ? 3.4 : W1.range + 6)) this.hitProp(S, k, i, W1.dmg); continue; }
             const tg = c[1] | 0, q = P[tg], wi = c[3] | 0, W0 = OW[wi];
             if (!q || !W0 || W0.rocket || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
@@ -6872,7 +6916,7 @@ function makeOps(md) {
         md, mp: g.mp, rd: g.rd, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
         pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr]),
         bt: g.P.map(p => p.bot ? (p.jh > 0.05 ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2), +p.jh.toFixed(2)] : [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)]) : 0),
-        bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann, pr: g.pr.map(q => q.hp > 0 ? 1 : 0).join(""), fx: g.fx,
+        bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann, gb: (g.gb || []).map(e => e[0]), pr: g.pr.map((q, k) => { if (q.hp <= 0) return 0; const f = q.hp / OPROP[OPS_PROPS[k].t].hp; return f > 0.67 ? 1 : f > 0.34 ? 2 : 3; }).join(""), fx: g.fx,
         kb: g.P.map(p => p.kb || 0), rk: g.rk.map(r => [r.id, +r.x.toFixed(2), +r.y.toFixed(2), +r.z.toFixed(2)]), wp: g.wp.map(w => w.rt > 0 ? 0 : 1).join(""), tr: g.tr ? [+g.tr.x.toFixed(2), +g.tr.y.toFixed(2), +g.tr.z.toFixed(2), g.tr.by] : 0,
         gn: g.gn.map(n => [n.id, n.k, +n.x.toFixed(2), +n.y.toFixed(2), +n.z.toFixed(2)]), sm: g.sm.map(s => [s.id, +s.x.toFixed(2), +s.z.toFixed(2), Math.round(s.t * 10)]),
       };
@@ -7327,6 +7371,9 @@ function makeOps(md) {
         if (dir[1] > 1e-4 && OPS_M.theme !== "desert" && OPS_M.theme !== "roof") t = Math.min(t, ((OPS_M.ceilH || OPS_M.wallH || OWH) - EY) / dir[1]);
         t = oRayDecks([me.x, EY, me.z], dir, t);
         const prh = oRayProps([me.x, EY, me.z], dir, t); if (prh[1] >= 0) t = prh[0];
+        // glass on the way (or just behind the wall face the shot stops at) shatters; the shot carries on through it
+        const gph = OPS_PANES.length && OPS_PANES_ID === OPS_ID ? oRayPanes([me.x, EY, me.z], dir, t) : [0, -1];
+        if (gph[1] >= 0 && !(F.pgClaim && F.pgClaim[gph[1]] > now() - 600)) { (F.pgClaim = F.pgClaim || {})[gph[1]] = now(); F.claims.push([++F.claimN, -10000 - gph[1], 0, F.cur]); }
         let hitIdx = -1, hitY = 0;
         V.ro.forEach((r, i) => {
           if (i === V.meIdx) return;
@@ -7645,7 +7692,7 @@ function makeOps(md) {
       NX.drsReset();
       NXS.create(renderer, scene, cam, V.g.mp, OPS_M).then((S) => {
         if (F.gone || APP.V !== V) { S.dispose(); return; }
-        F.nx = S; const g = S.W.grade || {};
+        F.nx = S; const g = S.W.grade || {}; opsPanesEnsure(S.W); F.pgS = null;
         if (g.fog) scene.fog = new T.FogExp2(new T.Color(g.fog[0], g.fog[1], g.fog[2]), g.fogD || 0.01);
         F.post = NXP.create(renderer, S, g);
         F.rackMat = { emissiveIntensity: 0 }; F.shadows = !!S.shadow;
@@ -7660,7 +7707,7 @@ function makeOps(md) {
       this.buildProps(V, scene, mStd);
       if (OPS_M.only) this.buildArena(V, scene, mStd);
       F.boomL = new T.PointLight(0xff7a2a, 0, 26, 1.6); F.boomL.position.y = 1.6; scene.add(F.boomL);
-      F.vfx = []; F.scorch = []; F.box1 = new T.BoxGeometry(1, 1, 1); F.ringG = new T.RingGeometry(0.82, 1, 48); F.prA = [];
+      F.vfx = []; F.scorch = []; F.box1 = new T.BoxGeometry(1, 1, 1); F.ringG = new T.RingGeometry(0.82, 1, 48); F.prA = []; F.prS = []; F.prT = [];
       // ---- payload
       const bomb = new T.Group();
       const bb = new T.Mesh(new T.BoxGeometry(0.62, 0.32, 0.46), mStd({ color: 0x23263a, metalness: 0.7, roughness: 0.35 })); bb.position.y = 0.16;
@@ -7888,6 +7935,17 @@ function makeOps(md) {
       const scrM = mStd({ map: bsodT, emissiveMap: bsodT, emissive: 0xffffff, emissiveIntensity: 1.1, roughness: 0.2 });
       const battM = mStd({ map: battT, roughness: 0.4, metalness: 0.25 }), capM = mStd({ color: 0x24262c, metalness: 0.7, roughness: 0.35 }), ledM = new T.MeshBasicMaterial({ color: new T.Color(0.4, 3, 1.2) });
       F.propMats = { crate: 0xc99558, cart: 0x2c313a, beige: 0xd9d0b8, red: 0xd42a33 };
+      // cracks and dents drawn over a prop as it takes hits (two strengths); a speck of each sits under the floor so their shaders are ready
+      const crackTex = (n, sd, rgb = "12,10,8", lw = 1.6) => GFX.tex(256, 256, (x, w, h) => { x.clearRect(0, 0, w, h); let r = sd; const rnd = () => (r = (r * 16807) % 2147483647) / 2147483647;
+        x.lineCap = "round"; for (let i = 0; i < n; i++) { let px = rnd() * w, py = rnd() * h, a = rnd() * 6.28; x.strokeStyle = "rgba(" + rgb + "," + (0.6 + rnd() * 0.4) + ")"; x.lineWidth = lw * (1 + rnd() * 2); x.beginPath(); x.moveTo(px, py);
+          for (let j = 0; j < 7; j++) { a += (rnd() - 0.5) * 1.3; const L = 8 + rnd() * 26; px += Math.cos(a) * L; py += Math.sin(a) * L; x.lineTo(px, py); if (rnd() < 0.3) { x.stroke(); x.beginPath(); x.moveTo(px, py); a += (rnd() < 0.5 ? 1 : -1) * 0.9; } } x.stroke();
+          x.fillStyle = "rgba(" + rgb + ",.3)"; x.beginPath(); x.arc(rnd() * w, rnd() * h, 4 + rnd() * 10, 0, 7); x.fill(); } });
+      F.crackM = [crackTex(7, 7), crackTex(16, 31, "12,10,8", 2.2), crackTex(22, 53, "235,244,255", 1.3)].map(tx => new T.MeshBasicMaterial({ map: tx, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+      F.crackM.forEach((m, i) => { const w = new T.Mesh(F.box1, m); w.scale.setScalar(0.01); w.position.set(1 + i, -3, 1); scene.add(w); });
+      F.shardG = new T.BufferGeometry(); F.shardG.setAttribute("position", new T.Float32BufferAttribute([-0.5, -0.4, 0, 0.55, -0.3, 0, -0.1, 0.6, 0], 3)); F.shardG.computeVertexNormals();
+      F.shardM = new T.MeshStandardMaterial({ color: 0xe4f3fb, emissive: 0x3a4a55, roughness: 0.04, metalness: 0.5, transparent: true, opacity: 0.7, side: T.DoubleSide, depthWrite: false });
+      { const w = new T.Mesh(F.shardG, F.shardM); w.scale.setScalar(0.01); w.position.set(4, -3, 1); scene.add(w); }
+      { const w = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: 0xff3020, transparent: true, blending: T.AdditiveBlending, depthWrite: false })); w.scale.setScalar(0.01); w.position.set(3, -3, 1); scene.add(w); }
       F.propM = OPS_PROPS.map(p => {
         const gp = new T.Group();
         if (p.t === 0) { const b = new T.Mesh(new T.BoxGeometry(0.94, 0.94, 0.94), crateM); b.position.y = 0.47; b.rotation.y = (p.x * 7.3 + p.z) % 0.3 - 0.15; gp.add(b); }
@@ -7912,6 +7970,81 @@ function makeOps(md) {
       for (let k = 0; k < 4; k++) { const m = new T.Mesh(F.box1, new T.MeshStandardMaterial({ color: col, roughness: 0.8 })); const s = 0.04 + Math.random() * 0.04; m.scale.set(s, s, s); m.position.set(at[0], at[1], at[2]); F.scene.add(m); F.vfx.push({ m, life: 0.8, max: 0.8, v: [(Math.random() - 0.5) * 3, 1 + Math.random() * 2, (Math.random() - 0.5) * 3], g: 12, r: s / 2, sp: [Math.random() * 9, Math.random() * 9, 0], shrink: s }); }
     },
     sfxAt(F, x, z) { const d = Math.hypot(x - F.me.x, z - F.me.z); return [d, this.panOf(F, x, z, d)]; },
+    // a prop has taken hits: crack it and knock it about (st 1 = fine, 2 = damaged, 3 = about to go; 0 = back as new)
+    propDamage(V, k, st, worse) {
+      const F = V.fps, T = THREE, gp = F.propM[k], p = OPS_PROPS[k], u = gp.userData; if (!gp) return;
+      if (!u.ov && st > 1) { // crack overlay that follows the prop's main body
+        const body = gp.children[p.t === 1 ? 5 : 0], geo = p.t === 0 ? new T.BoxGeometry(0.955, 0.955, 0.955) : p.t === 1 ? new T.BoxGeometry(0.67, 0.51, 0.43) : new T.CylinderGeometry(0.366, 0.366, 0.93, 24, 1, true);
+        u.ov = new T.Mesh(geo, F.crackM[0]); body.add(u.ov);
+        if (p.t === 1) { u.ov2 = new T.Mesh(new T.PlaneGeometry(0.56, 0.41), F.crackM[2]); u.ov2.position.set(0, 0, 0.217); body.add(u.ov2); }
+        if (p.t === 2) { u.led = new T.Sprite(new T.SpriteMaterial({ map: GFX.glowTex(), color: new T.Color(4, 0.3, 0.2), transparent: true, blending: T.AdditiveBlending, depthWrite: false })); u.led.scale.setScalar(0.32); u.led.position.set(0, 1.04, 0.22); gp.add(u.led); }
+      }
+      const sg = k % 2 ? 1 : -1, lvl = Math.max(0, st - 1);
+      gp.rotation.x = 0.03 * lvl * sg; gp.rotation.z = 0.045 * lvl * -sg;
+      if (p.t === 0) gp.scale.set(1 + 0.015 * lvl, 1 - 0.045 * lvl, 1 + 0.015 * lvl); else gp.scale.set(1, 1, 1);
+      if (u.ov) { u.ov.visible = lvl > 0; u.ov.material = F.crackM[Math.max(0, lvl - 1)]; } if (u.ov2) u.ov2.visible = lvl > 0; if (u.led) u.led.visible = lvl >= 2;
+      if (!worse || !lvl) return;
+      const [d, pan] = this.sfxAt(F, p.x, p.z), at = [p.x, p.h * 0.7, p.z], vol = clamp(1 - d / 40, 0.1, 0.8);
+      this.chips(V, at, p.t); this.puff(V, p.x, p.h * 0.5, p.z, p.t === 0 ? 0xc9b08a : 0x8a8f99, 2, 0.7);
+      if (p.t === 1) { this.burst(V, [p.x, 0.95, p.z], "#9fd8ff", 6, 3, 1); this.burst(V, [p.x, 0.95, p.z], "#ffd59a", 5, 3, 1); SFX.samp("hit-glass", 0.45 * vol, pan, 1.3) || SFX.crash(1, 0.3 * vol, pan); }
+      else if (p.t === 2) { SFX.hiss(0.5 * vol, pan); this.burst(V, [p.x, 1.05, p.z], "#ffb347", 6, 2.5, 1); }
+      else SFX.samp("hit-wood", 0.55 * vol, pan, 0.75) || SFX.crash(0, 0.3 * vol, pan);
+    },
+    // badly damaged props keep showing it: a monitor sparks and smokes, a battery vents smoke and blinks red before it blows
+    propHurtFx(V, k, dt, t, st) {
+      const F = V.fps, p = OPS_PROPS[k], u = F.propM[k].userData; F.prT[k] = (F.prT[k] || 0) - dt;
+      if (u.led) u.led.material.opacity = Math.floor(t * 6) % 2 ? 1 : 0.15;
+      if (F.prT[k] > 0 || p.t === 0) return; const bad = st >= 3; F.prT[k] = (p.t === 2 ? 0.35 + Math.random() * 0.2 : 0.45 + Math.random() * 0.6) * (bad ? 1 : 2.5);
+      const [d, pan] = this.sfxAt(F, p.x, p.z); if (d > 45) return;
+      if (p.t === 1) { this.puff(V, p.x, 1.15, p.z, 0x5a5e66, 1, 0.45, 2.2, 0.9); if (bad && Math.random() < 0.6) { this.burst(V, [p.x, 0.95, p.z], "#ffd59a", 4, 2.2, 1); if (d < 16) SFX.clack(0.1 * (1 - d / 16), pan, 1.8); } }
+      else { this.puff(V, p.x, 1.1, p.z, bad ? 0x2f3136 : 0x6a6d72, 1, 0.5, 2.4, 1.2); if (bad && d < 20 && Math.random() < 0.25) SFX.hiss(0.18 * (1 - d / 20), pan); }
+    },
+    // show or hide one glass pane in the baked glass meshes (its vertices collapse to a point), and shatter it
+    paneSet(V, k, on, fx) {
+      const F = V.fps, S = F.nx, q = OPS_PANES[k]; if (!S || !q) return;
+      F.glassG = F.glassG || {};
+      for (const [key, s0, cnt] of q.r) {
+        let e = F.glassG[key];
+        if (!e) { const mat = S.mats[key]; let mesh = null; S.group.traverse(o => { if (!mesh && o.isMesh && o.material === mat) mesh = o; }); if (!mesh) continue; const at = mesh.geometry.attributes.position; e = F.glassG[key] = { at, orig: at.array.slice() }; }
+        const a = e.at.array, o = e.orig;
+        for (let i = s0; i < s0 + cnt; i++) { const src = on ? i : s0; a[i * 3] = o[src * 3]; a[i * 3 + 1] = o[src * 3 + 1]; a[i * 3 + 2] = o[src * 3 + 2]; }
+        e.at.needsUpdate = true;
+      }
+      F.paneRem = F.paneRem || {};
+      if (on && F.paneRem[k]) { F.scene.remove(F.paneRem[k]); F.paneRem[k].geometry.dispose(); delete F.paneRem[k]; }
+      if (!on && !F.paneRem[k] && F.shardM) F.scene.add(F.paneRem[k] = this.paneRemnant(F, q, k));
+      if (!on && fx) this.shatter(V, q);
+    },
+    // the jagged teeth of glass left round the frame of a broken pane
+    paneRemnant(F, q, k) {
+      const T = THREE, P = [], rnd = NXW.rng(k * 977 + 13), at = (a, b) => [q.c[0] + q.u[0] * a + q.v[0] * b, q.c[1] + q.u[1] * a + q.v[1] * b, q.c[2] + q.u[2] * a + q.v[2] * b];
+      // walk each edge; every tooth is a triangle from two points on the frame to one inside
+      const edges = [[-q.hu, -q.hv, 1, 0, q.hu * 2, 1], [q.hu, -q.hv, 0, 1, q.hv * 2, -1], [q.hu, q.hv, -1, 0, q.hu * 2, 1], [-q.hu, q.hv, 0, -1, q.hv * 2, -1]];
+      for (const [a0, b0, da, db, len] of edges) {
+        const inA = db !== 0 ? -Math.sign(a0) : 0, inB = da !== 0 ? -Math.sign(b0) : 0;
+        for (let s = 0; s < len - 0.02;) {
+          const w = Math.min(len - s, 0.12 + rnd() * 0.4), deep = (rnd() < 0.2 ? 0.25 + rnd() * 0.45 : 0.04 + rnd() * 0.16) * Math.min(1, len / 1.2), m = s + w * (0.2 + rnd() * 0.6);
+          P.push(...at(a0 + da * s, b0 + db * s), ...at(a0 + da * (s + w), b0 + db * (s + w)), ...at(a0 + da * m + inA * deep, b0 + db * m + inB * deep)); s += w;
+        }
+      }
+      const g = new T.BufferGeometry(); g.setAttribute("position", new T.Float32BufferAttribute(P, 3)); g.computeVertexNormals();
+      const m = new T.Mesh(g, F.shardM); m.renderOrder = 31; return m;
+    },
+    shatter(V, q) {
+      const F = V.fps, T = THREE, low = GFX.lowEnd(), [d, pan] = this.sfxAt(F, q.c[0], q.c[2]);
+      if (d < 70) { const vol = clamp(1.1 - d / 45, 0.08, 1); SFX.samp("hit-glass", vol, pan, 0.78 + Math.random() * 0.1, d / 80) || SFX.crash(1, vol, pan); SFX.samp("hit-glass", vol * 0.6, pan, 1.2 + Math.random() * 0.15, d / 80, 0.05);
+        for (let i = 0; i < (low ? 3 : 6); i++) SFX.samp("tink1", vol * (0.25 + Math.random() * 0.3), pan, 1.3 + Math.random() * 0.9, d / 80, 0.35 + Math.random() * 0.7, 0.3); }
+      if (d > 90 || !F.shardM) return;
+      const n = Math.round(clamp(q.a * (low ? 2.5 : 5), low ? 6 : 10, low ? 14 : 34));
+      for (let i = 0; i < n; i++) {
+        const fu = (Math.random() * 2 - 1) * q.hu, fv = (Math.random() * 2 - 1) * q.hv, m = new T.Mesh(F.shardG, F.shardM), sc = 0.06 + Math.random() * 0.16;
+        m.scale.set(sc * (0.6 + Math.random()), sc * (0.6 + Math.random()), 1); m.rotation.set(Math.random() * 6.3, Math.random() * 6.3, Math.random() * 6.3);
+        m.position.set(q.c[0] + q.u[0] * fu + q.v[0] * fv, q.c[1] + q.u[1] * fu + q.v[1] * fv, q.c[2] + q.u[2] * fu + q.v[2] * fv); F.scene.add(m);
+        const side = Math.random() < 0.5 ? -1 : 1, sp = 0.6 + Math.random() * 2.2;
+        F.vfx.push({ m, keep: 1, life: 1.4 + Math.random() * 1.2, max: 2.6, v: [q.n[0] * side * sp + (Math.random() - 0.5), Math.random() * 1.5, q.n[2] * side * sp + (Math.random() - 0.5)], g: 14, r: 0.01, sp: [Math.random() * 14, Math.random() * 14, Math.random() * 14], shrinkV: [m.scale.x, m.scale.y, 1] });
+      }
+      this.burst(V, q.c, "#e8f6ff", low ? 6 : 12, 3, 1);
+    },
     propBreak(V, k) {
       const F = V.fps, T = THREE, p = OPS_PROPS[k], low = GFX.lowEnd(), [d, pan] = this.sfxAt(F, p.x, p.z);
       const cols = p.t === 0 ? [F.propMats.crate, 0xe9d7a6, 0x8a5d2c] : p.t === 1 ? [F.propMats.beige, F.propMats.cart, 0x1d5fd6] : [F.propMats.red, 0x24262c, 0xffd23f];
@@ -8048,7 +8181,7 @@ function makeOps(md) {
         if (o.c0) m.material.color.lerpColors(o.c0, o.c1, Math.min(1, k * 1.4));
         if (o.cool) m.material.emissiveIntensity = Math.max(0, 2.5 * (1 - k * 1.6));
         if (o.life < 0.5) { const f = Math.max(0, o.life / 0.5); if (o.shrink) m.scale.setScalar(o.shrink * f); if (o.shrinkV) m.scale.set(o.shrinkV[0] * f, o.shrinkV[1] * f, o.shrinkV[2] * f); }
-        if (o.life <= 0) { F.scene.remove(m); m.material.dispose(); }
+        if (o.life <= 0) { F.scene.remove(m); if (!o.keep) m.material.dispose(); }
       }
       F.vfx = F.vfx.filter(o => o.life > 0);
     },
@@ -8379,10 +8512,18 @@ function makeOps(md) {
       F.bomb.visible = b[0] === 1 || b[0] === 2;
       if (F.bomb.visible) { F.bomb.position.set(b[1], 0, b[2]); const rate = b[3] < 100 ? 8 : 3; const on = b[0] === 1 && Math.floor(t * rate) % 2 === 0; F.bombLed.intensity = on ? 12 : 0; F.bombHalo.visible = on || b[0] === 2; F.bombHalo.material.color.set(b[0] === 2 ? 0x3ddc97 : 0xff2a3c); F.bombScr.material.color.set(b[0] === 2 ? 0x3ddc97 : on ? 0xff2a3c : 0x550010); }
       if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "sine", 0.035); } }
+      // glass the host says is broken: shatter what just broke, put back what was replaced
+      if (F.nx && OPS_PANES_ID === OPS_ID && OPS_PANES.length) {
+        const first = !F.pgS; if (first) F.pgS = new Uint8Array(OPS_PANES.length); const want = F.pgW || (F.pgW = new Uint8Array(4096)); want.fill(0, 0, OPS_PANES.length);
+        if (Array.isArray(g.gb)) for (const k of g.gb) if (k >= 0 && k < OPS_PANES.length) want[k] = 1;
+        for (let k = 0; k < OPS_PANES.length; k++) if (want[k] !== F.pgS[k]) { F.pgS[k] = want[k]; OPS_PGONE[k] = want[k]; this.paneSet(V, k, !want[k], !first); }
+      }
       // props and explosions from the host
       if (typeof g.pr === "string" && F.propM) for (let k = 0; k < F.propM.length; k++) {
-        const al = g.pr.charCodeAt(k) === 49; OPS_PALIVE[k] = al ? 1 : 0;
+        const c = g.pr.charCodeAt(k), al = c > 48, st = al ? c - 48 : 0; OPS_PALIVE[k] = al ? 1 : 0;
         if (F.prA[k] !== al) { if (F.prA[k] === true && !al) this.propBreak(V, k); F.propM[k].visible = al; F.prA[k] = al; }
+        if ((F.prS[k] || 0) !== st) { this.propDamage(V, k, st, st > (F.prS[k] || 0)); F.prS[k] = st; }
+        if (st >= 2) this.propHurtFx(V, k, dt, t, st);
       }
       if (Array.isArray(g.fx)) { const mx = g.fx.reduce((m, f) => Math.max(m, f[0]), 0); if (F.fxSeen == null) F.fxSeen = mx; else { g.fx.forEach(f => { if (f[0] > F.fxSeen) { if (f[3] === 3) { const [d, pan] = this.sfxAt(F, f[1], f[2]); SFX.hiss(clamp(1 - d / 40, 0.1, 1), pan); } else this.explode(V, f[1], f[2], f[3], f[4] || 0); } }); F.fxSeen = Math.max(F.fxSeen, mx); } }
       this.nadesDraw(V, g, dt, t);
