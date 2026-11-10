@@ -24,3 +24,24 @@ bolt-*.mp3: cut from "equipment clicks III" by lfa (OpenGameArt.org, recorded on
 clip1.mp3, clip2.mp3, bullet1.mp3: "Gun Reload Sound Effects" by BMacZero (OpenGameArt.org), CC0.
 rl-ar.mp3: "assaultriflereload1" from "Gun reload sounds" by SpringySpringo (OpenGameArt.org), CC0.
 gun-*.mp3 (stereo, close), gunm-*.mp3 (one microphone, for other players' shots), far-*.mp3 (stereo, mid distance): re-exported from the original 96 kHz stereo files of The Free Firearm Sound Library, CC0.
+
+2026-11-10 sound pass 2
+gun-*.mp3, gunm-*.mp3, far-*.mp3 (replaced): The Free Firearm Sound Library (CC0). Pistol = Bersa .380 (F_47P/F_41P), magnum = Smith & Wesson 642 .38 pitched down (V_27P/V_22P), SMG = PPSh (P_30P/P_16P), rifle = AK-47 (C_28P/C_31P), carbine = AR-15 (D_32P/D_24P), LMG = Springfield 1917 .30-06 (B_24P/B_16P), sniper = Mosin Nagant (M_21P/M_26P), scout = Savage 10 .300 Blackout (T_27P/T_17P), shotgun = Winchester Model 12 (K_22P/K_17P).
+fb-hit.mp3: "hit impact" by MadPanCake, https://freesound.org/s/660770/ (CC0)
+fb-tick.mp3: dry tick by Abacagi, https://freesound.org/s/478057/ (CC0)
+fb-flesh.mp3: flesh hit by JustInvoke, https://freesound.org/s/138481/ (CC0)
+fb-head.mp3: headshot by MadPanCake, https://freesound.org/s/660769/ (CC0)
+fb-ping.mp3: metal ping by Wavewire, https://freesound.org/s/837455/ (CC0)
+fb-kill.mp3: kill by MadPanCake, https://freesound.org/s/567849/ (CC0)
+fb-killhead.mp3: headshot kill by MadPanCake, https://freesound.org/s/567850/ (CC0), built on a sound by szpury, https://freesound.org/s/233752/ (CC BY 4.0)
+fb-win.mp3: brass fanfare by FunWithSound, https://freesound.org/s/456966/ (CC0)
+fb-lose.mp3: dark crescendo by nomiqbomi, https://freesound.org/s/578576/ (CC0)
+imp-metal1-5.mp3: metal pings by pushkin, https://freesound.org/s/144444/ (CC0)
+imp-metal6.mp3: steel hit by vumseplutten1709, https://freesound.org/s/238923/ (CC BY 3.0)
+imp-metal7.mp3: .45 on steel plate by cedarstudios, https://freesound.org/s/148837/ (CC0)
+ric1.mp3: ricochets by cedarstudios, https://freesound.org/s/148840/ (CC0)
+ric2.mp3: ricochet on granite by Benboncan, https://freesound.org/s/78092/ (CC BY 4.0)
+ric3.mp3, ric4.mp3: .22 ricochets by C-V, https://freesound.org/s/523404/ (CC0)
+imp-wood1.mp3: wood hit by NoiseCollector, https://freesound.org/s/237448/ (CC BY 3.0)
+flyby1.mp3: bullet flyby by qubodup, https://freesound.org/s/855248/ (CC0)
+crack1.mp3: bullet crack by morganpurkis, https://freesound.org/s/386854/ (CC0)
