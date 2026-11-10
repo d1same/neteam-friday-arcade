@@ -1153,7 +1153,7 @@ function makeOps(md) {
       }
       const act = F.act && alive;
       if (F.claims.length > 48) F.claims.splice(0, F.claims.length - 24);
-      const out = { x: +F.me.x.toFixed(2), z: +F.me.z.toFixed(2), a: +F.me.a.toFixed(2), q: F.rsq, w: F.cur, sh: F.lastShot || 0, hc: F.claims.slice(-12), act: act ? 1 : 0, cr: F.cr > 0.5 ? 1 : 0, jh: +(F.jh || 0).toFixed(2), th: F.th || 0, rk: F.rk || 0, hk: F.hk ? F.hk.map(v => +v.toFixed(2)) : 0 };
+      const out = { x: +F.me.x.toFixed(2), z: +F.me.z.toFixed(2), a: +F.me.a.toFixed(2), p: +(F.me.p || 0).toFixed(2), q: F.rsq, w: F.cur, sh: F.lastShot || 0, hc: F.claims.slice(-12), act: act ? 1 : 0, cr: F.cr > 0.5 ? 1 : 0, jh: +(F.jh || 0).toFixed(2), th: F.th || 0, rk: F.rk || 0, hk: F.hk ? F.hk.map(v => +v.toFixed(2)) : 0 };
       if (F.buyReq) out.buy = F.buyReq;
       return out;
     },
@@ -1615,7 +1615,10 @@ function makeOps(md) {
             const mixer = new THREE.AnimationMixer(m), act = {};
             [["Walking", "walk"], ["Running", "run"]].forEach(([k, n]) => { const c = clip(n); if (c) { const c2 = c.clone(); c2.name = k; act[k] = mixer.clipAction(c2); } });
             av.spr.scale.set(0.5, 0.62, 1); av.gun.scale.setScalar(1.05);
-            av.rb = { m, mixer, act, cur: "", main, ms, hum: 1, idleT: U.idleT, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
+            const nb = (n) => m.getObjectByName(n), B = { s1: nb("Spine01"), s2: nb("Spine02"), nk: nb("neck"), hd: nb("Head"), lu: nb("LeftUpLeg"), ll: nb("LeftLeg"), lf: nb("LeftFoot"), ru: nb("RightUpLeg"), rl: nb("RightLeg"), rf: nb("RightFoot") };
+            const okB = Object.values(B).every(Boolean), rest = okB ? Object.values(B).map(bn => [bn, bn.quaternion.clone()]) : null;
+            let L1 = 0.44, L2 = 0.45; if (okB) { m.updateWorldMatrix(true, true); const p1 = new THREE.Vector3(), p2 = new THREE.Vector3(); L1 = B.lu.getWorldPosition(p1).distanceTo(B.ll.getWorldPosition(p2)); L2 = B.ll.getWorldPosition(p1).distanceTo(B.lf.getWorldPosition(p2)); }
+            av.rb = { m, mixer, act, cur: "", main, ms, hum: 1, idleT: U.idleT, B: okB ? B : null, rest, L1, L2, y0: m.position.y, hand: m.getObjectByName("RightHand"), spine: m.getObjectByName("Spine02"), arms: [["RightArm", "RightForeArm", "RightHand"], ["LeftArm", "LeftForeArm", "LeftHand"]].map(a => a.map(n => m.getObjectByName(n))) };
           } catch (e) { console.warn("soldier model", e); }
         });
       };
@@ -2219,6 +2222,9 @@ function makeOps(md) {
         if (i === V.meIdx || !ref) { if (!av.init || Math.hypot(av.x - x, av.z - z) > 5 || i === V.meIdx) { av.x = x; av.z = z; av.init = true; } else { const k = 1 - Math.pow(0.0005, dt); av.x = lerp(av.x, x, k); av.z = lerp(av.z, z, k); } av.nsT = null; }
         else netSmooth(av, ref, x, z, null, null, dt, 5, 0.09);
         av.a = a;
+        // the body turns smoothly toward the latest heading instead of snapping at the network rate
+        { const w = (v) => v - Math.PI * 2 * Math.round(v / (Math.PI * 2)); if (av.ya === undefined || i === V.meIdx) av.ya = a; const d = w(a - av.ya) * (1 - Math.pow(0.00004, dt)); av.ya = w(av.ya + d); av.dYaw = d;
+          const tp = r.b ? 0 : clamp(+((V.inputOf(i) || {}).p) || 0, -1.25, 1.25); av.pt = lerp(av.pt || 0, tp, 1 - Math.pow(0.002, dt)); }
         // enemy footsteps: only running players make noise
         if (i !== V.meIdx && pl && pl[1] && dt > 0) {
           const v = Math.hypot(av.x - ox, av.z - oz) / dt; av.spd = lerp(av.spd || 0, v, 0.2); av.mvx = lerp(av.mvx || 0, (av.x - ox) / dt, 0.2); av.mvz = lerp(av.mvz || 0, (av.z - oz) / dt, 0.2);
@@ -2228,7 +2234,7 @@ function makeOps(md) {
         const tjh = r.b ? +((g.bt[i] || [])[3] || 0) : rin ? +rin.jh || 0 : 0;   // in the air (or, on Uplink, falling below the roof)
         av.cr = lerp(av.cr || 0, rin && rin.cr ? 1 : 0, 1 - Math.pow(0.0005, dt)); av.jh = tjh > 0 || tjh < 0 ? lerp(av.jh || 0, tjh, 0.5) : Math.max(0, (av.jh || 0) - dt * 6);
         F.remote[i] = { x: av.x, z: av.z, a, cr: av.cr, jh: av.jh };
-        av.grp.position.set(av.x, av.jh || 0, av.z); av.grp.rotation.y = a + Math.PI; av.bd.scale.y = 1 - 0.3 * (av.cr || 0); av.grp.visible = !(pl && pl[16]);
+        av.grp.position.set(av.x, av.jh || 0, av.z); av.grp.rotation.y = av.ya + Math.PI; av.bd.scale.y = av.rb && av.rb.hum ? 1 : 1 - 0.3 * (av.cr || 0); av.grp.visible = !(pl && pl[16]);
         const alive = !!(pl && pl[1]);
         // the gun they actually carry
         const cw = pl ? pl[6] : 0; if (av.gunW !== cw && OW[cw]) { av.gunW = cw; while (av.gun.children.length) av.gun.remove(av.gun.children[0]); if (!OW[cw].melee) { const gm2 = F.crowd ? GUNS.lite(OW[cw], T) : GUNS.build(OW[cw], T, { arms: false }); gm2.traverse(o => { if (o.isMesh) o.castShadow = !!F.shadows; }); av.gun.add(gm2); } }
@@ -2237,14 +2243,15 @@ function makeOps(md) {
         if (alive) { av.deadT = 0; av.spr.material.opacity = 1; av.spr.material.rotation = 0; }
         else if (av.wasAlive) av.deadT = 0.001;
         if (!alive && av.deadT > 0 && av.rb && av.rb.act.Death) { av.deadT += dt; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 1.2) * 1.5); av.bd.visible = av.deadT < 2.4; }
+        else if (!alive && av.deadT > 0 && av.rb && av.rb.hum) { av.deadT += dt; if (!av.dieDir) { av.dieDir = Math.random() < 0.65 ? -1 : 1; av.dieRoll = (Math.random() - 0.5) * 0.5; } const k = clamp((av.deadT - 0.16) * 3, 0, 1), e = k * k * (3 - 2 * k); av.bd.rotation.x = av.dieDir * e * 1.45; av.bd.rotation.z = av.dieRoll * e; av.bd.position.y = e * 0.16; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.9) * 1.5); av.bd.visible = av.deadT < 1.7; }
         else if (!alive && av.deadT > 0) { av.deadT += dt; const k = Math.min(1, av.deadT * 3.5); av.bd.rotation.x = -k * 1.45; av.bd.position.y = k * 0.18; av.spr.material.opacity = Math.max(0, 1 - (av.deadT - 0.6) * 1.5); av.bd.visible = av.deadT < 1.4; }
-        else { av.bd.rotation.x = 0; av.bd.position.y = 0; av.bd.visible = true; }
+        else { av.bd.rotation.x = 0; av.bd.rotation.z = av.lean || 0; av.bd.position.y = 0; av.bd.visible = true; av.dieDir = 0; }
         // walk cycle from actual movement speed
         const spd = i === V.meIdx ? 0 : (av.spd || 0), sw = Math.min(1, spd / 4.5);
         av.ph += dt * (4 + spd * 1.6); av.legs[0].rotation.x = Math.sin(av.ph) * 0.65 * sw; av.legs[1].rotation.x = -Math.sin(av.ph) * 0.65 * sw;
         if (av.rb) {
           // pick the animation from how fast they're actually moving
-          const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 ? "Walking" : "Idle";
+          const R = av.rb, want = !alive ? "Death" : R.act.Air && (av.jh || 0) > 0.25 && !oHAt(av.x, av.z) ? "Air" : R.act.Duck && (av.cr || 0) > 0.5 && spd < 0.5 ? "Duck" : spd > 3.6 ? "Running" : spd > 0.5 || av.stepT > 0 ? "Walking" : "Idle";
           // skinned soldiers are never culled automatically: keep them off the screen pass when out of view, and out of the shadow pass when outside the sun-shadow area
           if (R.ms) { const K = F.cull; K.s.center.set(av.x, 1 + (av.jh || 0), av.z); const on = K.fr.intersectsSphere(K.s), near = !!F.shadows && Math.abs(av.x - K.x) < 27 && Math.abs(av.z - K.z) < 27;
             if (on !== R.on || near !== R.near) { R.on = on; R.near = near; for (const o of R.ms) { if (on) o.layers.enable(0); else o.layers.disable(0); if (near) o.layers.enable(2); else o.layers.disable(2); } } }
@@ -2252,20 +2259,28 @@ function makeOps(md) {
           else if (R.cur !== want && R.act[want]) { const nx = R.act[want].reset().play(), pv = R.act[R.cur]; if (pv) pv.crossFadeTo(nx, want === "Death" ? 0.12 : 0.25, false); else if (R.hum) nx.fadeIn(0.2); R.cur = want; }
           // legs follow the real travel direction: hips turn into a strafe, and moving backwards plays the stride in reverse
           let back = 1, ly = 0;
-          if (R.hum && alive && spd > 0.6) { const gr = av.grp.rotation.y, cg = Math.cos(gr), sg = Math.sin(gr), lx = (av.mvx || 0) * cg - (av.mvz || 0) * sg, lz = (av.mvx || 0) * sg + (av.mvz || 0) * cg; let th = Math.atan2(lx, -lz); if (Math.abs(th) > 1.9) { back = -1; th -= Math.sign(th) * Math.PI; } ly = -clamp(th, -1.2, 1.2); }
-          if (R.hum) { av.legY = lerp(av.legY || 0, ly, 1 - Math.pow(0.001, dt)); av.back = back; R.m.rotation.y = Math.PI + av.legY; }
+          if (R.hum && alive && spd > 0.6) { const gr = av.grp.rotation.y, cg = Math.cos(gr), sg = Math.sin(gr), lx = (av.mvx || 0) * cg - (av.mvz || 0) * sg, lz = (av.mvx || 0) * sg + (av.mvz || 0) * cg; let th = Math.atan2(lx, -lz); if (Math.abs(th) > 1.9) { back = -1; th -= Math.sign(th) * Math.PI; } ly = -clamp(th, -1.2, 1.2); av.plant = 0; av.stepT = 0; }
+          else if (R.hum && alive) {   // standing: the feet stay planted while the body turns, then step round to catch up
+            av.plant = clamp((av.plant || 0) - (av.dYaw || 0), -1.7, 1.7);
+            if (Math.abs(av.plant) > 0.7 && !(av.stepT > 0)) av.stepT = 0.45;
+            if (av.stepT > 0) { av.stepT -= dt; av.plant *= Math.pow(0.0006, dt); }
+            ly = av.plant;
+          }
+          if (R.hum) { av.legY = spd <= 0.6 && !(av.stepT > 0) && alive ? ly : lerp(av.legY || 0, ly, 1 - Math.pow(0.001, dt)); av.back = back; R.m.rotation.y = Math.PI + av.legY; }
           if (want === "Running") R.act.Running.timeScale = back * clamp(spd / (R.hum ? 5.4 : 6.2), 0.7, 1.3);
-          if (want === "Walking") R.act.Walking.timeScale = R.hum ? back * clamp(spd / 1.7, 0.6, 1.9) : clamp(spd / 2.2, 0.6, 1.4);
+          if (want === "Walking") R.act.Walking.timeScale = R.hum ? (spd <= 0.5 ? 1.25 : back * clamp(spd / 1.7, 0.6, 1.9)) : clamp(spd / 2.2, 0.6, 1.4);
           // nobody can see this one: let the animation rest (it catches up when they come back into view)
           const idle = !!R.ms && R.on === false && R.near === false;
-          if (idle) R.lag = Math.min(0.5, (R.lag || 0) + dt); else { R.mixer.update(dt + (R.lag || 0)); R.lag = 0; }
+          if (idle) R.lag = Math.min(0.5, (R.lag || 0) + dt); else { if (R.rest) for (const [bn, q0] of R.rest) bn.quaternion.copy(q0); R.mixer.update(dt + (R.lag || 0)); R.lag = 0; }
           if (!idle && R.hum && R.spine && Math.abs(av.legY) > 0.01) opsTwist(R.spine, -av.legY);
+          if (!idle && R.hum && R.B) opsPose(av, R, alive, spd, dt, t, i);
           // weapon rides the right hand but always points where the player faces
           if (!idle && R.hum && R.hand && alive) {
             // arms hold the weapon whatever the legs are doing: swing each upper arm and forearm onto a pose for the weapon class
             const wk = (OW[cw] || OW[0]), kind = wk.melee ? 0 : wk.slot === 2 ? 1 : 2, A = OPS_ARM[kind];
-            for (let sd = 0; sd < 2; sd++) { const B = R.arms[sd]; if (!B[0] || !B[1] || !B[2]) continue; opsAim(B[0], B[1], A[sd][0], av.bd); opsAim(B[1], B[2], A[sd][1], av.bd); }
-            const _hv = GFX._hv || (GFX._hv = new THREE.Vector3()); R.hand.getWorldPosition(_hv); av.bd.worldToLocal(_hv); av.gun.position.set(_hv.x - 0.02, _hv.y + (kind === 1 ? 0.05 : 0.03), _hv.z - 0.04);
+            for (let sd = 0; sd < 2; sd++) { const B = R.arms[sd]; if (!B[0] || !B[1] || !B[2]) continue; opsAim(B[0], B[1], opsTilt(A[sd][0], av.aimP || 0, 0), av.bd); opsAim(B[1], B[2], opsTilt(A[sd][1], av.aimP || 0, 1), av.bd); }
+            const _hv = GFX._hv || (GFX._hv = new THREE.Vector3()); R.hand.getWorldPosition(_hv); av.bd.worldToLocal(_hv); av.gun.position.set(_hv.x - 0.02, _hv.y + (kind === 1 ? 0.05 : 0.03), _hv.z - 0.04 + 0.06 * (av.kick || 0)); av.gun.rotation.x = av.aimP || 0;
+            av.fl.position.set(av.gun.position.x, av.gun.position.y + 0.02 + Math.sin(av.aimP || 0) * 0.42, av.gun.position.z - Math.cos(av.aimP || 0) * 0.42);
           }
           R.main.forEach(mt => { if (R.hum) { mt.color.setRGB(1, 1, 1).lerp(av.suit.color, team ? 0.5 : 0.28); mt.emissive.copy(av.suit.emissive).multiplyScalar(0.25); } else { mt.color.copy(av.suit.color); mt.emissive.copy(av.suit.emissive); } });
         } else av.bd.position.y += alive ? Math.abs(Math.sin(av.ph)) * 0.04 * sw : 0;
@@ -2273,7 +2288,7 @@ function makeOps(md) {
         av.grp.visible = i !== V.meIdx && (alive || (av.deadT > 0 && av.deadT < (av.rb && av.rb.act.Death ? 2.4 : 1.4)));
         av.ring.visible = alive; av.gun.visible = alive;
         av.spr.position.y = alive ? (av.rb && av.rb.hum ? 2.2 : 1.95) - 0.55 * (av.cr || 0) + Math.sin(t * 3 + i) * 0.015 + av.bd.position.y : Math.max(0.35, 1.95 - av.deadT * 4);
-        if (pl && pl[0] < av.lastHp && alive) av.hurtT = 0.18; av.lastHp = pl ? pl[0] : 100;
+        if (pl && pl[0] < av.lastHp && alive) { av.hurtT = 0.18; av.flinch = 1; av.flS = Math.random() < 0.5 ? -1 : 1; } av.lastHp = pl ? pl[0] : 100;
         av.hurtT = Math.max(0, av.hurtT - dt); av.spr.material.color.setRGB(1 + av.hurtT * 8, 1 - av.hurtT * 3, 1 - av.hurtT * 3); av.suit.emissive.setRGB(av.hurtT * 6, 0, 0);
         if (team && pl) {
           av.ring.material.color.set(TEAM[pl[2]].hex);
@@ -2295,7 +2310,7 @@ function makeOps(md) {
         if (Array.isArray(shot) && shot[0] !== F.shSeen[i]) {
           const first = F.shSeen[i] === undefined; F.shSeen[i] = shot[0];
           if (!first && i !== V.meIdx && alive) {
-            const wcol = (OW[shot[4]] || OW[0]).col; av.flT = 0.05;
+            const wcol = (OW[shot[4]] || OW[0]).col; av.flT = 0.05; av.kick = (OW[shot[4]] || OW[0]).pel || (OW[shot[4]] || OW[0]).scope ? 1 : 0.6;
             const ga = a + Math.PI, sx = av.x - Math.sin(ga) * 0.62 + Math.cos(ga) * 0.36, sz = av.z - Math.cos(ga) * 0.62 - Math.sin(ga) * 0.36;
             const W1 = OW[shot[4]] || OW[0];
             if (!W1.melee && !W1.rocket) { this.addTracer(V, [sx, 0.97 + (av.jh || 0), sz], [shot[1], shot[2], shot[3]], W1.laser ? r.hex : wcol, true, W1.laser);
@@ -2655,6 +2670,37 @@ const opsAim = (() => { let a, b, q, q2, pq; return (bone, child, dir, ref) => {
   b.set(dir[0], dir[1], dir[2]).transformDirection(ref.matrixWorld);
   q.setFromUnitVectors(a, b); bone.getWorldQuaternion(q2); q2.premultiply(q);
   bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
+}; })();
+// rotate a bone about a world axis
+const opsRotW = (() => { let q, q2, pq; return (bone, ax, ang) => {
+  if (!ang) return; if (!q) { q = new THREE.Quaternion(); q2 = new THREE.Quaternion(); pq = new THREE.Quaternion(); }
+  bone.updateWorldMatrix(true, false); q.setFromAxisAngle(ax, ang); bone.getWorldQuaternion(q2); q2.premultiply(q);
+  bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
+}; })();
+// tilt an arm-pose direction (body space, forward is -z) up or down with the player's aim
+const opsTilt = (() => { const o = [[0, 0, 0], [0, 0, 0]]; return (d, p, k) => { const c = Math.cos(p), s = Math.sin(p), r = o[k]; r[0] = d[0]; r[1] = d[1] * c - d[2] * s; r[2] = d[1] * s + d[2] * c; return r; }; })();
+// layers on top of the walk/run clips: knee-bend crouch, jump tuck, landing dip, aim pitch, recoil, hit flinch, breathing, leaning into turns, knees buckling on death
+const opsPose = (() => { let axB, axL, up; return (av, R, alive, spd, dt, t, i) => {
+  if (!axB) { axB = new THREE.Vector3(); axL = new THREE.Vector3(); up = new THREE.Vector3(0, 1, 0); }
+  const B = R.B, e = (k) => Math.pow(k, dt);
+  av.kick = (av.kick || 0) * e(0.00005); av.flinch = (av.flinch || 0) * e(0.004);
+  const air = alive && (av.jh || 0) > 0.15; if (!air && (av.airK || 0) > 0.6) av.landT = 0.24;
+  av.airK = lerp(av.airK || 0, air ? 1 : 0, 1 - e(air ? 0.0005 : 0.00001)); av.landT = Math.max(0, (av.landT || 0) - dt);
+  const land = av.landT > 0 ? Math.sin(Math.PI * av.landT / 0.24) * 0.5 : 0, die = alive ? 0 : Math.min(1, (av.deadT || 0) * 5);
+  const wC = Math.max(av.cr || 0, land, die), wA = (av.airK || 0) * (1 - (av.cr || 0));
+  // leaning into turns while running
+  const yr = dt > 0 ? (av.dYaw || 0) / dt : 0; av.lean = lerp(av.lean || 0, alive ? clamp(yr * 0.05 * Math.min(1, spd / 5), -0.2, 0.2) : 0, 1 - e(0.01));
+  R.m.updateWorldMatrix(true, false); axB.set(1, 0, 0).transformDirection(av.bd.matrixWorld); axL.set(-1, 0, 0).transformDirection(R.m.matrixWorld);
+  // legs: bend at hip and knee, keep the feet flat, and sink the body by what the bend takes off
+  const th1 = 1.15 * wC, th2 = 2.05 * wC;
+  [[B.lu, B.ll, B.lf, 0.75, 1.3], [B.ru, B.rl, B.rf, 0.4, 0.85]].forEach(([u, l, f, a1, a2]) => { const t1 = th1 + a1 * wA, t2 = th2 + a2 * wA; opsRotW(u, axL, t1); opsRotW(l, axL, -t2); opsRotW(f, axL, t2 - t1); });
+  R.m.position.y = R.y0 - (R.L1 * (1 - Math.cos(th1)) + R.L2 * (1 - Math.cos(th1 - th2)));
+  // upper body: aim pitch spread over the spine, neck and head, plus kick, flinch and breathing
+  const still = spd < 0.5 && alive, br = still ? Math.sin(t * 1.7 + i * 1.3) * 0.022 : 0;
+  av.aimP = alive ? clamp(av.pt || 0, -1.1, 1.1) + 0.09 * av.kick : 0;
+  const P = av.aimP - 0.12 * av.flinch, lean = -0.3 * (av.cr || 0) - (alive ? 0 : 0.5 * die);
+  opsRotW(B.s1, axB, P * 0.22 + lean + br); opsRotW(B.s2, axB, P * 0.3 + br * 0.6); opsRotW(B.nk, axB, P * 0.2); opsRotW(B.hd, axB, P * 0.28 - lean * (alive ? 1 : 0));
+  if (av.flinch > 0.02) { opsRotW(B.s2, up, av.flS * 0.2 * av.flinch); opsRotW(B.hd, up, av.flS * 0.25 * av.flinch); }
 }; })();
 // turn a bone about the world up axis (keeps the torso on the aim line while the hips face the travel direction)
 const opsTwist = (() => { let q, q2, pq, up; return (bone, ang) => {
