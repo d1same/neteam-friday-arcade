@@ -190,7 +190,7 @@ function bakeProbes(C, E, Sv, fast) {
   const { W, G, CS, trace, blocked, hit, sampleAt, albOfHit, skyL, L, cellL, ceilY, floorY, inside, sf } = C, PS = W.ps || 2, PN = Math.ceil(G * CS / PS), out = new Float32Array(PN * PN * 13), tmp = [0, 0, 0], al = [0, 0, 0];
   const sun = W.sun, sd = sun ? sun.dir : [0, 1, 0], sE = sun ? sun.E : [0, 0, 0], K = fast ? 64 : 320, GA = PI * (3 - Math.sqrt(5));
   for (let pz = 0; pz < PN; pz++) for (let px = 0; px < PN; px++) {
-    const x = Math.min(G * CS - 0.01, (px + 0.5) * PS), z = Math.min(G * CS - 0.01, (pz + 0.5) * PS), cell = Math.floor(z / CS) * G + Math.floor(x / CS), y = floorY[cell] + 1.25, o = (pz * PN + px) * 13;
+    const x = Math.min(G * CS - 0.01, (px + 0.5) * PS), z = Math.min(G * CS - 0.01, (pz + 0.5) * PS), cell = Math.floor(z / CS) * G + Math.floor(x / CS), y = Math.max(0, floorY[cell]) + 1.25, o = (pz * PN + px) * 13;
     if (inside(x, y, z)) { out[o + 12] = -1; continue; }
     const sh = new Float64Array(12), open = ceilY[cell] > 1e8;
     for (let k = 0; k < K; k++) { // even directions on the sphere

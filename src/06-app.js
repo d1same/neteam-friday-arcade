@@ -432,7 +432,8 @@ function mapThumb(modId, id) {
     } else if (typeof OPS_MAPS !== "undefined" && OPS_MAPS[id]) {
       const rows = OPS_MAPS[id].rows, n = Math.max(rows.length, rows[0].length), k = (S - 8) / n, o = 4;
       rows.forEach((row, z) => [...row].forEach((ch, x) => {
-        if (ch === "#") c.fillStyle = "rgba(232,234,238,.62)"; else if (ch === "a" || ch === "b") c.fillStyle = "rgba(255,106,26,.6)"; else if (ch >= "1" && ch <= "9") c.fillStyle = "rgba(76,201,240,.42)"; else return;
+        if (ch === "#") c.fillStyle = "rgba(232,234,238,.62)"; else if (ch === "a" || ch === "b") c.fillStyle = "rgba(255,106,26,.6)"; else if (ch >= "1" && ch <= "9") c.fillStyle = "rgba(76,201,240,.42)";
+        else if (ch === "^" && OPS_MAPS[id].sky) c.fillStyle = "rgba(61,220,151,.9)"; else if (OPS_MAPS[id].sky && ch !== "v") c.fillStyle = "rgba(232,234,238,.2)"; else return;
         c.fillRect(o + x * k, o + z * k, k + 0.25, k + 0.25);
       }));
     }
