@@ -196,6 +196,12 @@ const NXD = {
     const S = [["#1d4a5c", "#f2e3c0"], ["#7a2a1c", "#f4e2b8"], ["#e8d9b0", "#3a2414"], ["#2f4a2a", "#f0e6c8"], ["#c8962e", "#2a1a10"]][(d.v | 0) % 5]; x.fillStyle = S[0]; x.fillRect(0, 0, w, h); x.strokeStyle = S[1]; x.lineWidth = Math.max(2, h * 0.05); x.strokeRect(h * 0.09, h * 0.09, w - h * 0.18, h - h * 0.18);
     x.fillStyle = S[1]; x.textAlign = "center"; x.textBaseline = "middle"; const px = NXD.fit(x, d.t || "", w * 0.86, h * 0.56, 700); x.font = NXD.FONT(700, Math.round(px)); x.fillText(d.t || "", w / 2, h * 0.54); NXD.wear(x, w, h, r, Math.round(w * h / 500));
   },
+  // ---- helipad: yellow circle, white H, a weight number
+  k_heli(x, w, h, d, r) {
+    x.strokeStyle = NXD.PAINT[1]; x.lineWidth = w * 0.035; x.beginPath(); x.arc(w / 2, h / 2, w * 0.47, 0, 6.3); x.stroke(); x.strokeStyle = NXD.PAINT[0]; x.lineWidth = w * 0.012; x.beginPath(); x.arc(w / 2, h / 2, w * 0.4, 0, 6.3); x.stroke();
+    x.fillStyle = NXD.PAINT[0]; x.fillRect(w * 0.33, h * 0.27, w * 0.075, h * 0.46); x.fillRect(w * 0.595, h * 0.27, w * 0.075, h * 0.46); x.fillRect(w * 0.33, h * 0.465, w * 0.34, h * 0.07);
+    x.font = NXD.FONT(700, Math.round(h * 0.06)); x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(d.t || "5t", w / 2, h * 0.82); NXD.wear(x, w, h, r, 500);
+  },
   // ---- the company name in light
   k_logo(x, w, h, d, r) {
     x.textBaseline = "middle"; x.textAlign = "left"; const px = h * 0.74; x.font = NXD.FONT(700, Math.round(px));

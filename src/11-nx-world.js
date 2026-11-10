@@ -48,6 +48,9 @@ const NXW = (() => {
     d_base: { t: "sandstone2", c: [0.75, 0.72, 0.68], s: 2 }, d_wood: { t: "planks", c: [1.25, 1.05, 0.8], s: 1.2 }, d_dwood: { t: "darkwood", s: 1.2 }, d_blue: { t: "planks", c: [0.3, 0.75, 1.0], s: 1.2 }, d_green: { t: "planks", c: [0.35, 0.8, 0.55], s: 1.2 },
     d_cloth0: { t: "fabric", c: [1.7, 0.35, 0.25], s: 0.5 }, d_cloth1: { t: "fabric", c: [0.3, 0.7, 1.5], s: 0.5 }, d_cloth2: { t: "fabric", c: [2.1, 1.9, 1.5], s: 0.5 }, d_cloth3: { t: "fabric", c: [1.9, 1.2, 0.25], s: 0.5 },
     d_clay: { c: [0.36, 0.16, 0.085], r: 0.85, m: 0 }, d_dark: { c: [0.012, 0.011, 0.01], r: 0.9, m: 0 }, d_palm: { c: [0.1, 0.17, 0.05], r: 0.7, m: 0 }, d_trunk: { c: [0.27, 0.2, 0.13], r: 0.9, m: 0 },
+    // rooftop at night
+    r_floor: { t: "bitumen", c: [1.5, 1.5, 1.6], s: 8, r: 0.5 }, r_pad: { t: "asphalt2", c: [0.75, 0.76, 0.8], s: 4, r: 0.75 }, r_gravel: { t: "gravel", c: [1.2, 1.2, 1.25], s: 2.4 }, r_pave: { t: "concfloor", c: [1.5, 1.5, 1.55], r: 0.7 },
+    r_parapet: { t: "concrete", c: [0.85, 0.85, 0.88] }, r_brick: { t: "brick", s: 2.2 }, r_tank: { t: "planks", c: [0.8, 0.62, 0.5], s: 1.5 }, r_unit: { t: "hangar", c: [2.6, 2.7, 2.9], m: 0.5, r: 0.8 },
     // generic
     trimBlack: { c: [0.03, 0.032, 0.036], r: 0.42, m: 0.85 }, trimSteel: { t: "brushed", c: [0.6, 0.61, 0.63], r: 1.1, m: 1 }, trimWhite: { c: [0.8, 0.8, 0.78], r: 0.5, m: 0 },
     darkMetal: { t: "darkmetal", c: [1, 1, 1], m: 1 }, plasticBlack: { c: [0.025, 0.026, 0.03], r: 0.45, m: 0 }, plasticGrey: { t: "plastic", c: [0.35, 0.36, 0.38] }, plasticWhite: { t: "plastic", c: [0.9, 0.9, 0.9] },
