@@ -41,15 +41,26 @@ try {
   const j = JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
   if (j && typeof j === "object" && !Array.isArray(j)) { for (const k of Object.keys(j)) if (ALLOWED.test(k) && j[k] && typeof j[k] === "object") db[k] = j[k]; }
   console.log("Loaded", Object.keys(db).length, "records from", DB_FILE);
-} catch (e) { if (e.code !== "ENOENT") console.error("Could not read db:", e.message); }
-let saveT = null;
+} catch (e) {
+  if (e.code !== "ENOENT") {
+    // a damaged file is kept aside (never overwritten by the next save), and the last good backup is loaded instead
+    console.error("Could not read db:", e.message);
+    try { fs.copyFileSync(DB_FILE, DB_FILE + ".corrupt-" + Date.now()); } catch (e2) {}
+    try { const j = JSON.parse(fs.readFileSync(DB_FILE + ".bak", "utf8")); if (j && typeof j === "object" && !Array.isArray(j)) { for (const k of Object.keys(j)) if (ALLOWED.test(k) && j[k] && typeof j[k] === "object") db[k] = j[k]; console.log("Loaded", Object.keys(db).length, "records from the backup"); } } catch (e3) {}
+  }
+}
+let saveT = null, saving = false, saveAgain = false, lastBak = 0;
 function persist() {
   clearTimeout(saveT);
-  saveT = setTimeout(() => {
-    const tmp = DB_FILE + ".tmp";
+  saveT = setTimeout(function save() {
+    if (saving) { saveAgain = true; return; }   // one write at a time
+    saving = true; const tmp = DB_FILE + ".tmp";
+    const done = () => { saving = false; if (saveAgain) { saveAgain = false; save(); } };
     fs.writeFile(tmp, JSON.stringify(db), (err) => {
-      if (err) return console.error("Save failed:", err.message);
-      fs.rename(tmp, DB_FILE, (e2) => e2 && console.error("Save failed:", e2.message));
+      if (err) { console.error("Save failed:", err.message); return done(); }
+      // keep a copy of the previous good file at most every 10 minutes
+      if (Date.now() - lastBak > 600000) { try { fs.copyFileSync(DB_FILE, DB_FILE + ".bak"); lastBak = Date.now(); } catch (e) {} }
+      fs.rename(tmp, DB_FILE, (e2) => { if (e2) console.error("Save failed:", e2.message); done(); });
     });
   }, 300);
 }

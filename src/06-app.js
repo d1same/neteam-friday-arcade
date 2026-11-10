@@ -151,7 +151,10 @@ function hostTick(dtMs) {
     if (S.allT > 0) S.allT -= dtMs;
     if (S.rdyT > 250) {
       S.rdyT = 0; S.rr = roomState(S);
-      const allReady = S.rr.length > 0 && S.rr.every(r => r.v === 1);
+      // someone stuck on "Joining" for 8 s (a tab in the background never loads the room) doesn't hold everyone else up
+      const nowMs = Date.now(); S.jw = S.jw || {}; S.rr.forEach(r => { if (r.v === -2) { if (!S.jw[r.k]) S.jw[r.k] = nowMs; } else delete S.jw[r.k]; });
+      const counted = S.rr.filter(r => !(r.v === -2 && nowMs - S.jw[r.k] > 8000));
+      const allReady = counted.length > 0 && counted.every(r => r.v === 1);
       if (!allReady) S.allT = 0; else if (S.allT === 0) S.allT = ALL_READY_MS;
       if (S.go || S.phT <= 0 || (allReady && S.allT <= 1)) { launchSession(); return; }
     }
@@ -721,7 +724,7 @@ function renderMe() {
   $("#meName").textContent = APP.me.nick || "Set up your tech";
 }
 // homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
-const SHOT_V = 3;
+const SHOT_V = 4;
 // map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
 const MAP_SHOT_V = 1;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", race: "Street race" };
