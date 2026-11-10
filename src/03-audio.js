@@ -310,9 +310,9 @@ const SFX = {
       case "right": u("ui-on", 0.6); break;
       case "join": u("ui-on", 0.45, 1.2); break;
       case "wrong": case "early": u("ui-deny", 0.65); break;
-      case "count": u("drum1", 0.85, 1, 0, 0.15); break;
-      case "go": u("drum-go", 1, 1, 0, 0.2); break;
-      case "start": u("ui-on", 0.55); u("drum1", 0.75, 1, 0.09, 0.15); break;
+      case "count": this.beep(880, 0.16, 0.5); break;
+      case "go": this.beep(1760, 0.6, 0.55); break;
+      case "start": u("ui-on", 0.55); break;
       case "win": u("drum-win", 1, 1, 0, 0.2); this.samp("crowd1", 0.45, 0, 1, 0, 0.3, 0.4); break;
       case "lose": u("drum-low", 0.95, 1, 0, 0.2); this.samp("power-down", 0.3, 0, 0.9, 0, 0.12, 0.3); break;
       case "alarm": u("drum-low", 0.8, 1.15, 0, 0.2); u("ui-deny", 0.5, 1, 0.05); break;
@@ -322,6 +322,17 @@ const SFX = {
       case "fall": this.samp("fall1", 0.6) || this.tap(0.4, 700); break;
       case "boom": this.blast(0.8, 0, 0, 0.25); break;
     }
+  },
+  // countdown timer beep: a clean electronic tone (sine with a little octave and fifth on top), fast attack, short
+  // ring-out through the room, like a race start light or a match timer
+  beep(f, len, vol) {
+    const a = this.ensure(); if (!a) return; const t = a.currentTime + 0.005, o = this.out(a, vol, 0, 0.15);
+    [[1, 1], [2, 0.22], [3, 0.06]].forEach(([m, v]) => {
+      const s = a.createOscillator(), g = a.createGain(); s.type = "sine"; s.frequency.value = f * m;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(v, t + 0.006);
+      g.gain.setValueAtTime(v, t + len * 0.75); g.gain.exponentialRampToValueAtTime(0.0001, t + len + 0.12);
+      s.connect(g).connect(o); s.start(t); s.stop(t + len + 0.15);
+    });
   },
   // ---- one-shots that used to be beeps
   // jump pad: a burst of compressed air and the deck kicking
