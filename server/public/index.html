@@ -6697,6 +6697,8 @@ function oRay(ox, oz, dx, dz, maxT) {
   }
   return maxT;
 }
+// line of sight to the centre of someone or to either shoulder (a peek round a corner)
+function oLOSw(ax, az, bx, bz) { if (oLOS(ax, az, bx, bz)) return true; const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz) || 1, px = -dz / d * 0.3, pz = dx / d * 0.3; return oLOS(ax, az, bx + px, bz + pz) || oLOS(ax, az, bx - px, bz - pz); }
 function oLOS(ax, az, bx, bz) { const dx = bx - ax, dz = bz - az, d = Math.hypot(dx, dz); if (d < 0.01) return true; return oRay(ax, az, dx / d, dz / d, d) >= d - 0.05; }
 function oPath(sx, sz, tx, tz) {
   const start = sz * OG + sx, goal = tz * OG + tx; if (start === goal) return [];
@@ -6714,14 +6716,14 @@ function oPath(sx, sz, tx, tz) {
 const OW = [
   { id: "pistol", n: "Ping Pistol", short: "PISTOL", slot: 2, cost: 0, dmg: 26, hs: 2.3, rate: 0.26, mag: 12, rl: 1.5, spr: 0.01, mv: 0.035, range: 50, spd: 1, auto: false, kick: 0.018, col: "#f5f1e6", snd: "pistol", kill: 300, vm: [0.32, 0.12, 0.12], d: "Free sidearm" },
   { id: "smg", n: "Packet SMG", short: "SMG", slot: 1, cost: 1200, dmg: 19, hs: 1.8, rate: 0.08, mag: 30, rl: 2.0, spr: 0.028, mv: 0.02, range: 38, spd: 1.04, auto: true, kick: 0.008, col: "#4cc9f0", snd: "smg", kill: 600, vm: [0.5, 0.13, 0.18], d: "Fast fire, run-and-gun" },
-  { id: "rifle", n: "Fiber Rifle", short: "RIFLE", slot: 1, cost: 2700, dmg: 32, hs: 3.6, rate: 0.1, mag: 30, rl: 2.4, spr: 0.011, mv: 0.06, range: 75, spd: 0.93, auto: true, kick: 0.012, col: "#ffd23f", snd: "rifle", kill: 300, vm: [0.7, 0.14, 0.3], d: "One-tap headshots" },
-  { id: "sniper", n: "Zero-Day Sniper", short: "SNIPER", slot: 1, cost: 4750, dmg: 115, hs: 2, rate: 1.4, mag: 5, rl: 3.4, spr: 0.0015, mv: 0.14, range: 120, spd: 0.84, auto: false, kick: 0.05, col: "#ff7ac6", snd: "sniper", kill: 100, scope: true, vm: [0.95, 0.12, 0.45], d: "One shot, one kill · scope" },
+  { id: "rifle", n: "Fiber Rifle", short: "RIFLE", slot: 1, cost: 2700, dmg: 34, hs: 3.6, rate: 0.1, mag: 30, rl: 2.4, spr: 0.011, mv: 0.06, range: 75, spd: 0.93, auto: true, kick: 0.012, col: "#ffd23f", snd: "rifle", kill: 300, vm: [0.7, 0.14, 0.3], d: "One-tap headshots" },
+  { id: "sniper", n: "Zero-Day Sniper", short: "SNIPER", slot: 1, cost: 4750, dmg: 115, hs: 2, ap: 0.85, fo: 6, rate: 1.4, mag: 5, rl: 3.4, spr: 0.0015, mv: 0.14, range: 120, spd: 0.84, auto: false, kick: 0.05, col: "#ff7ac6", snd: "sniper", kill: 100, scope: true, vm: [0.95, 0.12, 0.45], d: "One shot, one kill · scope" },
   { id: "knife", n: "Patch Knife", short: "KNIFE", slot: 3, cost: 0, dmg: 34, hs: 1, rate: 0.42, mag: 0, rl: 0, spr: 0, mv: 0, range: 2.3, spd: 1.1, auto: true, kick: 0, col: "#9da1a9", snd: "knife", kill: 1500, melee: true, vm: [0.28, 0.04, 0], d: "Always carried · stab from behind" },
   { id: "shotgun", n: "Root Shotgun", short: "SHOTGUN", slot: 1, cost: 1100, dmg: 16, hs: 1.5, rate: 0.85, mag: 7, rl: 3.0, spr: 0.075, mv: 0.02, range: 20, spd: 0.97, auto: false, kick: 0.04, col: "#ff6b57", snd: "shotgun", kill: 900, pel: 8, vm: [0.75, 0.13, 0.32], d: "Devastating up close" },
   { id: "deagle", n: "Kernel Magnum", short: "MAGNUM", slot: 2, cost: 700, dmg: 54, hs: 2.4, rate: 0.48, mag: 7, rl: 2.2, spr: 0.014, mv: 0.06, range: 60, spd: 0.98, auto: false, kick: 0.045, col: "#c084fc", snd: "heavy", kill: 300, vm: [0.38, 0.14, 0.14], d: "Heavy pistol, headshot kills" },
   { id: "carbine", n: "Proxy Carbine", short: "CARBINE", slot: 1, cost: 2100, dmg: 27, hs: 3.2, rate: 0.095, mag: 25, rl: 2.2, spr: 0.015, mv: 0.045, range: 65, spd: 0.97, auto: true, kick: 0.01, col: "#3ddc97", snd: "carbine", kill: 300, vm: [0.62, 0.13, 0.24], d: "Cheaper rifle" },
   { id: "lmg", n: "Botnet LMG", short: "LMG", slot: 1, cost: 5000, dmg: 30, hs: 2.4, rate: 0.088, mag: 100, rl: 5.0, spr: 0.026, mv: 0.06, range: 70, spd: 0.8, auto: true, kick: 0.009, col: "#ff9f1c", snd: "lmg", kill: 300, vm: [0.85, 0.17, 0.3], d: "100 rounds, very slow" },
-  { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "scout", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], d: "Light sniper, move fast" },
+  { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, ap: 0.5, fo: 4, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "scout", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], d: "Light sniper, move fast" },
   { id: "rocket", n: "Packet Launcher", short: "ROCKET", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.8, mag: 5, rl: 2.6, spr: 0, mv: 0, range: 120, spd: 0.95, auto: false, kick: 0.06, col: "#ff6a1a", snd: "rocket", kill: 300, rocket: true, vm: [0.8, 0.2, 0.3], d: "Splash damage · rocket jumps" },
   { id: "laser", n: "Photon Laser", short: "LASER", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.85, mag: 99, rl: 0, spr: 0, mv: 0, range: 160, spd: 1.05, auto: true, kick: 0.025, col: "#ff3df0", snd: "laser", kill: 300, laser: true, vm: [0.72, 0.14, 0.34], d: "One hit, one kill" },
 ];
@@ -6798,7 +6800,8 @@ function makeOps(md) {
       });
       else if (kind !== 1) g.P.forEach((q, j) => {
         if (!q.alive) return; const d = Math.hypot(q.x - x, q.z - z); if (d >= R || !oLOS(x, z, q.x, q.z)) return;
-        const f = g.P[by], credit = by === j ? j : f && (!team || f.tm !== q.tm) ? by : -1;
+        const f = g.P[by]; if (team && f && j !== by && f.tm === q.tm) return;   // no team damage from grenades (bullets have none either); your own still hurts you
+        const credit = by === j ? j : f ? by : -1;
         this.damage(S, j, credit, kind === 2 ? -3 : -2, false, kind === 2 ? 6 + 104 * Math.pow(1 - d / R, 1.15) : 8 + 120 * Math.pow(1 - d / R, 1.1));
       });
       // glass in reach of the blast shatters (checked from a point just off the pane on the blast's side)
@@ -6920,23 +6923,28 @@ function makeOps(md) {
       const others = g.P.filter((q, j) => j !== i && q.alive);
       let best = null, bs = -1;
       for (let k = 0; k < 24; k++) { const c = cellC(OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]); const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
-      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
+      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.prot = g.t + 1.5; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
       if (troph) { p.w = -1; p.pw = 0; p.cur = 0; p.gr = [1, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (laser) { p.w = LASER; p.pw = 0; p.cur = LASER; p.gr = [0, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
-      if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.cur = p.w = [1, 2, 2, 3, 5, 7, 8, 9][rint(0, 7)]; p.pw = Math.random() < 0.5 ? 6 : 0; }
+      if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.cur = p.w = [1, 2, 2, 3, 5, 7, 8, 9][rint(0, 7)]; p.pw = Math.random() < 0.5 ? 6 : 0; p.arm = 100; }
     },
     damage(S, tgt, from, wi, head, raw) {
       const g = S.g, q = g.P[tgt], W0 = OW[wi] || OW[0];
       if (!q.alive) return;
+      if (team && g.ph !== "live") return;   // a grenade that lands after the round is decided does nothing
+      if (!team && from >= 0 && from !== tgt && g.t < (q.prot || 0)) return;   // a moment of spawn protection (ends when you shoot)
       let dmg = raw != null ? raw : W0.dmg * (head ? W0.hs : 1);
-      if (from >= 0 && from !== tgt && !W0.melee && !W0.laser && wi >= 0) { const f = g.P[from], dd = Math.hypot(f.x - q.x, f.z - q.z); dmg *= clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1); }
-      if (q.arm > 0) { const ab = Math.min(q.arm, dmg * 0.45); q.arm -= ab; dmg -= ab; }
+      if (from >= 0 && from !== tgt && !W0.melee && !W0.laser && wi >= 0) { const f = g.P[from], dd = Math.hypot(f.x - q.x, f.z - q.z); dmg *= clamp(1.15 - dd / (W0.range * (W0.fo || 1.6)), 0.55, 1); }
+      // armor (a vest) takes 45% of body damage; a headshot gets past it mostly, and the snipers punch through
+      if (q.arm > 0) { const ab = Math.min(q.arm, dmg * (head ? 0.12 : 0.45) * (1 - (W0.ap || 0))); q.arm -= ab; dmg -= ab; }
       if (q.bot && from >= 0 && from !== tgt) q.bot.alertT = 2.5;
       const real = Math.max(0, Math.min(dmg, q.hp));
       if (from >= 0 && from !== tgt) { g.P[from].dmg += real; q.hb[from] = (q.hb[from] || 0) + real; }
       q.hp -= dmg;
       if (q.hp <= 0) {
-        q.hp = 0; q.alive = 0; q.d++; q.actT = 0; q.rT = 3;
+        q.hp = 0; q.alive = 0; q.d++; q.actT = 0; q.rT = 3; q.dieT = g.t;
+        // a fall or your own grenade still counts as a kill for the enemy who hurt you most this life
+        if (from < 0 || from === tgt) { let bj = -1, bv = 0; for (const j in q.hb) if (+j !== tgt && q.hb[j] > bv && g.P[j] && this.enemy(S, +j, tgt)) { bv = q.hb[j]; bj = +j; } if (bj >= 0) from = bj; }
         if (from >= 0 && from !== tgt) { const f = g.P[from]; f.k++; if (head) f.hsk++; f.cr = Math.min(16000, f.cr + (W0.kill || 300)); }
         // assist: anyone else who did 40+ damage to this life
         for (const j in q.hb) if (+j !== from && q.hb[j] >= 40 && g.P[j]) g.P[j].as++;
@@ -6963,9 +6971,39 @@ function makeOps(md) {
     },
     endRound(S, win, why) {
       const g = S.g; g.sc[win]++; g.ph = "post"; g.pt = this.POST;
-      g.ls[win] = 0; g.ls[1 - win] = Math.min(4, g.ls[1 - win] + 1);
+      g.ls[win] = 0; g.ls[1 - win] = Math.min(3, g.ls[1 - win] + 1);
       g.P.forEach(p => { p.cr = Math.min(16000, p.cr + (p.tm === win ? 3000 : 1400 + 500 * g.ls[1 - win])); p.actT = 0; });
       this.say(S, [3, win, why]);
+    },
+    // hit claims [id, target, head, weapon, stab]. Each id counts once. They only count while the round is live and the shooter
+    // is alive or died a split second ago (so two players who shoot each other at once both land); older ones are thrown away
+    claims(S, i, inp, ok) {
+      const g = S.g, P = g.P, p = P[i];
+      if (!Array.isArray(inp.hc)) return;
+      let mx = p.lastClaim;
+      if (!ok || (team && g.ph !== "live")) { for (const c of inp.hc) if (Array.isArray(c) && Number.isFinite(c[0]) && c[0] > mx) mx = c[0]; p.lastClaim = mx; return; }
+      for (const c of inp.hc.slice(-24)) {
+        if (!Array.isArray(c) || !Number.isFinite(c[0]) || !(c[0] > p.lastClaim)) continue;
+        mx = Math.max(mx, c[0]); p.prot = 0;
+        if ((c[1] | 0) <= -10000) { const k = -10000 - (c[1] | 0), q = OPS_PANES[k], W1 = OW[c[3] | 0]; if (q && W1 && this.owns(S, p, c[3] | 0) && Math.hypot(q.c[0] - p.x, q.c[2] - p.z) < (W1.melee ? 3.6 : W1.range + 8)) this.breakPane(S, k); continue; }
+        if ((c[1] | 0) < 0) { const k = -1 - (c[1] | 0), pp = OPS_PROPS[k], wi = c[3] | 0, W1 = OW[wi]; if (pp && W1 && this.owns(S, p, wi) && Math.hypot(pp.x - p.x, pp.z - p.z) < (W1.melee ? 3.4 : W1.range + 6)) this.hitProp(S, k, i, W1.dmg); continue; }
+        const tg = c[1] | 0, q = P[tg], wi = c[3] | 0, W0 = OW[wi];
+        if (!q || !W0 || W0.rocket || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
+        // a hit allowance that refills at the gun's fire rate (pellets share a shot's worth) and banks up to four shots, so
+        // claims from two quick shots that arrive in one network packet both count, while nobody can out-hit their gun
+        { const per = W0.pel || 1; if (p.hbW !== wi) { p.hbW = wi; p.budget = Math.max(p.budget || 0, per); }
+          p.budget = Math.min(per * 4, (p.budget || 0) + Math.max(0, g.t - p.lastHitT) / (W0.rate * 0.55) * per); p.lastHitT = g.t; }
+        if (!(p.budget >= 1)) continue;
+        const d = Math.hypot(q.x - p.x, q.z - p.z); if (d > (W0.melee ? 3.4 : W0.range + 6)) continue;
+        if (!oLOSw(p.x, p.z, q.x, q.z)) continue;
+        p.budget--;
+        if (W0.melee) {
+          const stab = !!c[4], fx = q.bot ? Math.sin(q.a) : -Math.sin(q.a), fz = q.bot ? Math.cos(q.a) : -Math.cos(q.a);
+          const back = ((q.x - p.x) * fx + (q.z - p.z) * fz) / (d || 1) > 0.35;
+          this.damage(S, tg, i, wi, false, stab ? (back ? 200 : 65) : (back ? 80 : 34));
+        } else this.damage(S, tg, i, wi, !!c[2]);
+      }
+      p.lastClaim = mx;
     },
     hostTick(S, dt, inputs) {
       const g = S.g; g.t += dt; const P = g.P;
@@ -6976,7 +7014,11 @@ function makeOps(md) {
           if (inputs[i]) { p.idle = 0; p.seen = 1; if (p.gone) { p.gone = 0; p.rT = 1; } }
           else { p.idle += dt; if (!p.gone && p.idle > (p.seen ? 8 : 25)) { p.gone = 1; if (p.alive) { p.alive = 0; p.hp = 0; } } }
         }
-        if (!p.alive) { if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) this.spawnFFA(S, i); } return; }
+        if (!p.alive) {
+          if (!p.bot && inputs[i]) this.claims(S, i, inputs[i], g.t - (p.dieT == null ? -9 : p.dieT) < 0.3);
+          if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) this.spawnFFA(S, i); }
+          return;
+        }
         if (p.bot) { this.botTick(S, i, dt); return; }
         const inp = inputs[i]; if (!inp) return;
         if (Number.isFinite(inp.x) && Number.isFinite(inp.z) && inp.q === p.rsq && !(team && g.ph === "buy" && Math.hypot(inp.x - p.rx, inp.z - p.rz) > 1.5)) { p.x = clamp(inp.x, 0, OG * CS); p.z = clamp(inp.z, 0, OG * CS); p.a = +inp.a || 0; }
@@ -7003,30 +7045,7 @@ function makeOps(md) {
             if ((it === FRAG_IT || it === SMOKE_IT) && !p.gr[it - FRAG_IT] && p.cr >= NADE_COST) { p.cr -= NADE_COST; p.gr[it - FRAG_IT] = 1; }
           }
         }
-        // hit claims [id, target, head, weapon]
-        if (Array.isArray(inp.hc) && g.ph === "live") {
-          let mx = p.lastClaim;
-          for (const c of inp.hc.slice(-24)) {
-            if (!Array.isArray(c) || !Number.isFinite(c[0]) || !(c[0] > p.lastClaim)) continue;
-            mx = Math.max(mx, c[0]);
-            if ((c[1] | 0) <= -10000) { const k = -10000 - (c[1] | 0), q = OPS_PANES[k], W1 = OW[c[3] | 0]; if (q && W1 && this.owns(S, p, c[3] | 0) && Math.hypot(q.c[0] - p.x, q.c[2] - p.z) < (W1.melee ? 3.6 : W1.range + 8)) this.breakPane(S, k); continue; }
-            if ((c[1] | 0) < 0) { const k = -1 - (c[1] | 0), pp = OPS_PROPS[k], wi = c[3] | 0, W1 = OW[wi]; if (pp && W1 && this.owns(S, p, wi) && Math.hypot(pp.x - p.x, pp.z - p.z) < (W1.melee ? 3.4 : W1.range + 6)) this.hitProp(S, k, i, W1.dmg); continue; }
-            const tg = c[1] | 0, q = P[tg], wi = c[3] | 0, W0 = OW[wi];
-            if (!q || !W0 || W0.rocket || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
-            // one shot = one window; shotgun pellets share it
-            if (g.t - p.lastHitT >= W0.rate * 0.55) { p.lastHitT = g.t; p.budget = W0.pel || 1; }
-            if (!(p.budget > 0)) continue;
-            const d = Math.hypot(q.x - p.x, q.z - p.z); if (d > (W0.melee ? 3.4 : W0.range + 6)) continue;
-            if (!oLOS(p.x, p.z, q.x, q.z)) continue;
-            p.budget--;
-            if (W0.melee) {
-              const stab = !!c[4], fx = q.bot ? Math.sin(q.a) : -Math.sin(q.a), fz = q.bot ? Math.cos(q.a) : -Math.cos(q.a);
-              const back = ((q.x - p.x) * fx + (q.z - p.z) * fz) / (d || 1) > 0.35;
-              this.damage(S, tg, i, wi, false, stab ? (back ? 200 : 65) : (back ? 80 : 34));
-            } else this.damage(S, tg, i, wi, !!c[2]);
-          }
-          p.lastClaim = mx;
-        }
+        this.claims(S, i, inp, true);
         this.procAct(S, i, !!inp.act, dt);
       });
       this.propsTick(S, dt); this.nadesTick(S, dt);
@@ -7055,7 +7074,7 @@ function makeOps(md) {
       let tgt = -1, td = 1e9;
       // bots see what is in front of them; behind, only someone very close, someone they are already fighting, or whoever just shot them
       const fa = Math.sin(p.a), fc = Math.cos(p.a), wide = (b.alertT = Math.max(0, (b.alertT || 0) - dt)) > 0;
-      g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > -0.25) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
+      g.P.forEach((q, j) => { if (!q.alive || !this.enemy(S, i, j)) return; const d = Math.hypot(q.x - p.x, q.z - p.z); if (d < 42 && d < td && (wide || d < 7 || j === b.tgt || ((q.x - p.x) * fa + (q.z - p.z) * fc) / (d || 1) > 0.3) && (arena ? oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z) : oLOS(p.x, p.z, q.x, q.z)) && !oSmoked(p.x, p.z, q.x, q.z)) { td = d; tgt = j; } });
       // Golden Router: go after whoever holds it; the holder keeps running but shoots back at anyone who gets close
       if (troph && g.tr.by >= 0 && g.tr.by !== i) { const q = g.P[g.tr.by], d = Math.hypot(q.x - p.x, q.z - p.z); if (q.alive && d < 42 && oSee(p.x, 1.5, p.z, q.x, (q.jh || 0) + 1.2, q.z)) { tgt = g.tr.by; td = d; } }
       if (p.hasTr && td > 16) tgt = -1;
@@ -7082,16 +7101,20 @@ function makeOps(md) {
           b.fT = W0.rate * 1.6 + Math.random() * 0.6; const ty = (q.jh || 0) + 0.4, err = (Math.random() - 0.5) * 0.12, ang = p.a + err;
           this.hostRocket(S, i, [p.x, 1.4, p.z], [Math.sin(ang) * td, ty - 1.4, Math.cos(ang) * td]); p.shot = [++p.bs, +q.x.toFixed(2), 1, +q.z.toFixed(2), p.cur]; return;
         }
-        if (b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.15) {
+        if (b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.15 && td < W0.range + 4) {   // no shotgun chip from across the map
           // automatic guns fire in bursts with a breath between them; every gun has to stop and reload
           const burst = W0.auto && W0.rate < 0.2;
           if (burst) { b.bn = (b.bn || 0) - 1; if (b.bn <= 0) { b.bn = 3 + Math.floor(Math.random() * 4); b.fT = 0.25 + Math.random() * 0.4; } else b.fT = W0.rate * 1.15; }
           else b.fT = W0.rate * (1 + Math.random() * (W0.auto ? 1.4 : 0.6)) + (W0.auto ? 0 : 0.15);
           if (W0.mag && --b.am <= 0) { b.am = W0.mag; b.bn = 0; b.fT = Math.max(b.fT, W0.rl * 0.8); }
-          const acc = clamp((b.boss ? 0.62 : 0.5) + (burst ? 0.04 : 0) - td * (p.cur === 3 ? 0.002 : 0.011) - (moving ? 0.06 : 0), 0.08, 0.8);
-          const hit = Math.random() < acc, head = hit && Math.random() < (b.boss ? 0.22 : 0.14);
-          const ang = p.a + (hit ? 0 : (Math.random() - 0.5) * 0.2);
-          const dist = hit ? td : oRay(p.x, p.z, Math.sin(ang), Math.cos(ang), 60);
+          const acc = clamp(((b.boss ? 0.62 : 0.5) + (burst ? 0.04 : 0) - td * (p.cur === 3 ? 0.002 : 0.011) - (moving ? 0.06 : 0)) * (W0.scope ? 0.75 : 1), 0.08, 0.8);   // a bot's one-shot rifle shouldn't feel like an aimbot
+          // cover: crates, desks and monitors stop a bot's bullets the same way they stop yours. Only the head showing = a harder shot, at the head
+          const eye = [p.x, (p.jh || 0) + 1.5, p.z], cov = (y) => { const dx = q.x - p.x, dy = (q.jh || 0) + y - eye[1], dz = q.z - p.z, L = Math.hypot(dx, dy, dz) || 1; const r = oRayProps(eye, [dx / L, dy / L, dz / L], L - 0.35); return r[1] >= 0 ? r : null; };
+          const cb = cov(1.0), ch2 = cb ? cov(1.58) : null, blocked = cb && ch2;
+          const roll = Math.random() < acc * (cb ? 0.45 : 1), hit = roll && !blocked && !(cb && W0.pel), head = hit && (!!cb || Math.random() < (b.boss ? 0.22 : 0.14));
+          if (roll && blocked) this.hitProp(S, cb[1], i, W0.dmg);
+          const ang = p.a + (hit || blocked ? 0 : (Math.random() - 0.5) * 0.2);
+          const dist = hit ? td : blocked ? Math.hypot(q.x - p.x, q.z - p.z) * cb[0] / Math.max(0.1, Math.hypot(q.x - p.x, (q.jh || 0) - 0.5 - (p.jh || 0), q.z - p.z)) : oRay(p.x, p.z, Math.sin(ang), Math.cos(ang), 60);
           p.shot = [++p.bs, +(p.x + Math.sin(ang) * dist).toFixed(2), +(hit ? (head ? 1.45 : 1.0) : 0.8 + Math.random()).toFixed(2), +(p.z + Math.cos(ang) * dist).toFixed(2), p.cur];
           if (hit) { if (W0.pel) { let n = 0; for (let k = 0; k < W0.pel; k++) if (Math.random() < clamp(1.2 - td / W0.range, 0.1, 1)) n++; if (n) this.damage(S, tgt, i, p.cur, false, W0.dmg * n); } else this.damage(S, tgt, i, p.cur, head); }
         }
@@ -7118,7 +7141,7 @@ function makeOps(md) {
       } else if (!team) {
         // lost sight of someone: go and look where they were last seen
         if (b.ls) { b.goal = [clamp(Math.floor(b.ls[0] / CS), 0, OG - 1), clamp(Math.floor(b.ls[1] / CS), 0, OG - 1)]; b.gT = 4; b.path = []; b.pT = 0; b.ls = null; }
-        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); b.goal = (others.length && Math.random() < 0.6) ? [Math.floor(others[rint(0, others.length - 1)].x / CS), Math.floor(others[rint(0, others.length - 1)].z / CS)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
+        else if (!b.goal || b.gT <= 0 || !b.path.length) { const others = g.P.filter((q, j) => j !== i && q.alive); const o = others.length && Math.random() < 0.6 ? others[rint(0, others.length - 1)] : null; b.goal = o ? [Math.floor(o.x / CS), Math.floor(o.z / CS)] : OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]; b.gT = 6; b.path = []; }
         goal = b.goal;
       } else if (p.tm === 0) {
         if (bm.st === 0) {
@@ -7157,10 +7180,11 @@ function makeOps(md) {
     timeLeft(S) { const g = S.g; if (!team) return (this.DUR - g.t) * 1000; return (g.bomb.st === 1 && g.ph === "live" ? g.bomb.t : g.pt) * 1000; },
     done(S) { const g = S.g, hs = g.P.filter(p => !p.bot); if (hs.length && hs.every(p => p.gone)) return true; return team ? g.over : troph ? (g.t >= this.DUR || g.P.some(p => p.hold >= this.HOLD)) : (g.t >= this.DUR || g.P.some(p => p.k >= this.GOAL)); },
     rank(S) {
-      if (troph) return S.g.P.map((p, i) => ({ i, v: Math.floor(p.hold), de: p.d, k: p.k, label: Math.floor(p.hold) + "s held · " + p.k + " elim" + (p.k === 1 ? "" : "s"), rec: Math.floor(p.hold) })).sort((a, b) => (b.v - a.v) || (b.k - a.k) || (a.de - b.de));
+      // anyone who left before the end goes to the bottom and earns no place or league points
+      if (troph) return S.g.P.map((p, i) => ({ i, gone: p.gone, v: Math.floor(p.hold), de: p.d, k: p.k, label: Math.floor(p.hold) + "s held · " + p.k + " elim" + (p.k === 1 ? "" : "s"), rec: Math.floor(p.hold) })).sort((a, b) => (a.gone - b.gone) || (b.v - a.v) || (b.k - a.k) || (a.de - b.de));
       const g = S.g, win = g.sc[0] === g.sc[1] ? -1 : g.sc[0] > g.sc[1] ? 0 : 1;
-      return g.P.map((p, i) => ({ i, v: p.k, de: p.d, w: team && p.tm === win ? 1 : 0, label: (team ? TEAM[p.tm].short + " · " : "") + p.k + " elim" + (p.k === 1 ? "" : "s") + " · " + p.d + " death" + (p.d === 1 ? "" : "s"), rec: p.k }))
-        .sort((a, b) => (b.w - a.w) || (b.v - a.v) || (a.de - b.de));
+      return g.P.map((p, i) => ({ i, gone: p.gone, v: p.k, de: p.d, w: team && p.tm === win ? 1 : 0, label: (team ? TEAM[p.tm].short + " · " : "") + p.k + " elim" + (p.k === 1 ? "" : "s") + " · " + p.d + " death" + (p.d === 1 ? "" : "s"), rec: p.k }))
+        .sort((a, b) => (a.gone - b.gone) || (b.w - a.w) || (b.v - a.v) || (a.de - b.de));
     },
     board(S) {
       const g = S.g;
@@ -7619,12 +7643,17 @@ function makeOps(md) {
           if (i === V.meIdx) return;
           const pl = V.g && V.g.pl && V.g.pl[i]; if (!pl || !pl[1]) return;
           const av = F.remote[i]; if (!av) return;
-          const ox = me.x - av.x, oz = me.z - av.z;
-          const a = dir[0] * dir[0] + dir[2] * dir[2], b = 2 * (ox * dir[0] + oz * dir[2]), c = ox * ox + oz * oz - 0.45 * 0.45;
+          // hit shapes that match the 1.8 m characters: a body cylinder from the shins to the shoulders, and a head ball on top
+          const ox = me.x - av.x, oz = me.z - av.z, sc = 1 - 0.3 * (av.cr || 0), jh = av.jh || 0;
+          const hy = jh + 1.63 * sc, hr = 0.15, oy = EY - hy, hb = ox * dir[0] + oy * dir[1] + oz * dir[2], hc = ox * ox + oy * oy + oz * oz - hr * hr, hd = hb * hb - hc;
+          if (hd >= 0) { const th = -hb - Math.sqrt(hd); if (th > 0 && th < t) { t = th; hitIdx = i; hitY = 2; return; } }
+          const a = dir[0] * dir[0] + dir[2] * dir[2], b = 2 * (ox * dir[0] + oz * dir[2]), c = ox * ox + oz * oz - 0.3 * 0.3;
           const disc = b * b - 4 * a * c; if (disc < 0) return;
-          const th = (-b - Math.sqrt(disc)) / (2 * a); if (th <= 0 || th >= t) return;
-          const yw = EY + dir[1] * th, sc = 1 - 0.3 * (av.cr || 0), y = (yw - (av.jh || 0)) / sc; if (y < 0.25 || y > 1.75) return;
-          t = th; hitIdx = i; hitY = y;
+          for (const th of [(-b - Math.sqrt(disc)) / (2 * a), (-b + Math.sqrt(disc)) / (2 * a)]) {   // front of the cylinder, or its far side when the shot drops in over the shoulders
+            if (th <= 0 || th >= t) continue;
+            const y = (EY + dir[1] * th - jh) / sc; if (y < 0.15 || y > 1.47) continue;
+            t = th; hitIdx = i; hitY = y; return;
+          }
         });
         const end = [me.x + dir[0] * t, EY + dir[1] * t, me.z + dir[2] * t]; lastEnd = end;
         if (k < 3) this.addTracer(V, start, end, W0.laser ? V.ro[V.meIdx].hex : W0.col, hitIdx < 0, W0.laser);
@@ -7634,7 +7663,7 @@ function makeOps(md) {
           const pls = V.g.pl, mine = pls[V.meIdx];
           const friendly = team && pls[hitIdx][2] === mine[2];
           if (!friendly) {
-            const head = hitY > 1.22; F.claims.push([++F.claimN, hitIdx, head ? 1 : 0, F.cur]); hitAny = true; headAny = headAny || head;
+            const head = hitY > 1.5; F.claims.push([++F.claimN, hitIdx, head ? 1 : 0, F.cur]); hitAny = true; headAny = headAny || head;
             const av = F.remote[hitIdx], dd = av ? Math.hypot(av.x - me.x, av.z - me.z) : 0, est = W0.dmg * (head ? W0.hs : 1) * clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1);
             dmgAcc[hitIdx] = (dmgAcc[hitIdx] || 0) + est; if (head) headIdx[hitIdx] = 1;
           }
@@ -10415,12 +10444,12 @@ function finishSession() {
   S.res = rank.map(o => {
     const r = S.ro[o.i];
     let pt = 0, hp = 0;
-    if (!r.b) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
-    return { i: o.i, l: o.label, pt, hp, rec: o.rec };
+    if (!r.b && !o.gone) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
+    return { i: o.i, l: o.gone && !r.b ? o.label + " · left" : o.label, pt, hp, rec: o.rec, gone: !!o.gone };
   });
   S.board = mod.board ? mod.board(S) : null;
   S.ph = "results"; S.phT = 20000;
-  const humans = S.res.filter(o => !S.ro[o.i].b && S.ro[o.i].u);
+  const humans = S.res.filter(o => !S.ro[o.i].b && S.ro[o.i].u && !o.gone);
   // every match with a signed-in human is saved. Solo matches vs bots keep records/personal bests but don't award league points.
   const solo = humans.length < 2;
   if (humans.length >= 1 && NET.db) {

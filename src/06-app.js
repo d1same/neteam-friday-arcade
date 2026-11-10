@@ -184,12 +184,12 @@ function finishSession() {
   S.res = rank.map(o => {
     const r = S.ro[o.i];
     let pt = 0, hp = 0;
-    if (!r.b) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
-    return { i: o.i, l: o.label, pt, hp, rec: o.rec };
+    if (!r.b && !o.gone) { hp = ++place; pt = PLACE_POINTS[hp - 1] || 1; }
+    return { i: o.i, l: o.gone && !r.b ? o.label + " · left" : o.label, pt, hp, rec: o.rec, gone: !!o.gone };
   });
   S.board = mod.board ? mod.board(S) : null;
   S.ph = "results"; S.phT = 20000;
-  const humans = S.res.filter(o => !S.ro[o.i].b && S.ro[o.i].u);
+  const humans = S.res.filter(o => !S.ro[o.i].b && S.ro[o.i].u && !o.gone);
   // every match with a signed-in human is saved. Solo matches vs bots keep records/personal bests but don't award league points.
   const solo = humans.length < 2;
   if (humans.length >= 1 && NET.db) {
