@@ -340,7 +340,7 @@ function gameFrame(dt, t) {
   const mod = V.mod, ph = V.h.ph;
   if (ph !== V.prevPh) {
     if (ph === "play") { SFX.play("go"); }
-    if (ph === "results") { const me = (V.h.res || []).find(o => o.i === V.meIdx); SFX.play(me && me.hp === 1 ? "win" : "count"); }
+    if (ph === "results") { const me = (V.h.res || []).find(o => o.i === V.meIdx); SFX.play(me && me.hp === 1 ? "win" : "right"); }
     V.prevPh = ph;
     renderOverlay(V, true);
   } else if (ph === "results" && V.h.saved !== V.shownSaved) renderOverlay(V, false);
