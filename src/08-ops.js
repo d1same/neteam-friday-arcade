@@ -320,19 +320,41 @@ function oPath(sx, sz, tx, tz) {
 // weapons
 // slot: 1 primary, 2 pistol, 3 knife. snd: sound profile. vm: view-model [length, height, barrel]
 const OW = [
-  { id: "pistol", n: "Ping Pistol", short: "PISTOL", slot: 2, cost: 0, dmg: 26, hs: 2.3, rate: 0.26, mag: 12, rl: 1.5, spr: 0.01, mv: 0.035, range: 50, spd: 1, auto: false, kick: 0.018, col: "#f5f1e6", snd: "pistol", kill: 300, vm: [0.32, 0.12, 0.12], d: "Free sidearm" },
-  { id: "smg", n: "Packet SMG", short: "SMG", slot: 1, cost: 1200, dmg: 19, hs: 1.8, rate: 0.08, mag: 30, rl: 2.0, spr: 0.028, mv: 0.02, range: 38, spd: 1.04, auto: true, kick: 0.008, col: "#4cc9f0", snd: "smg", kill: 600, vm: [0.5, 0.13, 0.18], d: "Fast fire, run-and-gun" },
-  { id: "rifle", n: "Fiber Rifle", short: "RIFLE", slot: 1, cost: 2700, dmg: 32, hs: 3.6, rate: 0.1, mag: 30, rl: 2.4, spr: 0.011, mv: 0.06, range: 75, spd: 0.93, auto: true, kick: 0.012, col: "#ffd23f", snd: "rifle", kill: 300, vm: [0.7, 0.14, 0.3], d: "One-tap headshots" },
-  { id: "sniper", n: "Zero-Day Sniper", short: "SNIPER", slot: 1, cost: 4750, dmg: 115, hs: 2, rate: 1.4, mag: 5, rl: 3.4, spr: 0.0015, mv: 0.14, range: 120, spd: 0.84, auto: false, kick: 0.05, col: "#ff7ac6", snd: "sniper", kill: 100, scope: true, vm: [0.95, 0.12, 0.45], d: "One shot, one kill · scope" },
-  { id: "knife", n: "Patch Knife", short: "KNIFE", slot: 3, cost: 0, dmg: 34, hs: 1, rate: 0.42, mag: 0, rl: 0, spr: 0, mv: 0, range: 2.3, spd: 1.1, auto: true, kick: 0, col: "#9da1a9", snd: "knife", kill: 1500, melee: true, vm: [0.28, 0.04, 0], d: "Always carried · stab from behind" },
-  { id: "shotgun", n: "Root Shotgun", short: "SHOTGUN", slot: 1, cost: 1100, dmg: 16, hs: 1.5, rate: 0.85, mag: 7, rl: 3.0, spr: 0.075, mv: 0.02, range: 20, spd: 0.97, auto: false, kick: 0.04, col: "#ff6b57", snd: "shotgun", kill: 900, pel: 8, vm: [0.75, 0.13, 0.32], d: "Devastating up close" },
-  { id: "deagle", n: "Kernel Magnum", short: "MAGNUM", slot: 2, cost: 700, dmg: 54, hs: 2.4, rate: 0.48, mag: 7, rl: 2.2, spr: 0.014, mv: 0.06, range: 60, spd: 0.98, auto: false, kick: 0.045, col: "#c084fc", snd: "heavy", kill: 300, vm: [0.38, 0.14, 0.14], d: "Heavy pistol, headshot kills" },
-  { id: "carbine", n: "Proxy Carbine", short: "CARBINE", slot: 1, cost: 2100, dmg: 27, hs: 3.2, rate: 0.095, mag: 25, rl: 2.2, spr: 0.015, mv: 0.045, range: 65, spd: 0.97, auto: true, kick: 0.01, col: "#3ddc97", snd: "carbine", kill: 300, vm: [0.62, 0.13, 0.24], d: "Cheaper rifle" },
-  { id: "lmg", n: "Botnet LMG", short: "LMG", slot: 1, cost: 5000, dmg: 30, hs: 2.4, rate: 0.088, mag: 100, rl: 5.0, spr: 0.026, mv: 0.06, range: 70, spd: 0.8, auto: true, kick: 0.009, col: "#ff9f1c", snd: "lmg", kill: 300, vm: [0.85, 0.17, 0.3], d: "100 rounds, very slow" },
-  { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "scout", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], d: "Light sniper, move fast" },
-  { id: "rocket", n: "Packet Launcher", short: "ROCKET", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.8, mag: 5, rl: 2.6, spr: 0, mv: 0, range: 120, spd: 0.95, auto: false, kick: 0.06, col: "#ff6a1a", snd: "rocket", kill: 300, rocket: true, vm: [0.8, 0.2, 0.3], d: "Splash damage · rocket jumps" },
-  { id: "laser", n: "Photon Laser", short: "LASER", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.85, mag: 99, rl: 0, spr: 0, mv: 0, range: 160, spd: 1.05, auto: true, kick: 0.025, col: "#ff3df0", snd: "laser", kill: 300, laser: true, vm: [0.72, 0.14, 0.34], d: "One hit, one kill" },
+  { id: "pistol", n: "Ping Pistol", short: "PISTOL", slot: 2, cost: 0, dmg: 26, hs: 2.3, rate: 0.26, mag: 12, rl: 1.5, spr: 0.01, mv: 0.035, range: 50, spd: 1, auto: false, kick: 0.018, col: "#f5f1e6", snd: "pistol", kill: 300, vm: [0.32, 0.12, 0.12], ap: 0.45, d: "Free sidearm" },
+  { id: "smg", n: "Packet SMG", short: "SMG", slot: 1, cost: 1200, dmg: 19, hs: 1.8, rate: 0.08, mag: 30, rl: 2.0, spr: 0.028, mv: 0.02, range: 38, spd: 1.04, auto: true, kick: 0.008, col: "#4cc9f0", snd: "smg", kill: 600, vm: [0.5, 0.13, 0.18], ap: 0.35, d: "Fast fire, run-and-gun" },
+  { id: "rifle", n: "Fiber Rifle", short: "RIFLE", slot: 1, cost: 2700, dmg: 32, hs: 3.6, rate: 0.1, mag: 30, rl: 2.4, spr: 0.011, mv: 0.06, range: 75, spd: 0.93, auto: true, kick: 0.012, col: "#ffd23f", snd: "rifle", kill: 300, vm: [0.7, 0.14, 0.3], ap: 0.25, d: "One-tap headshots" },
+  { id: "sniper", n: "Zero-Day Sniper", short: "SNIPER", slot: 1, cost: 4750, dmg: 115, hs: 2, rate: 1.4, mag: 5, rl: 3.4, spr: 0.0015, mv: 0.14, range: 120, spd: 0.84, auto: false, kick: 0.05, col: "#ff7ac6", snd: "sniper", kill: 100, scope: true, vm: [0.95, 0.12, 0.45], ap: 0.05, nf: true, d: "One shot, one kill · scope" },
+  { id: "knife", n: "Patch Knife", short: "KNIFE", slot: 3, cost: 0, dmg: 34, hs: 1, rate: 0.42, mag: 0, rl: 0, spr: 0, mv: 0, range: 2.3, spd: 1.1, auto: true, kick: 0, col: "#9da1a9", snd: "knife", kill: 1500, melee: true, vm: [0.28, 0.04, 0], ap: 0.15, d: "Always carried · stab from behind" },
+  { id: "shotgun", n: "Root Shotgun", short: "SHOTGUN", slot: 1, cost: 1100, dmg: 16, hs: 1.5, rate: 0.85, mag: 7, rl: 3.0, spr: 0.075, mv: 0.02, range: 20, spd: 0.97, auto: false, kick: 0.04, col: "#ff6b57", snd: "shotgun", kill: 900, pel: 8, vm: [0.75, 0.13, 0.32], ap: 0.45, d: "Devastating up close" },
+  { id: "deagle", n: "Kernel Magnum", short: "MAGNUM", slot: 2, cost: 700, dmg: 54, hs: 2.4, rate: 0.48, mag: 7, rl: 2.2, spr: 0.014, mv: 0.06, range: 60, spd: 0.98, auto: false, kick: 0.045, col: "#c084fc", snd: "heavy", kill: 300, vm: [0.38, 0.14, 0.14], ap: 0.2, d: "Heavy pistol, headshot kills" },
+  { id: "carbine", n: "Proxy Carbine", short: "CARBINE", slot: 1, cost: 2100, dmg: 25, hs: 3.2, rate: 0.095, mag: 25, rl: 2.2, spr: 0.015, mv: 0.045, range: 65, spd: 0.97, auto: true, kick: 0.01, col: "#3ddc97", snd: "carbine", kill: 300, vm: [0.62, 0.13, 0.24], ap: 0.3, d: "Cheaper rifle" },
+  { id: "lmg", n: "Botnet LMG", short: "LMG", slot: 1, cost: 5000, dmg: 30, hs: 2.4, rate: 0.088, mag: 100, rl: 5.0, spr: 0.026, mv: 0.06, range: 70, spd: 0.8, auto: true, kick: 0.009, col: "#ff9f1c", snd: "lmg", kill: 300, vm: [0.85, 0.17, 0.3], ap: 0.25, d: "100 rounds, very slow" },
+  { id: "scout", n: "Spoof Scout", short: "SCOUT", slot: 1, cost: 1700, dmg: 76, hs: 2.6, rate: 1.15, mag: 10, rl: 2.8, spr: 0.002, mv: 0.05, range: 110, spd: 0.99, auto: false, kick: 0.04, col: "#9fd8ff", snd: "scout", kill: 300, scope: true, vm: [0.85, 0.11, 0.38], ap: 0.2, nf: true, d: "Light sniper, move fast" },
+  { id: "rocket", n: "Packet Launcher", short: "ROCKET", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.8, mag: 5, rl: 2.6, spr: 0, mv: 0, range: 120, spd: 0.95, auto: false, kick: 0.06, col: "#ff6a1a", snd: "rocket", kill: 300, rocket: true, vm: [0.8, 0.2, 0.3], ap: 0.45, d: "Splash damage · rocket jumps" },
+  { id: "laser", n: "Photon Laser", short: "LASER", slot: 1, cost: 0, dmg: 100, hs: 1, rate: 0.85, mag: 99, rl: 0, spr: 0, mv: 0, range: 160, spd: 1.05, auto: true, kick: 0.025, col: "#ff3df0", snd: "laser", kill: 300, laser: true, vm: [0.72, 0.14, 0.34], ap: 0, d: "One hit, one kill" },
 ];
+// damage rules shared by the host (real damage) and the shooter's screen (the numbers that pop up), so they always agree.
+// ap: share of the damage a Kevlar vest soaks up for this gun (a headshot soaks half as much). nf: bolt-action, no drop-off with distance.
+function opsFall(W, dd) { return !W || W.melee || W.laser || W.nf ? 1 : clamp(1.15 - dd / (W.range * 1.6), 0.55, 1); }
+function opsArmor(W, dmg, head, arm) { if (!(arm > 0)) return 0; const ap = W && W.ap != null ? W.ap : 0.45; return Math.min(arm, dmg * ap * (head ? 0.5 : 1)); }
+// a player's hitbox, the same everywhere: a head sphere and a body cylinder, scaled down when crouched
+const HB_R = 0.38, HB_NECK = 1.47, HB_HEAD = 1.62, HB_HR = 0.21;
+// a shot from (ox, oy, oz) along dir (unit length) against someone standing at (px, feet, pz): [distance, head?] or null if it
+// misses or something nearer (distance maxT) is in the way. sc is 1 standing, 0.7 crouched.
+function opsHitbox(ox, oy, oz, dir, px, feet, pz, sc, maxT) {
+  let best = null;
+  // head: a sphere
+  { const cx = px - ox, cy = feet + HB_HEAD * sc - oy, cz = pz - oz, tc = cx * dir[0] + cy * dir[1] + cz * dir[2], d2 = cx * cx + cy * cy + cz * cz - tc * tc, r2 = HB_HR * HB_HR;
+    if (d2 <= r2) { const th = tc - Math.sqrt(r2 - d2); if (th > 0 && th < maxT) best = [th, true]; } }
+  // body: an upright cylinder from the floor to the neck (entering through its side, or through its top when shot from above)
+  { const fx = ox - px, fz = oz - pz, a = dir[0] * dir[0] + dir[2] * dir[2], top = feet + HB_NECK * sc, lim = best ? best[0] : maxT;
+    const inBody = (th) => { const y = oy + dir[1] * th; return y >= feet && y <= top; };
+    if (a > 1e-9) { const b = 2 * (fx * dir[0] + fz * dir[2]), c = fx * fx + fz * fz - HB_R * HB_R, disc = b * b - 4 * a * c;
+      if (disc >= 0) { const th = (-b - Math.sqrt(disc)) / (2 * a); if (th > 0 && th < lim && inBody(th)) best = [th, false]; } }
+    if (Math.abs(dir[1]) > 1e-6) { const th = (top - oy) / dir[1]; if (th > 0 && th < (best ? best[0] : lim)) { const x = fx + dir[0] * th, z = fz + dir[2] * th; if (x * x + z * z <= HB_R * HB_R) best = [th, false]; } }
+  }
+  return best;
+}
 const OW_PRIMARY = [1, 5, 7, 2, 9, 3, 8], OW_PISTOL = [0, 6], KNIFE = 4, ROCKET = 10, LASER = 11, ARMOR_IT = 20;
 const OW_BUY = [6, 1, 5, 7, 2, 9, 3, 8];
 const ARMOR_COST = 650;
@@ -528,17 +550,19 @@ function makeOps(md) {
       const others = g.P.filter((q, j) => j !== i && q.alive);
       let best = null, bs = -1;
       for (let k = 0; k < 24; k++) { const c = cellC(OPS_CELLS.spawn[rint(0, OPS_CELLS.spawn.length - 1)]); const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - c[0], q.z - c[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = c; } }
-      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
+      p.x = p.rx = best[0]; p.z = p.rz = best[1]; p.a = Math.random() * Math.PI * 2; p.hp = 100; p.alive = 1; p.arm = 0; p.gr = [1, 1]; p.rsq++; p.actT = 0; p.spT = g.t; p.fired = 0; p.hist = []; p.hb = {}; p.jh = 0; p.hasTr = 0; if (p.bot) p.bot.fly = null;
       if (troph) { p.w = -1; p.pw = 0; p.cur = 0; p.gr = [1, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (laser) { p.w = LASER; p.pw = 0; p.cur = LASER; p.gr = [0, 0]; if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.bot.goal = null; } return; }
       if (p.bot) { p.bot.path = []; p.bot.tgt = -1; p.cur = p.w = [1, 2, 2, 3, 5, 7, 8, 9][rint(0, 7)]; p.pw = Math.random() < 0.5 ? 6 : 0; }
     },
     damage(S, tgt, from, wi, head, raw) {
-      const g = S.g, q = g.P[tgt], W0 = OW[wi] || OW[0];
+      const g = S.g, q = g.P[tgt], Wg = OW[wi], W0 = Wg || OW[0];
       if (!q.alive) return;
+      // just respawned (free-for-all modes): nobody can hurt you for a moment, until you fire
+      if (from >= 0 && from !== tgt && this.shielded(S, q)) return;
       let dmg = raw != null ? raw : W0.dmg * (head ? W0.hs : 1);
-      if (from >= 0 && from !== tgt && !W0.melee && !W0.laser && wi >= 0) { const f = g.P[from], dd = Math.hypot(f.x - q.x, f.z - q.z); dmg *= clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1); }
-      if (q.arm > 0) { const ab = Math.min(q.arm, dmg * 0.45); q.arm -= ab; dmg -= ab; }
+      if (from >= 0 && from !== tgt && Wg) { const f = g.P[from]; dmg *= opsFall(Wg, Math.hypot(f.x - q.x, f.z - q.z)); }
+      if (q.arm > 0) { const ab = opsArmor(Wg, dmg, head, q.arm); q.arm -= ab; dmg -= ab; }
       if (q.bot && from >= 0 && from !== tgt) q.bot.alertT = 2.5;
       const real = Math.max(0, Math.min(dmg, q.hp));
       if (from >= 0 && from !== tgt) { g.P[from].dmg += real; q.hb[from] = (q.hb[from] || 0) + real; }
@@ -551,6 +575,16 @@ function makeOps(md) {
         q.hb = {};
         g.kf.push([from, tgt, wi, head ? 1 : 0, ++g.kseq]); if (g.kf.length > 5) g.kf.shift();
       }
+    },
+    SHIELD: 1.6,
+    shielded(S, q) { return !team && q.spT != null && S.g.t - q.spT < this.SHIELD && !q.fired; },
+    // the last quarter second of where someone stood, for judging hits the shooter saw a moment ago
+    track(S, p) { const h = p.hist || (p.hist = []), t = S.g.t; if (!h.length || t - h[h.length - 1][0] >= 0.03) h.push([t, p.x, p.z]); while (h.length && t - h[0][0] > 0.3) h.shift(); },
+    seenRecently(p, q, reach) {
+      const ok = (x, z) => { const d = Math.hypot(x - p.x, z - p.z); return d <= reach && oLOS(p.x, p.z, x, z) ? d : -1; };
+      let d = ok(q.x, q.z); if (d >= 0) return d;
+      const h = q.hist || []; for (let k = h.length - 1; k >= 0; k--) { d = ok(h[k][1], h[k][2]); if (d >= 0) return d; }
+      return -1;
     },
     enemy(S, i, j) { const P = S.g.P; return i !== j && (team ? P[i].tm !== P[j].tm : true); },
     owns(S, p, wi) { if (laser) return wi === LASER; return wi === KNIFE || wi === p.pw || wi === p.w; },
@@ -585,9 +619,15 @@ function makeOps(md) {
           else { p.idle += dt; if (!p.gone && p.idle > (p.seen ? 8 : 25)) { p.gone = 1; if (p.alive) { p.alive = 0; p.hp = 0; } } }
         }
         if (!p.alive) { if (!team && !p.gone) { p.rT -= dt; if (p.rT <= 0) this.spawnFFA(S, i); } return; }
-        if (p.bot) { this.botTick(S, i, dt); return; }
+        if (p.bot) { const ox = p.x, oz = p.z; this.botTick(S, i, dt); if (dt > 0) { const v = Math.min(12, Math.hypot(p.x - ox, p.z - oz) / dt); p.mv = (p.mv || 0) + (v - (p.mv || 0)) * Math.min(1, dt * 5); } this.track(S, p); return; }
         const inp = inputs[i]; if (!inp) return;
+        const ox = p.x, oz = p.z;
         if (Number.isFinite(inp.x) && Number.isFinite(inp.z) && inp.q === p.rsq && !(team && g.ph === "buy" && Math.hypot(inp.x - p.rx, inp.z - p.rz) > 1.5)) { p.x = clamp(inp.x, 0, OG * CS); p.z = clamp(inp.z, 0, OG * CS); p.a = +inp.a || 0; }
+        // how fast they really move (bots find a moving target harder to hit) and where they were lately (see hit claims)
+        if (dt > 0) { const v = Math.min(12, Math.hypot(p.x - ox, p.z - oz) / dt); p.mv = (p.mv || 0) + (v - (p.mv || 0)) * Math.min(1, dt * 5); }
+        p.ducked = !!inp.cr;
+        this.track(S, p);
+        if (inp.sh && inp.sh[0] !== p.shSeen) { if (p.shSeen !== undefined) p.fired = 1; p.shSeen = inp.sh[0]; }
         if (Number.isInteger(inp.w) && OW[inp.w] && this.owns(S, p, inp.w)) p.cur = inp.w;
         p.jh = clamp(+inp.jh || 0, OPS_M.sky ? -60 : 0, 40);
         // fell into the open air between the towers: out
@@ -611,7 +651,7 @@ function makeOps(md) {
             if ((it === FRAG_IT || it === SMOKE_IT) && !p.gr[it - FRAG_IT] && p.cr >= NADE_COST) { p.cr -= NADE_COST; p.gr[it - FRAG_IT] = 1; }
           }
         }
-        // hit claims [id, target, head, weapon]
+        // hit claims [id, target, head, weapon, stab, shot]
         if (Array.isArray(inp.hc) && g.ph === "live") {
           let mx = p.lastClaim;
           for (const c of inp.hc.slice(-24)) {
@@ -621,14 +661,25 @@ function makeOps(md) {
             if ((c[1] | 0) < 0) { const k = -1 - (c[1] | 0), pp = OPS_PROPS[k], wi = c[3] | 0, W1 = OW[wi]; if (pp && W1 && this.owns(S, p, wi) && Math.hypot(pp.x - p.x, pp.z - p.z) < (W1.melee ? 3.4 : W1.range + 6)) this.hitProp(S, k, i, W1.dmg); continue; }
             const tg = c[1] | 0, q = P[tg], wi = c[3] | 0, W0 = OW[wi];
             if (!q || !W0 || W0.rocket || !q.alive || !this.enemy(S, i, tg) || !this.owns(S, p, wi)) continue;
-            // one shot = one window; shotgun pellets share it
-            if (g.t - p.lastHitT >= W0.rate * 0.55) { p.lastHitT = g.t; p.budget = W0.pel || 1; }
+            p.fired = 1;
+            // each shot may land at most once per pellet. Shots are counted by the shooter's own shot number, not by when the
+            // message happens to arrive, so two shots that reach the host together (network jitter) both count. The fire rate
+            // itself is held to the gun's speed with a little slack for bunching.
+            const sid = Number.isFinite(c[5]) ? c[5] : c[0];
+            if (sid !== p.shId) {
+              const cd = (W0.melee && c[4] ? 1.0 : W0.rate) * 0.8;
+              p.fc = Math.max(p.fc || 0, g.t - 0.6);
+              if (p.fc + cd > g.t + 0.05) continue;   // faster than the gun can fire: ignore
+              p.fc += cd; p.shId = sid; p.budget = W0.pel || 1;
+            }
             if (!(p.budget > 0)) continue;
-            const d = Math.hypot(q.x - p.x, q.z - p.z); if (d > (W0.melee ? 3.4 : W0.range + 6)) continue;
-            if (!oLOS(p.x, p.z, q.x, q.z)) continue;
+            // the shooter saw the target a moment ago (their screen is a little behind the host): accept the hit if the target
+            // was in reach and in sight now or anywhere in the last quarter second
+            const seen = this.seenRecently(p, q, W0.melee ? 3.4 : W0.range + 6);
+            if (seen < 0) continue;
             p.budget--;
             if (W0.melee) {
-              const stab = !!c[4], fx = q.bot ? Math.sin(q.a) : -Math.sin(q.a), fz = q.bot ? Math.cos(q.a) : -Math.cos(q.a);
+              const d = seen, stab = !!c[4], fx = q.bot ? Math.sin(q.a) : -Math.sin(q.a), fz = q.bot ? Math.cos(q.a) : -Math.cos(q.a);
               const back = ((q.x - p.x) * fx + (q.z - p.z) * fz) / (d || 1) > 0.35;
               this.damage(S, tg, i, wi, false, stab ? (back ? 200 : 65) : (back ? 80 : 34));
             } else this.damage(S, tg, i, wi, !!c[2]);
@@ -687,7 +738,7 @@ function makeOps(md) {
         if (b.amW !== p.cur) { b.amW = p.cur; b.am = W0.mag; b.bn = 0; }
         if (W0.melee && td > 2.2) { const s2 = speed * dt, dx = q.x - p.x, dz = q.z - p.z; oMoveSafe(p, dx / td * s2, dz / td * s2); return; }
         if (W0.rocket && b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.2) {
-          b.fT = W0.rate * 1.6 + Math.random() * 0.6; const ty = (q.jh || 0) + 0.4, err = (Math.random() - 0.5) * 0.12, ang = p.a + err;
+          b.fT = W0.rate * 1.6 + Math.random() * 0.6; p.fired = 1; const ty = (q.jh || 0) + 0.4, err = (Math.random() - 0.5) * 0.12, ang = p.a + err;
           this.hostRocket(S, i, [p.x, 1.4, p.z], [Math.sin(ang) * td, ty - 1.4, Math.cos(ang) * td]); p.shot = [++p.bs, +q.x.toFixed(2), 1, +q.z.toFixed(2), p.cur]; return;
         }
         if (b.react <= 0 && b.fT <= 0 && Math.abs(da) < 0.15) {
@@ -696,12 +747,15 @@ function makeOps(md) {
           if (burst) { b.bn = (b.bn || 0) - 1; if (b.bn <= 0) { b.bn = 3 + Math.floor(Math.random() * 4); b.fT = 0.25 + Math.random() * 0.4; } else b.fT = W0.rate * 1.15; }
           else b.fT = W0.rate * (1 + Math.random() * (W0.auto ? 1.4 : 0.6)) + (W0.auto ? 0 : 0.15);
           if (W0.mag && --b.am <= 0) { b.am = W0.mag; b.bn = 0; b.fT = Math.max(b.fT, W0.rl * 0.8); }
-          const acc = clamp((b.boss ? 0.62 : 0.5) + (burst ? 0.04 : 0) - td * (p.cur === 3 ? 0.002 : 0.011) - (moving ? 0.06 : 0), 0.08, 0.8);
+          // harder to hit someone running, crouched far away, or in the air; the same rules for people and bots
+          const tq = g.P[tgt], tRun = clamp(((tq.mv || 0) - 1.5) / 4, 0, 1), tAir = (tq.jh || 0) > 0.3 ? 1 : 0, tDuck = tq.ducked && td > 8 ? 1 : 0;
+          const acc = clamp((b.boss ? 0.62 : 0.5) + (burst ? 0.04 : 0) - td * (W0.nf ? 0.002 : 0.011) - (moving ? 0.06 : 0) - 0.12 * tRun - 0.08 * tAir - 0.05 * tDuck, 0.06, 0.8);
+          p.fired = 1;
           const hit = Math.random() < acc, head = hit && Math.random() < (b.boss ? 0.22 : 0.14);
           const ang = p.a + (hit ? 0 : (Math.random() - 0.5) * 0.2);
           const dist = hit ? td : oRay(p.x, p.z, Math.sin(ang), Math.cos(ang), 60);
           p.shot = [++p.bs, +(p.x + Math.sin(ang) * dist).toFixed(2), +(hit ? (head ? 1.45 : 1.0) : 0.8 + Math.random()).toFixed(2), +(p.z + Math.cos(ang) * dist).toFixed(2), p.cur];
-          if (hit) { if (W0.pel) { let n = 0; for (let k = 0; k < W0.pel; k++) if (Math.random() < clamp(1.2 - td / W0.range, 0.1, 1)) n++; if (n) this.damage(S, tgt, i, p.cur, false, W0.dmg * n); } else this.damage(S, tgt, i, p.cur, head); }
+          if (hit) { if (W0.pel) { let n = 0; for (let k = 0; k < W0.pel; k++) if (Math.random() < clamp(1.2 - td / W0.range, 0.1, 1)) n++; if (n) this.damage(S, tgt, i, p.cur, false, W0.dmg * n / opsFall(W0, td)); } else this.damage(S, tgt, i, p.cur, head); }
         }
         return;
       }
@@ -755,7 +809,7 @@ function makeOps(md) {
       const g = S.g, b = g.bomb;
       return {
         md, mp: g.mp, rd: g.rd, ph: g.ph, pt: Math.max(0, Math.round(g.pt * 10)), sc: g.sc, bomb: [b.st, +b.x.toFixed(2), +b.z.toFixed(2), Math.max(0, Math.round(b.t * 10)), b.site],
-        pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr]),
+        pl: g.P.map(p => [Math.max(0, Math.round(p.hp)), p.alive, p.tm, p.k, p.d, Math.round(p.arm), p.cur, p.rsq, +p.rx.toFixed(2), +p.rz.toFixed(2), p.cr, Math.round(p.actT * 10), p.w, Math.ceil(p.rT * 10), p.hsk, p.pw, p.gone, p.as, p.gr[0], p.gr[1], p.pk, Math.round(p.hold * 10), p.hasTr, p.alive && this.shielded(S, p) ? 1 : 0]),
         bt: g.P.map(p => p.bot ? (p.jh > 0.05 ? [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2), +p.jh.toFixed(2)] : [+p.x.toFixed(2), +p.z.toFixed(2), +(p.a + Math.PI).toFixed(2)]) : 0),
         bs: g.P.map(p => p.bot && p.shot ? p.shot : 0), kf: g.kf, ann: g.ann, gb: (g.gb || []).map(e => e[0]), pr: g.pr.map((q, k) => { if (q.hp <= 0) return 0; const f = q.hp / OPROP[OPS_PROPS[k].t].hp; return f > 0.67 ? 1 : f > 0.34 ? 2 : 3; }).join(""), fx: g.fx,
         kb: g.P.map(p => p.kb || 0), rk: g.rk.map(r => [r.id, +r.x.toFixed(2), +r.y.toFixed(2), +r.z.toFixed(2)]), wp: g.wp.map(w => w.rt > 0 ? 0 : 1).join(""), tr: g.tr ? [+g.tr.x.toFixed(2), +g.tr.y.toFixed(2), +g.tr.z.toFixed(2), g.tr.by] : 0,
@@ -835,7 +889,7 @@ function makeOps(md) {
     clientEnter(V) {
       opsApplyTeamColors();
       const F = V.fps = { ready: false, failed: false, me: { x: OG * CS / 2, z: OG * CS / 2, a: 0, p: 0 }, rsq: -1, cur: 0, last: KNIFE, stepT: 0, ammo: OW.map(w => w.mag), reloadT: 0, fireCd: 0, firing: false, latch: false, scoped: false, bloom: 0, kick: 0,
-        shotN: 0, claimN: Math.floor(now()), thSeq: Math.floor(now()), rkSeq: Math.floor(now()), claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: Math.floor(now()), buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
+        shotN: Math.floor(now()), claimN: Math.floor(now()), thSeq: Math.floor(now()), rkSeq: Math.floor(now()), claims: [], look: { dx: 0, dy: 0 }, stick: null, lookT: null, lastHp: 100, hurtT: 0, hitT: 0, hitHead: false, kfSeen: 0, annSeen: 0, ann: null, toasts: [], remote: {}, shSeen: {}, bob: 0, buySeq: Math.floor(now()), buyReq: null, act: false, tab: false, lastW: undefined, prevPh: "", spec: 0 };
       loadThree().then(ok => { if (!ok) { F.failed = true; return; } if (APP.V === V) this.build(V); });
       this.bind(V);
     },
@@ -1147,8 +1201,10 @@ function makeOps(md) {
       F.fireCd -= dt;
       const canFire = alive && playing && !(team && g.ph !== "live") && (!F.shop || F.shop.hidden);
       if (canFire && (F.firing || (F.stab && W0.melee)) && F.fireCd <= 0 && F.reloadT <= 0 && !(F.latch && !W0.auto)) {
-        if (W0.melee) { F.fireCd = F.stab ? 1.0 : W0.rate; F.latch = !!F.stab; this.melee(V, !!F.stab); F.stab = false; }
-        else if (F.ammo[F.cur] > 0) { F.fireCd = W0.rate; F.latch = true; this.fire(V); if (!W0.laser) F.ammo[F.cur]--; if (F.ammo[F.cur] === 0) this.reload(V); }
+        // the cooldown keeps the part of a frame it overshot, so a gun fires at the same speed at 30 fps as at 144 fps
+        const over = Math.max(F.fireCd, -Math.min(dt, 0.05));
+        if (W0.melee) { F.fireCd = over + (F.stab ? 1.0 : W0.rate); F.latch = !!F.stab; this.melee(V, !!F.stab); F.stab = false; }
+        else if (F.ammo[F.cur] > 0) { F.fireCd = over + W0.rate; F.latch = true; this.fire(V); if (!W0.laser) F.ammo[F.cur]--; if (F.ammo[F.cur] === 0) this.reload(V); }
         else { this.reload(V); F.latch = true; }
       }
       const act = F.act && alive;
@@ -1172,7 +1228,7 @@ function makeOps(md) {
         best = i; bd = d;
       });
       F.shotN++; F.lastShot = [F.shotN, +(me.x + fx).toFixed(2), 1.1, +(me.z + fz).toFixed(2), KNIFE];
-      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0]); F.hitT = 0.3; F.hitHead = false; this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.samp("thwack1", 0.7, 0, 0.9) || SFX.tap(0.5, 400); }
+      if (best >= 0) { F.claims.push([++F.claimN, best, 0, KNIFE, stab ? 1 : 0, F.shotN]); F.hitT = 0.3; F.hitHead = false; if (!V.g.pl[best][23]) this.pop(F, stab ? 65 : 34, false, "KNIFE"); SFX.samp("thwack1", 0.7, 0, 0.9) || SFX.tap(0.5, 400); }
     },
     // grappling hook (Laser Arena): latch onto a wall or deck in front of you
     hook(V, on) {
@@ -1209,7 +1265,7 @@ function makeOps(md) {
         if (F.vp) F.vp[3] += (Math.random() - 0.5) * W0.kick * 18; if (W0.kick >= 0.04) F.fovK = W0.kick * 45; }
       const EY = F.eyeH || EYE;
       const start = [me.x - Math.sin(aimA) * 0.6 + Math.cos(aimA) * 0.2, EY - 0.16, me.z - Math.cos(aimA) * 0.6 - Math.sin(aimA) * 0.2];
-      const pel = W0.pel || 1; let hitAny = false, headAny = false, lastEnd = null; const dmgAcc = {}, headIdx = {};
+      const pel = W0.pel || 1; let hitAny = false, headAny = false, lastEnd = null; const dmgAcc = {}, headIdx = {}, armLeft = {};
       for (let k = 0; k < pel; k++) {
         const ya = aimA + (Math.random() - 0.5) * 2 * spread, pa = aimP + (Math.random() - 0.5) * 2 * spread * (pel > 1 ? 0.6 : 1);
         const cp = Math.cos(pa), dir = [-Math.sin(ya) * cp, Math.sin(pa), -Math.cos(ya) * cp];
@@ -1222,17 +1278,13 @@ function makeOps(md) {
         // glass on the way (or just behind the wall face the shot stops at) shatters; the shot carries on through it
         const gph = OPS_PANES.length && OPS_PANES_ID === OPS_ID ? oRayPanes([me.x, EY, me.z], dir, t) : [0, -1];
         if (gph[1] >= 0 && !(F.pgClaim && F.pgClaim[gph[1]] > now() - 600)) { (F.pgClaim = F.pgClaim || {})[gph[1]] = now(); F.claims.push([++F.claimN, -10000 - gph[1], 0, F.cur]); }
-        let hitIdx = -1, hitY = 0;
+        let hitIdx = -1, hitHead = false;
         V.ro.forEach((r, i) => {
           if (i === V.meIdx) return;
           const pl = V.g && V.g.pl && V.g.pl[i]; if (!pl || !pl[1]) return;
           const av = F.remote[i]; if (!av) return;
-          const ox = me.x - av.x, oz = me.z - av.z;
-          const a = dir[0] * dir[0] + dir[2] * dir[2], b = 2 * (ox * dir[0] + oz * dir[2]), c = ox * ox + oz * oz - 0.45 * 0.45;
-          const disc = b * b - 4 * a * c; if (disc < 0) return;
-          const th = (-b - Math.sqrt(disc)) / (2 * a); if (th <= 0 || th >= t) return;
-          const yw = EY + dir[1] * th, sc = 1 - 0.3 * (av.cr || 0), y = (yw - (av.jh || 0)) / sc; if (y < 0.25 || y > 1.75) return;
-          t = th; hitIdx = i; hitY = y;
+          const hit = opsHitbox(me.x, EY, me.z, dir, av.x, av.jh || 0, av.z, 1 - 0.3 * (av.cr || 0), t);
+          if (hit) { t = hit[0]; hitIdx = i; hitHead = hit[1]; }
         });
         const end = [me.x + dir[0] * t, EY + dir[1] * t, me.z + dir[2] * t]; lastEnd = end;
         if (k < 3) this.addTracer(V, start, end, W0.laser ? V.ro[V.meIdx].hex : W0.col, hitIdx < 0, W0.laser);
@@ -1242,9 +1294,11 @@ function makeOps(md) {
           const pls = V.g.pl, mine = pls[V.meIdx];
           const friendly = team && pls[hitIdx][2] === mine[2];
           if (!friendly) {
-            const head = hitY > 1.22; F.claims.push([++F.claimN, hitIdx, head ? 1 : 0, F.cur]); hitAny = true; headAny = headAny || head;
-            const av = F.remote[hitIdx], dd = av ? Math.hypot(av.x - me.x, av.z - me.z) : 0, est = W0.dmg * (head ? W0.hs : 1) * clamp(1.15 - dd / (W0.range * 1.6), 0.55, 1);
-            dmgAcc[hitIdx] = (dmgAcc[hitIdx] || 0) + est; if (head) headIdx[hitIdx] = 1;
+            const head = hitHead; F.claims.push([++F.claimN, hitIdx, head ? 1 : 0, F.cur, 0, F.shotN + 1]); hitAny = true; headAny = headAny || head;
+            // the number that pops up follows the host's rules: distance drop-off and the target's vest
+            const av = F.remote[hitIdx], dd = av ? Math.hypot(av.x - me.x, av.z - me.z) : 0, tp = pls[hitIdx], arm = (armLeft[hitIdx] != null ? armLeft[hitIdx] : tp[5]) || 0;
+            let est = W0.dmg * (head ? W0.hs : 1) * opsFall(W0, dd); const ab = opsArmor(W0, est, head, arm); armLeft[hitIdx] = arm - ab; est -= ab;
+            if (!tp[23]) { dmgAcc[hitIdx] = (dmgAcc[hitIdx] || 0) + est; if (head) headIdx[hitIdx] = 1; }
           }
         }
       }
@@ -2475,6 +2529,7 @@ function makeOps(md) {
       }
       // gun hint after spawning
       if (pl && pl[1] && F.spawnHintT > 0 && (!F.shop || F.shop.hidden)) { F.spawnHintT -= dt; ctx.globalAlpha = Math.min(1, F.spawnHintT); ctx.textAlign = "center"; ctx.font = "700 14px 'JetBrains Mono', monospace"; const tx = troph ? "GRAB GUNS FROM THE PADS · FIND THE GOLDEN ROUTER" : laser ? (matchMedia("(pointer: coarse)").matches ? "HOOK BUTTON TO SWING" : "RIGHT-CLICK OR F TO HOOK") : matchMedia("(pointer: coarse)").matches ? "TAP BUY FOR GUNS" : "PRESS B FOR GUNS"; const tw = ctx.measureText(tx).width + 28; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.72 - 16, tw, 32, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText(tx, W / 2, H * 0.72); ctx.globalAlpha = 1; }
+      if (pl && pl[1] && pl[23]) { ctx.textAlign = "center"; ctx.font = "700 13px 'JetBrains Mono', monospace"; const tx = "SPAWN SHIELD · ENDS WHEN YOU SHOOT", tw = ctx.measureText(tx).width + 26; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.65 - 15, tw, 30, 8); ctx.fill(); ctx.fillStyle = "#9fd8ff"; ctx.fillText(tx, W / 2, H * 0.65); }
       F.hurtT = Math.max(0, F.hurtT - dt);
       if (F.hurtT > 0 && !F.post) { const gr = ctx.createRadialGradient(W / 2, H / 2, 160, W / 2, H / 2, 560); gr.addColorStop(0, "rgba(255,40,60,0)"); gr.addColorStop(1, "rgba(255,40,60," + F.hurtT * 1.3 + ")"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
       const alive = pl && pl[1];
