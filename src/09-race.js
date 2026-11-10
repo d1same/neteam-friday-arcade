@@ -372,7 +372,7 @@ const race = {
   clientExit(V) {
     const F = V.fps; if (!F) return;
     (F.unbind || []).forEach(f => f());
-    if (F.aud) { [F.aud.me, F.aud.sq, F.aud.wind, F.aud.rum, F.aud.scr].concat(F.aud.others).forEach(q => q && q.stop()); F.aud = null; } SFX.amb(null);
+    if (F.aud) { [F.aud.me, F.aud.sq, F.aud.wind, F.aud.rum, F.aud.scr, F.aud.skid].concat(F.aud.others).forEach(q => q && q.stop()); F.aud = null; } SFX.amb(null);
     if (F.post) try { F.post.dispose(); } catch (e) {}
     if (F.nx) try { F.nx.dispose(); } catch (e) {}
     if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
@@ -504,11 +504,11 @@ const race = {
     if ((c.boEv || 0) !== ev) { SFX.whoosh(0.9, 0, 1); SFX.tone(110, 0.35, "sine", 0.12, 90); F.shake = 0.25; }
     c.hitT = Math.max(0, (c.hitT || 0) - dt);
     if ((c.hitEv || 0) !== (F.hitEvSeen || 0)) { F.hitEvSeen = c.hitEv; const k = c.hitK || 0, ctr = rcAt(c.i, 0), side = (c.x - ctr[0]) * -Math.cos(c.a) + (c.z - ctr[1]) * Math.sin(c.a) > 0 ? 1 : -1;
-      SFX.scrape(0.3 + k * 0.7, side * 0.55); F.shake = Math.max(F.shake || 0, 0.1 + k * 0.4); if (k > 0.12) this.sparks(V, c.x + Math.sin(c.a) * 1.4, c.z + Math.cos(c.a) * 1.4, 0xffc27a, GFX.lowEnd() ? 5 : 6 + Math.round(k * 10)); }
+      SFX.scrape(0.3 + k * 0.7, side * 0.55); if (k > 0.4) SFX.samp("car-crash" + (1 + (Math.random() * 3 | 0)), 0.25 + k * 0.5, side * 0.55, 0.95 + Math.random() * 0.1, 0, 0, 0.4); F.shake = Math.max(F.shake || 0, 0.1 + k * 0.4); if (k > 0.12) this.sparks(V, c.x + Math.sin(c.a) * 1.4, c.z + Math.cos(c.a) * 1.4, 0xffc27a, GFX.lowEnd() ? 5 : 6 + Math.round(k * 10)); }
     F.bumpT = Math.max(0, (F.bumpT || 0) - dt);
     // keep cars from overlapping
     Object.keys(F.remote).forEach(k => { if (+k === me) return; const o = F.remote[k]; const dx = c.x - o.x, dz = c.z - o.z, d = Math.hypot(dx, dz); if (d < 2.6 && d > 0.01) { c.x += dx / d * (2.6 - d) * 0.6; c.z += dz / d * (2.6 - d) * 0.6; c.v *= 0.995;
-      if (!F.bumpT && 2.6 - d > 0.12 && Math.abs(c.v) > 8) { F.bumpT = 0.45; SFX.scrape(0.35, (dx * -Math.cos(c.a) + dz * Math.sin(c.a)) / d > 0 ? -0.5 : 0.5); F.shake = Math.max(F.shake || 0, 0.14); } } });
+      if (!F.bumpT && 2.6 - d > 0.12 && Math.abs(c.v) > 8) { F.bumpT = 0.45; SFX.scrape(0.35, (dx * -Math.cos(c.a) + dz * Math.sin(c.a)) / d > 0 ? -0.5 : 0.5); if (Math.abs(c.v) > 20) SFX.samp("car-crash1", 0.3, 0, 1.1, 0, 0, 0.3); F.shake = Math.max(F.shake || 0, 0.14); } } });
     F.steer = steer; F.gas = gas;
     return { x: +c.x.toFixed(2), z: +c.z.toFixed(2), a: +c.a.toFixed(3), v: +c.v.toFixed(1), bo: c.bo > 0 ? 1 : 0, sl: +(c.slip || 0).toFixed(2), dr: c.dc > 0.1 ? 1 : 0, use: F.useSeq, fire: F.fireSeq };
   },
@@ -842,7 +842,7 @@ const race = {
   // ---- sound: your engine through the gears, the nearest rivals with a little doppler, wind, tyres and the kerb rumble
   audio(V, dt) {
     const F = V.fps, a = SFX.on ? SFX.ensure() : null; if (!a || a.state !== "running" || !F.cars) return;
-    const A = F.aud || (F.aud = { me: SFX.engine(true), others: [0, 1, 2].map(() => SFX.engine(false)), sq: SFX.nloop(a, "bandpass", 1300, 1.4, 0.3), wind: SFX.nloop(a, "bandpass", 600, 0.5, 0), rum: SFX.nloop(a, "lowpass", 170, 0.8, 0), scr: SFX.nloop(a, "bandpass", 2400, 1.6, 0.3), rev: 0.2 });
+    const A = F.aud || (F.aud = { me: SFX.engine(true), others: [0, 1, 2].map(() => SFX.engine(false)), sq: SFX.nloop(a, "bandpass", 1300, 1.4, 0.3), wind: SFX.nloop(a, "bandpass", 600, 0.5, 0), rum: SFX.nloop(a, "lowpass", 170, 0.8, 0), scr: SFX.nloop(a, "bandpass", 2400, 1.6, 0.3), skid: SFX.sloop("car-skid", 0.3), rev: 0.2, gear: 0, gas: 0 });
     if (!F.ambOn) { F.ambOn = 1; const sky = rcWorld(RC_ID).sky; SFX.space("street"); SFX.amb(sky === "storm" ? "rain" : sky === "neon" ? "night" : "city"); }
     const GE = [0, 13, 24, 35, 46, 72], revOf = (v) => { v = Math.abs(v); let k = 0; while (k < 4 && v > GE[k + 1]) k++; const lo = GE[k] * 0.72; return 0.16 + 0.8 * clamp((v - lo) / (GE[k + 1] - lo), 0, 1); };
     const me = V.meIdx, c = me >= 0 && F.me ? F.me : null, live = V.h.ph === "play", cx = F.cam3.position.x, cz = F.cam3.position.z, k = 1 - Math.exp(-dt * 10);
@@ -850,7 +850,13 @@ const race = {
       const gas = F.gas || 0, waiting = ((V.g && V.g.t) || 0) < 0, tgt = waiting ? 0.2 + Math.max(0, gas) * 0.55 : revOf(c.v);
       A.rev += (tgt - A.rev) * k; A.me.set(A.rev, c.bo > 0 ? 1 : gas > 0.1 ? 0.85 : 0.12, c.bo > 0 ? 0.27 : 0.22, 0, 1);
       const sl = Math.abs(c.slip || 0), sp = Math.abs(c.v);
-      A.sq.set(sp > 10 ? clamp(sl - 0.12, 0, 0.3) * 0.3 : 0, 1100 + sl * 700, 0); A.wind.set(Math.pow(Math.min(1, sp / 62), 2) * 0.1, 380 + sp * 14, 0); A.rum.set(c.off && sp > 4 ? 0.2 * Math.min(1, sp / 20) : 0, 150, 0);
+      // recorded tyres when they have loaded (the filtered-noise squeal before that), a real gear change, and a pop from the exhaust when you lift off at high revs
+      const skv = sp > 10 ? clamp(sl - 0.12, 0, 0.3) : 0;
+      if (A.skid && !SFX.legacy && A.skid.ok()) { A.skid.set(skv * 1.6, 0.9 + sl * 0.35); A.sq.set(0); } else A.sq.set(skv * 0.3, 1100 + sl * 700, 0);
+      let gr = 0; while (gr < 4 && sp > GE[gr + 1]) gr++;
+      if (live && !waiting && gr > A.gear && gas > 0.3) SFX.samp(Math.random() < 0.5 ? "car-shift1" : "car-shift2", 0.28, 0, 0.95 + Math.random() * 0.1, 0, 0, 0.2);
+      if (A.gas > 0.5 && gas < 0.1 && A.rev > 0.6 && Math.random() < 0.6) SFX.samp(Math.random() < 0.5 ? "car-pop1" : "car-pop2", 0.32, 0, 0.92 + Math.random() * 0.16, 0, 0.04, 0.3);
+      A.gear = gr; A.gas = gas; A.wind.set(Math.pow(Math.min(1, sp / 62), 2) * 0.1, 380 + sp * 14, 0); A.rum.set(c.off && sp > 4 ? 0.2 * Math.min(1, sp / 20) : 0, 150, 0);
       A.scr.set(c.hitT > 0.2 && sp > 5 ? 0.09 * Math.min(1, sp / 30) : 0, 1900 + sp * 28, 0);
     } else { A.me.set(0.15, 0, 0, 0, 1); A.sq.set(0); A.wind.set(0); A.rum.set(0); A.scr.set(0); }
     // the three nearest rivals
@@ -858,7 +864,8 @@ const race = {
     near.sort((p, q) => p[0] - q[0]);
     A.others.forEach((e, n) => { const q = near[n]; if (!e) return; if (!q || !live) return e.set(0.2, 0.3, 0, 0, 1);
       const car = q[1], d = q[0], ca = F.camA || 0, pan = d > 0.5 ? clamp(((car.x - cx) * -Math.cos(ca) + (car.z - cz) * Math.sin(ca)) / d, -1, 1) * 0.8 : 0, sp = Math.hypot(car.x - (car.ax == null ? car.x : car.ax), car.z - (car.az == null ? car.z : car.az)) / Math.max(dt, 0.001);
-      car.av = lerp(car.av || 0, Math.min(70, sp), 0.1); e.set(revOf(car.av), 0.75, 0.13 * Math.pow(1 - d / 55, 2.5), pan, clamp(1 - car.vr / 110, 0.86, 1.16)); });
+      car.av = lerp(car.av || 0, Math.min(70, sp), 0.1); car.pbT = Math.max(0, (car.pbT || 0) - dt);
+      if (d < 7 && Math.abs(car.vr) > 16 && !car.pbT) { car.pbT = 3; SFX.samp("car-pass", 0.32, pan, clamp(1 - car.vr / 140, 0.9, 1.12), 0, 0, 0.3); } e.set(revOf(car.av), 0.75, 0.13 * Math.pow(1 - d / 55, 2.5), pan, clamp(1 - car.vr / 110, 0.86, 1.16)); });
     F.cars.forEach(car => { car.ax = car.x; car.az = car.z; });
   },
   hud(ctx, V, dt, t) {
