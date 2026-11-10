@@ -74,7 +74,7 @@ const NXW = (() => {
     // a map with an upper storey (M.up = { h: height of the upper floor, ceil: its room height, rows }) is built one storey at a time;
     // the ground storey's rooms end under the slab
     const UP = M.up || null, SLAB = 0.35, H = UP ? UP.h - SLAB : (M.wallH || TH.H || 3.2);
-    const LV = [{ rows: M.rows, y0: 0, H }]; if (UP) LV.push({ rows: UP.rows.map(r => r.padEnd(G, "#")), y0: UP.h, H: UP.ceil || 3.6 });
+    const LV = [{ rows: M.rows, y0: 0, H }]; if (UP) LV.push({ rows: UP.rows.map((r, z) => [...r.padEnd(G, "#")].map((c, x) => { for (const k in (M.upSites || {})) if (c === "." && M.upSites[k].some(([a, b]) => a === x && b === z)) return k; return c; }).join("")), y0: UP.h, H: UP.ceil || 3.6 });   // a bomb site upstairs is marked in the upper rows
     const W = { id, theme, G, H, size, outdoor, ver: VER, mats: {}, bat: {}, lights: [], fixtures: [], decals: [], sun: null, sky: null, dress: [], panes: [] };
     const inb = (x, z) => x >= 0 && z >= 0 && x < G && z < G;
     const border = (x, z) => x === 0 || z === 0 || x === G - 1 || z === G - 1;
@@ -338,7 +338,7 @@ const NXW = (() => {
           box("trimBlack", dx ? Math.min(mx - dx * 0.01, mx + dx * 0.03) : Math.min(px, px + ux), H - 0.04, dz ? Math.min(mz - dz * 0.01, mz + dz * 0.03) : Math.min(pz, pz + uz), dx ? Math.max(mx - dx * 0.01, mx + dx * 0.03) : Math.max(px, px + ux), H, dz ? Math.max(mz - dz * 0.01, mz + dz * 0.03) : Math.max(pz, pz + uz), { f: NY | (dx > 0 ? NX_ : dx < 0 ? PX : dz > 0 ? NZ : PZ), occ: false, seg: 2 });
           occ(dx ? e0x : Math.min(px, px + ux), H, dz ? e0z : Math.min(pz, pz + uz), dx ? e1x : Math.max(px, px + ux), U0 - 0.002, dz ? e1z : Math.max(pz, pz + uz), concA);
           // a floor upstairs ends at a glass balustrade
-          if (up(nx, nz) === ".") { const ox = dx * 0.07, oz = dz * 0.07; balustrade(px + ox, pz + oz, px + ux + ox, pz + uz + oz, U0, U0); }
+          if (up(nx, nz) !== "#" && up(nx, nz) !== " ") { const ox = dx * 0.07, oz = dz * 0.07; balustrade(px + ox, pz + oz, px + ux + ox, pz + uz + oz, U0, U0); }
         }
       }
       // stairs: solid concrete flights with oak treads and a steel nosing; glass balustrades on the open sides
