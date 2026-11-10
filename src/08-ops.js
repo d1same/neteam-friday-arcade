@@ -1774,11 +1774,11 @@ function makeOps(md) {
     // ---- jump arena (client art): decks, jump pads, pickups, the Golden Router, rockets, hook cables
     buildArena(V, scene, mStd) {
       const F = V.fps, T = THREE;
-      scene.add(new T.HemisphereLight(0xc4ccff, 0x4a3a40, 1.5));
-      [[0.25, 0.25, 0xff8a5c], [0.75, 0.25, 0x4cc9f0], [0.25, 0.75, 0x4cc9f0], [0.75, 0.75, 0xff8a5c], [0.5, 0.5, 0xffc83d]].forEach(([fx, fz, c]) => { const l = new T.PointLight(c, 90, 26, 1.2); l.position.set(OG * CS * fx, 6, OG * CS * fz); scene.add(l); });
+      if (!F.nx) scene.add(new T.HemisphereLight(0xc4ccff, 0x4a3a40, 1.5));
+      (F.nx ? [] : [[0.25, 0.25, 0xff8a5c], [0.75, 0.25, 0x4cc9f0], [0.25, 0.75, 0x4cc9f0], [0.75, 0.75, 0xff8a5c], [0.5, 0.5, 0xffc83d]]).forEach(([fx, fz, c]) => { const l = new T.PointLight(c, 90, 26, 1.2); l.position.set(OG * CS * fx, 6, OG * CS * fz); scene.add(l); });
       const side = GFX.tex(128, 128, (x, w, h) => { x.fillStyle = "#4a505e"; x.fillRect(0, 0, w, h); x.fillStyle = "#5a6070"; x.fillRect(5, 5, w - 10, h - 10); x.strokeStyle = "rgba(0,0,0,.35)"; x.lineWidth = 3; for (let k = 1; k < 4; k++) { x.beginPath(); x.moveTo(0, k * h / 4); x.lineTo(w, k * h / 4); x.stroke(); } x.fillStyle = "rgba(255,255,255,.05)"; for (let i = 0; i < 400; i++) x.fillRect(Math.random() * w, Math.random() * h, 2, 2); });
       const topT = GFX.tex(128, 128, (x, w, h) => { x.fillStyle = "#3b404c"; x.fillRect(0, 0, w, h); x.strokeStyle = "#2a2e38"; x.lineWidth = 4; for (let k = 0; k <= 8; k++) { x.beginPath(); x.moveTo(k * 16, 0); x.lineTo(k * 16, h); x.stroke(); } });
-      [[1.2, 0x4cc9f0], [2.6, 0xff8a3d]].forEach(([hh, col]) => {
+      (F.nx ? [] : [[1.2, 0x4cc9f0], [2.6, 0xff8a3d]]).forEach(([hh, col]) => {
         const cells = []; OPS_MAP.forEach((row, z) => [...row].forEach((ch, x) => { if (oCellH(x, z) === hh) cells.push([x, z]); }));
         if (!cells.length) return;
         const m4 = new T.Matrix4();

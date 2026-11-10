@@ -160,6 +160,28 @@ const NXD = {
     x.fillStyle = "#06223a"; x.fillRect(w * 0.2, h * 0.05, w * 0.6, h * 0.085); x.fillStyle = "#7fe0ff"; x.textAlign = "center"; x.textBaseline = "middle"; x.font = NXD.FONT(700, Math.round(h * 0.05)); x.fillText((17 + Math.floor(r() * 5)) + ".0°", w / 2, h * 0.095);
     x.fillStyle = "#35c3f2"; x.shadowColor = "#35c3f2"; x.shadowBlur = w * 0.2; x.fillRect(w * 0.46, h * 0.2, w * 0.08, h * 0.74); x.shadowBlur = 0;
   },
+  // ---- floor ring without a letter (jump pads, the router's home). chev: arrows pointing at the middle
+  k_ring(x, w, h, d, r) {
+    const col = NXD.PAINT[(d.col | 0) % 6]; x.strokeStyle = col; x.fillStyle = col; x.lineWidth = w * 0.03; x.beginPath(); x.arc(w / 2, h / 2, w * 0.46, 0, 6.3); x.stroke(); x.lineWidth = w * 0.008; x.beginPath(); x.arc(w / 2, h / 2, w * 0.41, 0, 6.3); x.stroke();
+    const n = d.n || 8; for (let i = 0; i < n; i++) { x.save(); x.translate(w / 2, h / 2); x.rotate(i * 6.2832 / n); if (d.chev) { x.beginPath(); x.moveTo(w * 0.39, -w * 0.05); x.lineTo(w * 0.33, 0); x.lineTo(w * 0.39, w * 0.05); x.lineTo(w * 0.37, w * 0.05); x.lineTo(w * 0.31, 0); x.lineTo(w * 0.37, -w * 0.05); x.closePath(); x.fill(); } else x.fillRect(w * 0.41, -w * 0.01, w * 0.05, w * 0.02); x.restore(); }
+    NXD.wear(x, w, h, r, 200);
+  },
+  // ---- round strongroom door: steel disc, bolt circle, spoked wheel
+  k_vdoor(x, w, h, d, r) {
+    const c = w / 2, R = w * 0.495; let g = x.createRadialGradient(c - R * 0.3, c - R * 0.4, R * 0.1, c, c, R); g.addColorStop(0, "#9aa1ab"); g.addColorStop(0.7, "#5d636d"); g.addColorStop(1, "#3a3f47"); x.fillStyle = g; x.beginPath(); x.arc(c, c, R, 0, 6.3); x.fill();
+    x.strokeStyle = "rgba(0,0,0,.55)"; x.lineWidth = w * 0.012; for (const k of [0.97, 0.8, 0.5]) { x.beginPath(); x.arc(c, c, R * k, 0, 6.3); x.stroke(); }
+    x.globalAlpha = 0.07; for (let i = 0; i < 60; i++) { x.strokeStyle = r() < 0.5 ? "#fff" : "#000"; x.lineWidth = 1; x.beginPath(); x.arc(c, c, R * r(), 0, 6.3); x.stroke(); } x.globalAlpha = 1;
+    for (let i = 0; i < 20; i++) { const a = i * 6.2832 / 20, bx = c + Math.cos(a) * R * 0.885, by = c + Math.sin(a) * R * 0.885; x.fillStyle = "#2a2e35"; x.beginPath(); x.arc(bx, by, R * 0.04, 0, 6.3); x.fill(); x.fillStyle = "#aab0b9"; x.beginPath(); x.arc(bx - R * 0.008, by - R * 0.008, R * 0.026, 0, 6.3); x.fill(); }
+    x.strokeStyle = "#c9a04a"; x.lineWidth = R * 0.05; x.lineCap = "round"; for (let i = 0; i < 5; i++) { const a = i * 6.2832 / 5 + 0.3; x.beginPath(); x.moveTo(c, c); x.lineTo(c + Math.cos(a) * R * 0.4, c + Math.sin(a) * R * 0.4); x.stroke(); }
+    x.lineWidth = R * 0.06; x.beginPath(); x.arc(c, c, R * 0.4, 0, 6.3); x.stroke(); x.fillStyle = "#2a2e35"; x.beginPath(); x.arc(c, c, R * 0.11, 0, 6.3); x.fill(); x.fillStyle = "#d8b25c"; x.beginPath(); x.arc(c, c, R * 0.06, 0, 6.3); x.fill();
+    x.fillStyle = "#14161a"; x.textAlign = "center"; x.textBaseline = "middle"; x.font = NXD.FONT(700, Math.round(R * 0.11)); x.fillText(d.t || "V-01", c, c + R * 0.66);
+  },
+  // ---- wall of deposit drawers: number plate and two locks each
+  k_boxes(x, w, h, d, r) {
+    const nx = d.nx || 8, ny = d.ny || 6, bw = w / nx, bh = h / ny; x.fillStyle = "#30343b"; x.fillRect(0, 0, w, h);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) { const px = i * bw, py = j * bh, t = 0.36 + r() * 0.1, v = Math.round(255 * t); x.fillStyle = "rgb(" + v + "," + (v + 3) + "," + (v + 9) + ")"; x.fillRect(px + 1.5, py + 1.5, bw - 3, bh - 3);
+      x.fillStyle = "rgba(255,255,255,.12)"; x.fillRect(px + 1.5, py + 1.5, bw - 3, 1.5); x.fillStyle = "#c9a04a"; x.fillRect(px + bw * 0.3, py + bh * 0.2, bw * 0.4, bh * 0.2); x.fillStyle = "#15171b"; for (const k of [0.3, 0.7]) { x.beginPath(); x.arc(px + bw * k, py + bh * 0.68, Math.min(bw, bh) * 0.07, 0, 6.3); x.fill(); } }
+  },
   // ---- the company name in light
   k_logo(x, w, h, d, r) {
     x.textBaseline = "middle"; x.textAlign = "left"; const px = h * 0.74; x.font = NXD.FONT(700, Math.round(px));

@@ -39,6 +39,9 @@ const NXW = (() => {
     f_floor: { t: "tiles", c: [0.22, 0.23, 0.25], s: 4.8, r: 4.2 }, f_dock: { t: "concfloor", c: [1.9, 1.9, 1.93], r: 0.62 }, f_wallLo: { t: "concrete2", c: [0.82, 0.84, 0.88] }, f_wallHi: { t: "corrugated", c: [0.5, 0.53, 0.58], r: 0.9 },
     f_ceil: { t: "corrugated", c: [0.42, 0.44, 0.47] }, f_pod: { t: "darkmetal", c: [0.75, 0.78, 0.84], m: 1 }, f_blue: { t: "bluemetal", c: [0.9, 1, 1.15], m: 0.8 }, f_shutter: { t: "shutter", c: [0.92, 0.94, 0.97], m: 0.9 },
     f_yellow: { c: [0.72, 0.5, 0.04], r: 0.5, m: 0 }, f_pipeBlue: { c: [0.05, 0.16, 0.42], r: 0.4, m: 0.2 }, f_pipeRed: { c: [0.5, 0.05, 0.04], r: 0.4, m: 0.2 }, f_grey: { c: [0.42, 0.44, 0.47], r: 0.55, m: 0.1 },
+    // vault
+    v_floor: { t: "granite", c: [0.5, 0.54, 0.6], s: 2.4, r: 0.22 }, v_wall: { t: "hangar", c: [1.7, 1.8, 2.0], m: 0.6, r: 0.8 }, v_wallHi: { t: "shutter", c: [0.4, 0.43, 0.5], s: 3, m: 0.8 }, v_ceil: { t: "hangar", c: [1.2, 1.25, 1.35] },
+    v_deck: { t: "darkmetal", c: [1.9, 2.0, 2.2], m: 0.9 }, v_deckTop: { t: "diamond", c: [1.25, 1.3, 1.4], m: 0.7, r: 0.8 }, v_gold: { c: [1, 0.72, 0.3], r: 0.28, m: 1 },
     // generic
     trimBlack: { c: [0.03, 0.032, 0.036], r: 0.42, m: 0.85 }, trimSteel: { t: "brushed", c: [0.6, 0.61, 0.63], r: 1.1, m: 1 }, trimWhite: { c: [0.8, 0.8, 0.78], r: 0.5, m: 0 },
     darkMetal: { t: "darkmetal", c: [1, 1, 1], m: 1 }, plasticBlack: { c: [0.025, 0.026, 0.03], r: 0.45, m: 0 }, plasticGrey: { t: "plastic", c: [0.35, 0.36, 0.38] }, plasticWhite: { t: "plastic", c: [0.9, 0.9, 0.9] },
