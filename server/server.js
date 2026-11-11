@@ -27,6 +27,8 @@ const MATCH_FEED = 400;                                    // newest matches sen
 const MAX_SUBS = 16, MAX_BUFFERED = 8 * 1024 * 1024;
 const MSG_BURST = 240, MSG_PER_SEC = 120;                  // per-connection message budget
 const MATCH_GAP_MS = 8000;                                 // one saved match per host at most this often
+const LEFT_GRACE_MS = 10000;                               // a dropped player stays listed this long before the others hear they left (Wi-Fi blips, a sleeping laptop)
+const leaving = new Map();                                 // peer -> timer that announces "left"
 const RESUME_MS = 120000;                                  // a dropped connection can take its seat back for this long
 const PLACE_POINTS = [10, 7, 5, 3];
 // ORIGIN_CHECK=off disables the same-site check; ALLOWED_ORIGINS=host1,host2 adds extra hostnames (reverse proxies)
@@ -280,13 +282,14 @@ function onMessage(ws, c, raw) {
     if (c.tok && typeof m.peer === "string" && /^[a-f0-9]{16}$/.test(m.peer)) {
       let ok = false;
       const r = retired.get(m.peer);
-      if (r && r.until > nowT && sameTok(r.tok, c.tok)) { ok = true; retired.delete(m.peer); }
+      if (r && r.until > nowT && sameTok(r.tok, c.tok)) { ok = true; retired.delete(m.peer); const lt = leaving.get(m.peer); if (lt) { clearTimeout(lt.timer); leaving.delete(m.peer); } }
       else for (const [o, oc] of clients) if (o !== ws && oc.peer === m.peer && sameTok(oc.tok, c.tok)) { ok = true; oc.replaced = true; try { o.terminate(); } catch (e) {} }
       if (ok) c.peer = m.peer;
     }
     c.hello = true;
     const peers = [];
     for (const [o, oc] of clients) if (o !== ws && oc.hello && !oc.replaced) peers.push({ peer: oc.peer, by: oc.by, presence: oc.presence });
+    for (const [pr, l] of leaving) if (pr !== c.peer && !peers.some(x => x.peer === pr)) peers.push({ peer: pr, by: l.by, presence: l.presence });   // dropped a moment ago, may be back
     send(ws, { t: "welcome", peer: c.peer, peers });
     broadcast({ t: "p", peer: c.peer, by: c.by, presence: c.presence }, ws);
   } else if (m.t === "p") {
@@ -308,11 +311,13 @@ function onMessage(ws, c, raw) {
     const [col, id] = m.path.split("/");
     if (col === "matches") {
       // append-only, and only from the browser that is hosting that game right now
-      if (m.t !== "set" || db[m.path]) return;
+      // the hosting browser hears back either way, so its results screen never says "saved" for a match the server refused
+      const ack = (ok) => send(ws, { t: "ack", path: m.path, ok });
+      if (m.t !== "set" || db[m.path]) return ack(false);
       const h = c.presence && c.presence.h, doc = cleanMatch(m.data);
-      if (!doc || !h || typeof h !== "object" || h.game !== doc.g) return;
-      if (nowT - c.lastMatch < MATCH_GAP_MS) return;
-      c.lastMatch = nowT; db[m.path] = doc; pruneMatches(); addStats(doc); for (const p of doc.ps) notify("stats/" + p.u);
+      if (!doc || !h || typeof h !== "object" || h.game !== doc.g) return ack(false);
+      if (nowT - c.lastMatch < MATCH_GAP_MS) return ack(false);
+      c.lastMatch = nowT; ack(true); db[m.path] = doc; pruneMatches(); addStats(doc); for (const p of doc.ps) notify("stats/" + p.u);
     } else {
       // your own profile only
       if (!c.by || id !== c.by) return;
@@ -336,8 +341,11 @@ wss.on("connection", (ws, req) => {
     clients.delete(ws);
     const n = (perIp.get(ip) || 1) - 1; if (n > 0) perIp.set(ip, n); else perIp.delete(ip);
     if (!c.hello || c.replaced) return;
-    if (c.tok) retired.set(c.peer, { tok: c.tok, until: Date.now() + RESUME_MS });
-    broadcast({ t: "left", peer: c.peer });
+    if (!c.tok) { broadcast({ t: "left", peer: c.peer }); return; }
+    retired.set(c.peer, { tok: c.tok, until: Date.now() + RESUME_MS });
+    // keep their seat (and a host's game) on everyone's screen for a few seconds in case they come straight back
+    const peer = c.peer, old = leaving.get(peer); if (old) clearTimeout(old.timer);
+    leaving.set(peer, { by: c.by, presence: c.presence, timer: setTimeout(() => { leaving.delete(peer); if (![...clients.values()].some(oc => oc.peer === peer && oc.hello)) broadcast({ t: "left", peer }); }, LEFT_GRACE_MS) });
   });
 });
 setInterval(() => {

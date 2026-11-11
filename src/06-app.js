@@ -279,7 +279,18 @@ function enterGame(host) {
   renderOverlay(V, true);
   resizeGame();
 }
+// the host's game stopped arriving (their Wi-Fi blipped or the laptop slept): say so instead of freezing silently.
+// The server keeps them listed for about 10 s, so the match carries on if they come straight back.
+function hostWaitFrame(V, host) {
+  const meHost = APP.S && APP.S.id === host.h.id, offline = NET.room && NET.room.connected && !NET.room.connected();
+  const wait = !meHost && host.h.ph !== "results" && (offline || V.age > 2500);
+  let el = $("#hostWait");
+  if (wait && !el) { el = document.createElement("div"); el.id = "hostWait"; el.className = "host-wait"; el.innerHTML = "<b></b><span></span>"; $("#gameView").append(el); }
+  if (el) { el.hidden = !wait; if (wait) { el.firstChild.textContent = offline ? "Reconnecting\u2026" : "Waiting for the host\u2026"; el.lastChild.textContent = offline ? "Your connection dropped. You'll be back in the match in a moment." : "Their connection dropped. The match carries on if they're back within a few seconds."; } }
+  V.hostWait = wait;
+}
 function exitGame() {
+  if ($("#hostWait")) $("#hostWait").hidden = true;
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
@@ -340,7 +351,7 @@ function readInput() {
 }
 function gameFrame(dt, t) {
   const host = findHost();
-  if (!host || (APP.optOut && host.h.id === APP.optOut)) { exitGame(); return; }
+  if (!host || (APP.optOut && host.h.id === APP.optOut)) { if (!host && APP.V && APP.V.hostWait) toast("The host didn't come back, so the match ended."); exitGame(); return; }
   let V = APP.V;
   if (host.h.id !== V.sid) { enterGame(host); V = APP.V; }
   if (host.h !== V.lastH) { V.lastH = host.h; V.h = host.h; V.g = host.h.g; V.recvAt = now(); }
@@ -353,6 +364,7 @@ function gameFrame(dt, t) {
     else { let ch = false; host.h.ro.forEach((r, i) => { const o = V.ro[i]; if (r && o && r.k !== o.k && typeof r.k === "string") { Object.assign(o, { k: r.k, n: cleanNick(r.n) || "Tech", c: validChar(r.c) || o.c, u: r.u, b: r.b ? 1 : 0, boss: 0 }); ch = true; if (V.mod.rosterChanged) try { V.mod.rosterChanged(V, i); } catch (e) {} } }); if (ch) buildChips(V); }
   }
   V.age = now() - V.recvAt;
+  hostWaitFrame(V, host);
   if (V.ready) { readyFrame(V, dt, t); return; }
   const mod = V.mod, ph = V.h.ph;
   if (ph !== V.prevPh) {
@@ -1036,6 +1048,8 @@ function frame() {
 
 async function boot() {
   APP.peerMap = {};
+  // the lobby's game list is complete only now (later files add the 3D games): a stored pick of a retired game falls back to the first
+  if (!GAMES[APP.sel] || !GAME_ORDER.includes(APP.sel)) APP.sel = store("nfa-sel") && GAME_ORDER.includes(store("nfa-sel")) ? store("nfa-sel") : GAME_ORDER[0];
   renderMe(); buildCards(); bindEvents(); renderBoard(); updateLobby();
   requestAnimationFrame(frame);
   await NET.init();

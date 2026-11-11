@@ -141,6 +141,9 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .start-row .hint { color: var(--muted); font-size: 13px; flex: 1; min-width: 200px; }
 body.playing { -webkit-user-select: none; user-select: none; overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 body.playing #gameView { touch-action: none; }
+.host-wait { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 60; display: grid; gap: 6px; text-align: center; padding: 18px 26px; border-radius: 12px; background: rgba(12,14,18,.82); border: 1px solid rgba(255,138,61,.5); color: #f1ede6; font: 500 14px/1.4 Inter, system-ui, sans-serif; pointer-events: none; max-width: min(420px, 86vw); }
+.host-wait b { font: 700 20px/1.2 "Chakra Petch", sans-serif; color: #ff8a3d; }
+.host-wait[hidden] { display: none; }
 body.playing #gameView input, body.playing #gameView textarea { -webkit-user-select: text; user-select: text; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); cursor: pointer; user-select: none; }
 .toggle input { width: 18px; height: 18px; accent-color: var(--bulb); }

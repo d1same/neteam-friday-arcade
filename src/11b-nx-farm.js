@@ -94,7 +94,8 @@ NXW.themes.farm = (B, M, env) => {
       } else if (h2 < 0.5) { // fire point
         B.fbox(f, "redPaint", 1.6, 0.9, 0, 2.4, 2.0, 0.02, { occ: false }); B.fdecal(f, "decal", 1.66, 1.72, 2.34, 1.94, 0.025, 200, { k: "text", t: "FIRE POINT", col: 0, clean: 1 });
         for (const u of [1.82, 2.18]) { const p = B.fpos(f, u, 1.0, 0.12); cyl("f_pipeRed", p[0], 1.0, p[2], 0.075, 0.5, 10, { occ: false }); cyl("trimBlack", p[0], 1.5, p[2], 0.03, 0.1, 6, { occ: false }); }
-      } else if (h2 < 0.62) B.fdecal(f, "decal", 1.6, 1.3, 2.4, 2.36, 0.012, 200, { k: "warn", t: h2 < 0.56 ? "AUTHORISED|STAFF ONLY" : "HEARING|PROTECTION" });
+      } else if (h2 < 0.55) B.fdecal(f, "decal", 1.42, 1.05, 2.58, 2.53, 0.012, 200, { k: "poster", l: ["NETEAM", "SERVER", "FARM"], v: Math.floor(h2 * 60) % 6 });   // a joke poster, picked at load
+      else if (h2 < 0.62) B.fdecal(f, "decal", 1.6, 1.3, 2.4, 2.36, 0.012, 200, { k: "warn", t: h2 < 0.585 ? "AUTHORISED|STAFF ONLY" : "HEARING|PROTECTION" });
       else if (h2 < 0.8) { // cable ladder up the wall
         for (const u of [1.75, 2.25]) B.fbox(f, "trimSteel", u - 0.02, 0.3, 0.03, u + 0.02, 5.7, 0.07, { f: ALL, occ: false, seg: 1.5 }); for (let v = 0.5; v < 5.7; v += 0.4) B.fbox(f, "trimSteel", 1.77, v, 0.04, 2.23, v + 0.03, 0.06, { f: ALL, occ: false });
         B.fbox(f, "f_yellow", 1.86, 0.3, 0.07, 2.0, 5.7, 0.13, { f: ALL, occ: false, seg: 1.5 }); B.fbox(f, "plasticBlack", 2.04, 0.3, 0.07, 2.14, 5.7, 0.11, { f: ALL, occ: false, seg: 1.5 });
