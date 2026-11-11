@@ -38,13 +38,13 @@ NXW.kit = (B) => {
     });
   };
   // ---- jumpable decks for any theme: "1" = 1.2 m (crates, low platforms), "2" = 2.6 m (balconies, catwalks reached from
-  // a jump pad "^"). A solid block with its own top, a dark kick at the foot, a light line on the top edge, a ring under each pad
+  // a jump pad "^"). top and side are materials, or functions (x, z, height) giving one. A solid block with its own top, a dark kick at the foot, a light line on the top edge, a ring under each pad
   K.decks = (top, side, lineCol, frameMat) => {
     const FR = frameMat || "trimSteel";
     const DH = { "1": 1.2, "2": 2.6 }, hAt = (x, z) => DH[ch(x, z)] || 0;
     for (let z = 1; z < G - 1; z++) for (let x = 1; x < G - 1; x++) {
       const hh = hAt(x, z); if (!hh || A.solid(x, z)) continue; const c = A.ci(x, z), x0 = x * CS, z0 = z * CS; let fm = 0, y0 = hh;
-      B.floorY[c] = hh; B.floor(top, x0, z0, x0 + CS, z0 + CS, hh);
+      B.floorY[c] = hh; B.floor(typeof top === "function" ? top(x, z, hh) : top, x0, z0, x0 + CS, z0 + CS, hh);
       DIRS.forEach(([dx, dz]) => { const nh = A.solid(x + dx, z + dz) ? 99 : hAt(x + dx, z + dz); if (nh >= hh) return; fm |= dx > 0 ? PX : dx < 0 ? NXb : dz > 0 ? PZ : NZ; y0 = Math.min(y0, nh);
         const ex = x0 + CS / 2 + dx * CS / 2, ez = z0 + CS / 2 + dz * CS / 2, hx = dz ? CS / 2 : 0.012, hz = dx ? CS / 2 : 0.012, ox = dx * 0.012, oz = dz * 0.012;
         box("trimBlack", ex - hx + ox, nh, ez - hz + oz, ex + hx + ox, nh + 0.1, ez + hz + oz, { f: ALL, occ: false, seg: 2 });
@@ -56,7 +56,7 @@ NXW.kit = (B) => {
         const bar = (u0, u1, y0b, y1b) => box(FR, sx + ax * u0 + px - (ax ? 0 : th), y0b, sz + az * u0 + pz - (az ? 0 : th), sx + ax * u1 + px + (ax ? 0 : th), y1b, sz + az * u1 + pz + (az ? 0 : th), { f: ALL, occ: false, seg: 2 });
         if (hh < 2) { for (const u of [0.04, CS / 2 - 0.06, CS - 0.16]) bar(u, u + 0.12, nh, hh - 0.04); bar(0.04, CS - 0.04, nh + (hh - nh) * 0.45, nh + (hh - nh) * 0.45 + 0.12); }
         else if (ch(x + dx, z + dz) !== "^") { for (let u = 0.1; u < CS; u += CS / 3) bar(u, u + 0.06, hh, hh + 1.02); bar(0.04, CS - 0.04, hh + 0.98, hh + 1.04); bar(0.04, CS - 0.04, hh + 0.5, hh + 0.54); } });
-      box(side, x0, y0, z0, x0 + CS, hh - 0.02, z0 + CS, { f: fm, seg: 1.3 });
+      box(typeof side === "function" ? side(x, z, hh) : side, x0, y0, z0, x0 + CS, hh - 0.02, z0 + CS, { f: fm, seg: 1.3 });
     }
     K.cellsOf("^").forEach(([x, z]) => B.decal("decal", [x * CS + 0.3, 0.006, z * CS + CS - 0.3], [CS - 0.6, 0, 0], [0, 0, -(CS - 0.6)], 60, { k: "ring", col: 0, n: 8, chev: 1 }));
   };

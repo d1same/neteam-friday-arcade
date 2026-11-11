@@ -210,9 +210,35 @@ const OPS_MAPS = {
     "#........rrrrrr......#",
     "######################",
   ] },
+  docks: { n: "Harbor Docks", sub: "Container yard \u00b7 warehouse", kind: "mixed", tags: ["Containers", "Jump pads"], pl: "6\u201310", open: true, theme: "roof", nx: "docks", wallH: 5.2, ceilH: 6.5, indoor: [[1, 4, 10, 12]], sites: ["WAREHOUSE", "QUAYSIDE"], spawns: ["TRUCK GATE", "HARBOR OFFICE"], rows: [
+    "########################",
+    "#.......##uuuuuu##.....#",
+    "#.........uuuuuu##.....#",
+    "####.######....###.....#",
+    "#..........#..........##",
+    "#.aaaa..1..#..##..##...#",
+    "#.aaaa............##...#",
+    "#.aaaa.1...#..1...bbbbb#",
+    "#.aaaa.....#..##..bbbbb#",
+    "#.##.......#..22^.bbbbb#",
+    "#.##..1....#..##...b...#",
+    "#.......^..#...........#",
+    "#......2222#..##.......#",
+    "###.########..##.#######",
+    "#......#...............#",
+    "#..1...#..##....##..1..#",
+    "#......#..22222.##.....#",
+    "#...............##.....#",
+    "#####......1........####",
+    "#.......##....##.......#",
+    "#........rrrrrr........#",
+    "#........rrrrrr........#",
+    "#........rrrrrr........#",
+    "########################",
+  ] },
 };
 // small maps for small groups, big maps for big groups
-function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq", "sand", "roof", "campus"] : ["sand", "roof", "campus"]; return pool[Math.floor(Math.random() * pool.length)]; }
+function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq", "sand", "roof", "campus", "docks"] : ["sand", "roof", "campus", "docks"]; return pool[Math.floor(Math.random() * pool.length)]; }
 // feet height of whoever is moving, and how high a step they can take onto a box (more with legs tucked mid-air)
 let OPS_FEET = 0, OPS_STEP = 0.35;
 // multi-level maps (see opsBuildLevels): per-cell solid spans, stair runs, upper floor height
@@ -463,7 +489,7 @@ function mlHit(x, z, lo, hi) {
 }
 // the lowest ceiling above someone standing at `feet`
 // open-air maps with roofed halls (M.indoor = [[x0, z0, x1, z1] in cells]): the roof over a spot, or Infinity under the sky
-function opsRoof(x, z) { const R = OPS_M && OPS_M.indoor; if (!R) return Infinity; const cx = Math.floor(x / CS), cz = Math.floor(z / CS); for (const [a, b, c, d] of R) if (cx >= a && cx <= c && cz >= b && cz <= d) return OPS_M.wallH || OWH; return Infinity; }
+function opsRoof(x, z) { const R = OPS_M && OPS_M.indoor; if (!R) return Infinity; const cx = Math.floor(x / CS), cz = Math.floor(z / CS); for (const [a, b, c, d] of R) if (cx >= a && cx <= c && cz >= b && cz <= d) return OPS_M.ceilH || OPS_M.wallH || OWH; return Infinity; }
 function mlCeil(x, z, feet) { const sp = mlSpans(x, z); if (!sp) return feet; let c = ML_TOP; for (const [a] of sp) if (a > feet + 0.55 && a < c) c = a; return c; }
 function mlCeilR(x, z, r, feet) { let c = ML_TOP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) c = Math.min(c, mlCeil(x + a, z + b, feet)); return c; }
 // a straight 3D ray against floors, walls, slabs and stairs: distance to the first hit (maxT if none)
@@ -2062,7 +2088,7 @@ function makeOps(md) {
       const flash = new T.PointLight(0xffd59a, 0, 9, 2); flash.position.set(0.22, -0.12, -0.9); cam.add(flash); F.flash = flash;
       F.tracers = []; F.parts = [];
       // the sound of the place: reverb size, floor underfoot and a bed of ambience
-      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open", sky: "open", campus: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof", sky: "roof", campus: "roof" }[th] || "office"); }
+      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open", sky: "open", campus: "open", docks: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof", sky: "roof", campus: "roof", docks: "roof" }[th] || "office"); }
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
       // bullet holes: one mesh holding a ring of small quads, oldest overwritten first
       { const N = GFX.lowEnd() ? 60 : 180, g = new T.BufferGeometry(), uv = new Float32Array(N * 12); for (let i = 0; i < N; i++) uv.set([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], i * 12);
