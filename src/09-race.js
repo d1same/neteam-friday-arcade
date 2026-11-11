@@ -106,7 +106,7 @@ function rcFeatures(R, TD) {
 }
 // the client's race clock: runs on its own between host updates (tenths of a second) and is eased onto them
 function rcClock(F, g, dt) { const ht = (g.t || 0) / 10; if (F.clk == null || Math.abs(F.clk - ht) > 0.5) return ht; return F.clk + dt + (ht + 0.05 - F.clk) * Math.min(1, dt * 2); }
-const RC_BR_CW = 7, RC_BR_TAN = 0.3;
+const RC_BR_CW = 7, RC_BR_TAN = 0.25;
 // the canal under the drawbridge, as a rectangle: centre o, track direction t, canal direction n, half width hw (m, across
 // the track), half length E (m, along the canal); in(x, z, pad) says whether a point is over the water
 function rcCanal(R) {
@@ -195,8 +195,12 @@ function rcDrive(c, dt, gas, steer, drift, isBot) {
   // barrier walls
   const n2 = rcNearest(c.x, c.z, c.i); c.i = n2.i;
   if (Math.abs(n2.lat) > RC_WALL) {
-    const lat = Math.sign(n2.lat) * RC_WALL, p = rcAt(n2.i, lat); c.x = p[0]; c.z = p[1];
-    const h = rcHead(n2.i); let da = ((c.a - h + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+    // push the car back out across the track only: it keeps its place along the wall (snapping it onto the nearest
+    // track sample used to undo every short step, so a car rubbing the wall slowly stopped making progress)
+    const tg = RC.tan[n2.i], over = n2.lat - Math.sign(n2.lat) * RC_WALL; c.x += tg[1] * over; c.z -= tg[0] * over; n2.lat -= over;
+    // turn it parallel to the wall the way it is already facing (a car going backwards stays backwards: it used to be
+    // spun round to face the race)
+    const h0 = rcHead(n2.i); let da = ((c.a - h0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI; const h = Math.abs(da) > Math.PI / 2 ? h0 + Math.PI : h0; da = ((c.a - h + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
     // a square hit costs speed at once; a glancing one scrapes along the barrier and only rubs a little off (the same at any frame rate)
     const sq = Math.min(1, Math.abs(Math.sin(da)));
     if (!(c.hitT > 0)) { c.hitK = sq * Math.min(1, Math.abs(c.v) / 40); c.v *= 1 - Math.min(0.45, sq * 0.6); c.hitEv = (c.hitEv || 0) + 1; }
@@ -205,7 +209,7 @@ function rcDrive(c, dt, gas, steer, drift, isBot) {
   // up and down: ramps throw the car into the air, gravity brings it back; a clean landing pays out a little boost
   { const p = RC.pts[n2.i], tg = RC.tan[n2.i], fr = ((c.x - p[0]) * tg[0] + (c.z - p[1]) * tg[1]) / 1.6, gr = rcGround(n2.i, n2.lat, fr), gh = gr.h;
     c.y = c.y || 0; c.vy = c.vy || 0;
-    if (!air && c.y <= gh + 0.35 && gh >= c.y - 0.6) { c.y = gh; c.vy = gr.sl * c.v; }
+    if (!air && c.y <= gh + 0.35 && gh >= c.y - 0.6) { c.y = gh; c.vy = Math.min(9, gr.sl * c.v); }
     else { c.vy -= 21 * dt; c.y += c.vy * dt; c.air = (c.air || 0) + dt;
       if (c.y <= gh && gr.br && gh - c.y > 0.8) c.y = -2;   // flew into the end of a bridge leaf: straight into the canal
       else if (c.y <= gh) { const k = clamp(-c.vy / 11, 0, 1); c.y = gh; c.landK = k; c.landEv = (c.landEv || 0) + 1;
@@ -597,7 +601,7 @@ const race = {
   reset(V) {
     const F = V.fps; if (!F || !F.me) return;
     const c = F.me, n = rcNearest(c.x, c.z, c.i), p = rcAt(n.i, 0);
-    c.x = p[0]; c.z = p[1]; c.a = rcHead(n.i); c.v = Math.min(c.v, 8); c.slip = 0; c.dc = 0; SFX.play("dash");
+    c.x = p[0]; c.z = p[1]; c.a = rcHead(n.i); c.v = Math.max(0, Math.min(c.v, 8)); c.slip = 0; c.dc = 0; c.y = 0; c.vy = 0; c.air = 0; c.spin = 0; F.stuckT = 0; SFX.play("dash");
   },
   clientInput(V, dt, inp) {
     const F = V.fps; if (!F || !F.ready) return null;
@@ -650,6 +654,9 @@ const race = {
       c.tow = lerp(c.tow || 0, tow, 1 - Math.exp(-dt * (tow > (c.tow || 0) ? 1.6 : 4))); }
     RC.clk = F.clk = rcClock(F, g, dt);
     rcDrive(c, dt, gas, steer, F.drift, false);
+    // a car that can't get going (wedged, facing a wall, spun into a corner) is put back on the road after 4 s; R does it at once
+    if (go && !fin) { if (Math.abs(gas) > 0.5 && Math.abs(c.v) < 2.5 && !(c.spin > 0)) F.stuckT = (F.stuckT || 0) + dt; else F.stuckT = Math.max(0, (F.stuckT || 0) - dt * 2);
+      if (F.stuckT > 4) { F.stuckT = 0; this.reset(V); F.toast = { s: "BACK ON TRACK", sub: "", life: 1.2, col: "#3ddc97" }; } }
     if ((c.splashEv || 0) !== (F.splashSeen || 0)) { F.splashSeen = c.splashEv; F.shake = 0.5; SFX.samp("thud1", 0.6, 0, 0.5, 0, 0, 0.3); SFX.whoosh(0.8, 0, 0.6); F.splashFx = 1.2; F.toast = { s: "SPLASH!", sub: "the bridge was up", life: 1.4, col: "#4cc9f0" }; }
     if ((c.landEv || 0) !== (F.landSeen || 0)) { F.landSeen = c.landEv; const k = c.landK || 0; F.shake = Math.max(F.shake || 0, 0.15 + k * 0.5); SFX.samp("thud1", 0.25 + k * 0.5, 0, 0.8, 0, 0, 0.3); if (k > 0.45) { SFX.samp("car-crash1", 0.2 + k * 0.25, 0, 1.2, 0, 0, 0.3); this.sparks(V, c.x, c.z, 0xffc27a, 10); }
       if (c.airT > 0.45) { F.toast = { s: c.airT > 0.9 ? "BIG AIR!" : "AIR TIME", sub: c.airT.toFixed(1) + " s · boost", life: 1.2, col: "#4cc9f0" }; c.airT = 0; } }
@@ -1006,8 +1013,8 @@ const race = {
       // height: your own car exactly, the others eased (they arrive in steps); the nose follows the flight path
       car.y = i === me || car.y == null ? y : car.y + (y - car.y) * Math.min(1, dt * 14); const vyE = dt > 0 && car.py != null ? (car.y - car.py) / dt : 0; car.py = car.y;
       car.fly = lerp(car.fly || 0, car.y > 0.08 ? clamp(Math.atan2(vyE, Math.max(8, Math.abs(v || 0))) * 0.9, -0.35, 0.3) : 0, 0.2);
-      car.grp.position.set(car.x, car.y, car.z); car.grp.rotation.y = car.a;
-      car.body.rotation.y = -(sl || 0) * 0.8; car.body.rotation.z = lerp(car.body.rotation.z, (sl || 0) * 0.25 - car.steer * Math.min(1, Math.abs(v || 0) / 30) * 0.07, 0.2);
+      // the drift angle turns the whole car, wheels included (turning only the body hid the wheels inside it when sliding)
+      car.grp.position.set(car.x, car.y, car.z); car.grp.rotation.y = car.a - (sl || 0) * 0.8; car.body.rotation.z = lerp(car.body.rotation.z, (sl || 0) * 0.25 - car.steer * Math.min(1, Math.abs(v || 0) / 30) * 0.07, 0.2);
       // wheels roll and steer, the body leans into corners and dips under braking
       const yaw = car.pa == null ? 0 : ((car.a - car.pa + Math.PI * 3) % (Math.PI * 2)) - Math.PI; car.pa = car.a;
       car.steer = lerp(car.steer, clamp(dt > 0 ? yaw / dt * 0.5 / (1 + Math.abs(v || 0) / 30) : 0, -0.5, 0.5), 0.2);
@@ -1197,6 +1204,7 @@ const race = {
       if (F.lastDist != null && q[0] < F.lastDist - 1 && !done) F.wrongT = Math.min(2, F.wrongT + dt * 3); else F.wrongT = Math.max(0, F.wrongT - dt);
       F.lastDist = q[0];
       if (F.wrongT > 0.8 && gt > 0) { ctx.textAlign = "center"; ctx.font = "700 40px 'Chakra Petch', sans-serif"; ctx.fillStyle = Math.floor(t * 4) % 2 ? "#ff4d5e" : "#ffd23f"; ctx.fillText("WRONG WAY", W / 2, H * 0.3); }
+      if ((F.wrongT > 1.6 || F.stuckT > 1.5) && gt > 0) { ctx.textAlign = "center"; ctx.font = "600 18px 'Chakra Petch', sans-serif"; ctx.fillStyle = "rgba(242,239,230,.9)"; ctx.fillText(F.coarse ? "Tap RESET to get back on the road" : "Press R to get back on the road", W / 2, H * 0.3 + 34); }
       // item slot
       let IT = RC_ITEMS[q[7]];
       if (F.roll && F.roll.t > 0 && q[7]) { const R = F.roll; R.t -= dt; const step = 0.05 + (1.1 - Math.max(0, R.t)) * 0.12; R.k -= dt; if (R.k <= 0) { R.k = step; R.n = 1 + ((R.n + 1 + Math.floor(Math.random() * 3)) % (RC_ITEMS.length - 1)); SFX.tone(900 + R.n * 40, 0.04, "square", 0.05, 0); }
