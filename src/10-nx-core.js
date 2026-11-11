@@ -3,7 +3,7 @@
 // shaders here combine that with scanned PBR materials, a real-time sun, shadows of moving things and reflections.
 // Everything runs on the player's own graphics card; the quality level scales the cost from office laptops to gaming PCs.
 const NX = {
-  VER: 7,            // cache buster for baked files and textures (the server caches /models for a week)
+  VER: 8,            // cache buster for baked files and textures (the server caches /models for a week)
   LM_SCALE: 16,      // lightmaps store sqrt(irradiance / 16)
   url(f) { return "models/" + f + "?v=" + NX.VER; },
 
