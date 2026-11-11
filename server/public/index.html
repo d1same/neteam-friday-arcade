@@ -3796,7 +3796,7 @@ const GUNS = {
       U.slide = GUNS.proxy(T, g, sl, C.s, 0); U.mag = GUNS.proxy(T, g, mg, C.s, 1);
     } else {
       part("rifle_7_62"); part("_trigger"); part("_scope"); if (id === "sniper") part("_wrap");
-      U.bolt = GUNS.proxy(T, g, part("bolt_a"), C.s, 0); U.mag = null;
+      const bq = part("bolt_a"); U.bolt = GUNS.proxy(T, g, bq, C.s, 0); U.boltRot = bq.children[0]; U.mag = null;
     }
   },
   // textured CC0 models (see models/CREDITS.txt). They come in different orientations and units, so each is measured:
@@ -3846,13 +3846,30 @@ const GUNS = {
   pose(g, st) {
     const U = g.userData, ss = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
     const k = st.reload, kick = st.kick || 0, cyc = st.cyc == null ? 1 : st.cyc;
-    let lh = U.lh, tilt = 0, dip = 0, magY = 0, magVis = true, slide = 0, pump = 0, bolt = 0;
+    let lh = U.lh, tilt = 0, dip = 0, magY = 0, magVis = true, slide = 0, pump = 0, bolt = 0, lift = 0, rnd = false, up = 0;
+    const R = { tilt: 0, dip: 0, ox: 0, oy: 0, oz: 0, rx: 0, ry: 0, rz: 0 }, mix = (a, b, w) => [a[0] + (b[0] - a[0]) * w, a[1] + (b[1] - a[1]) * w, a[2] + (b[2] - a[2]) * w];
+    // a bolt action opens in two moves: handle up (turn), then the bolt slides back; it closes in the reverse order
+    const boltOpen = (o) => { lift = ss(0, 0.3, o); bolt = ss(0.3, 1, o) * 0.07; };
     const md = U.magDrop || [0, -1, 0];
     if (U.kind === "pistol") slide = Math.sin(Math.min(1, kick) * Math.PI) * 0.03;
     else if (U.bolt && U.kind !== "bolt") bolt = Math.sin(Math.min(1, kick) * Math.PI) * 0.04;
     if (U.kind === "pump" && cyc < 1) pump = Math.sin(ss(0.3, 0.75, cyc) * Math.PI) * 0.09;
-    if (U.kind === "bolt" && cyc < 1) { bolt = Math.sin(ss(0.2, 0.7, cyc) * Math.PI) * 0.07; tilt = bolt * 2.2; }
-    if (k >= 0) {
+    if (U.kind === "bolt" && cyc < 1) { const o = Math.sin(ss(0.15, 0.75, cyc) * Math.PI); boltOpen(o); tilt = o * 0.15; }
+    if (k >= 0 && U.kind === "bolt" && !U.mag) {
+      // scanned bolt rifle: no detachable magazine (and a scope over the action), so rounds go in one at a time from the right.
+      // Timed in seconds to match SFX.reload: bolt up and back at 0.15 s, a round pressed in every 0.42 s from 0.75 s, bolt shut at the end
+      const D = st.rl || 3.4, t = k * D, n = st.id === "scout" ? 2 : 3, t0 = 0.75, gap = 0.42, last = t0 + n * gap;
+      boltOpen(ss(0.08, 0.5, t) * (1 - ss(D - 0.62, D - 0.22, t)));
+      up = ss(0, 0.4, t) * (1 - ss(D - 0.35, D - 0.02, t));
+      R.ox = -0.05 * up; R.oy = 0.045 * up; R.oz = 0.05 * up; R.rz = 0.32 * up; R.rx = 0.05 * up; R.ry = 0.12 * up;
+      const P0 = GUNS.PORT, F0 = GUNS.RND, port = [P0[0] - F0[0], P0[1] - F0[1], P0[2] - F0[2]], pouch = [-0.05, -0.16, 0.02];   // the fingertips, not the fist, go to the action
+      const i = clamp(Math.ceil((t - t0 - 0.06) / gap), 0, n), sp = t - (t0 + i * gap), mid = (-gap + 0.06 - 0.1) / 2;
+      const away = i === 0 ? 0 : Math.sin(ss(-gap + 0.06, -0.1, sp) * Math.PI), press = sp > -0.1 && sp < 0.06 ? Math.sin(ss(-0.1, 0.06, sp) * Math.PI) * 0.018 : 0;
+      const path = mix([port[0], port[1] - press, port[2]], pouch, away);
+      const enter = ss(t0 - 0.62, t0 - 0.12, t), leave = ss(last + 0.08, last + 0.5, t);
+      lh = mix(U.lh, i === 0 ? mix(pouch, path, ss(t0 - 0.4, t0 - 0.12, t)) : path, enter * (1 - leave));
+      rnd = t > t0 - 0.4 && t < last - 0.03 && (i === 0 || sp > mid) && sp < -0.03;
+    } else if (k >= 0) {
       tilt = Math.sin(ss(0, 0.2, k) * Math.PI / 2) * (1 - ss(0.82, 1, k)) * 0.42; dip = Math.sin(k * Math.PI) * 0.03;
       if (U.kind === "pump") { // shells in one at a time, then rack
         const n = 4, f = (k * 0.84 * n) % 1, in0 = k < 0.84; const port = [0.0, -0.03, -0.02];
@@ -3861,7 +3878,9 @@ const GUNS = {
       } else if (U.mag) {
         const out = ss(0.16, 0.32, k) - ss(0.5, 0.68, k); magY = out * 0.3; magVis = !(k > 0.3 && k < 0.5);
         const mp = [0.0 + md[0] * magY, -0.11 + md[1] * magY, -0.07 + md[2] * magY * (U.kind === "tube" ? 1 : 0)];
-        if (U.kind === "pistol") { mp[0] = 0; mp[1] = -0.16 - magY; mp[2] = 0.05; slide = k < 0.86 ? 0.03 : 0; }
+        if (U.kind === "pistol") { mp[0] = 0; mp[1] = -0.16 - magY; mp[2] = 0.05; slide = k < 0.86 ? 0.03 : 0;
+          // lift the pistol in front of the chest and cant it so the magazine well (and the hand coming up to it) stay in view
+          up = ss(0, 0.16, k) * (1 - ss(0.84, 1, k)); tilt *= 0.8; R.ox = -0.05 * up; R.oy = 0.13 * up; R.oz = 0.03 * up; R.rx = -0.12 * up; }
         if (U.kind === "tube") { mp[0] = 0; mp[1] = 0.0; mp[2] = -0.5 - magY * 0.5; }
         const go = ss(0.04, 0.16, k), back = ss(0.7, 0.82, k), w = go * (1 - back);
         lh = [U.lh[0] + (mp[0] - U.lh[0]) * w, U.lh[1] + (mp[1] - U.lh[1]) * w, U.lh[2] + (mp[2] - U.lh[2]) * w];
@@ -3874,9 +3893,15 @@ const GUNS = {
       U.mag.position.set(0, 0, 0); U.mag.visible = true; magY = 0;
     } else if (U.mag) { U.mag.position.set(md[0] * magY, md[1] * magY, U.kind === "tube" ? magY * 0.6 : 0); U.mag.visible = magVis; }
     if (U.slide) U.slide.position.z = slide; if (U.bolt) U.bolt.position.z = bolt; if (U.pump) U.pump.position.z = pump;
+    if (U.boltRot) U.boltRot.rotation.x = GUNS.LIFT * lift;
+    if (U.armL && U.kind === "bolt") { // the round between the fingers of the loading hand
+      if (rnd && !U.rnd) { const T = THREE, M = GUNS.mats(T), r = new T.Group(), c = new T.Mesh(new T.CylinderGeometry(0.0062, 0.0068, 0.054, 10), M.brass), b = new T.Mesh(new T.CylinderGeometry(0.0012, 0.0045, 0.024, 10), M.brass);
+        c.rotation.x = b.rotation.x = Math.PI / 2; b.position.z = -0.039; r.add(c, b); g.add(r); U.rnd = r; }
+      if (U.rnd) { U.rnd.visible = rnd; U.rnd.position.set(lh[0] + GUNS.RND[0], lh[1] + GUNS.RND[1], lh[2] + GUNS.RND[2]); U.rnd.rotation.x = -0.15; } }
     if (U.armL) { const lp = U.pump && !(k >= 0 && k < 0.84) ? [lh[0], lh[1], U.lh[2] + pump] : lh; GUNS.setArm(U.armL, lp, U.lElbow, U.lroll); }
-    return { tilt, dip };
+    R.tilt = tilt; R.dip = dip; return R;
   },
+  PORT: [0.012, 0.04, -0.115], LIFT: -1.1, RND: [0.026, 0.03, -0.05],
 };
 
 // ---------------------------------------------------------------------------
@@ -9834,10 +9859,10 @@ function makeOps(md) {
         const U = gm.userData, ad = U.knife ? 0 : F.ads || 0, base = U.knife ? [0.2, -0.2, -0.38] : [U.vm[0] * (1 - ad), U.vm[1] + ad * 0.045, U.vm[2] + ad * 0.05];
         if (ad > 0) { F.sway.x *= 1 - 0.6 * ad; F.sway.y *= 1 - 0.6 * ad; }
         F.throwT = Math.max(0, (F.throwT || 0) - dt); const thw = F.throwT > 0 ? Math.sin((1 - F.throwT / 0.45) * Math.PI) : 0;
-        const W1 = OW[F.cur], ps = U.knife ? { tilt: 0, dip: 0 } : GUNS.pose(gm, { reload: F.reloadT > 0 ? 1 - F.reloadT / W1.rl : -1, kick: F.kick, cyc: W1.rate > 0.5 && F.fireCd > 0 ? 1 - F.fireCd / W1.rate : 1 });
+        const W1 = OW[F.cur], ps = U.knife ? { tilt: 0, dip: 0 } : GUNS.pose(gm, { reload: F.reloadT > 0 ? 1 - F.reloadT / W1.rl : -1, kick: F.kick, cyc: W1.rate > 0.5 && F.fireCd > 0 ? 1 - F.fireCd / W1.rate : 1, rl: W1.rl, id: W1.id });
         const kz = U.knife ? 0.045 : 0.03 + W1.kick * 0.9, sw2 = sw * sw;
-        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 * (1 - 0.7 * ad) + F.sway.x + thw * 0.08, base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22, base[2] + F.kick * kz);
-        gm.rotation.set(F.kick * (U.knife ? 0.08 : 0.035 + W1.kick * 1.6) + sw2 * 0.9 + ps.tilt * 0.25, F.sway.x * 2 + ps.tilt * 0.5, -ps.tilt * 0.9 - sw2 * 0.4);
+        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 * (1 - 0.7 * ad) + F.sway.x + thw * 0.08 + (ps.ox || 0), base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22 + (ps.oy || 0), base[2] + F.kick * kz + (ps.oz || 0));
+        gm.rotation.set(F.kick * (U.knife ? 0.08 : 0.035 + W1.kick * 1.6) + sw2 * 0.9 + ps.tilt * 0.25 + (ps.rx || 0), F.sway.x * 2 + ps.tilt * 0.5 + (ps.ry || 0), -ps.tilt * 0.9 - sw2 * 0.4 + (ps.rz || 0));
         if (gm.userData.knife) {
           // swing: slash sweeps sideways, stab thrusts forward
           F.swingT = Math.max(0, (F.swingT || 0) - dt); const sp = Math.sin((1 - F.swingT / 0.32) * Math.PI) * (F.swingT > 0 ? 1 : 0);
