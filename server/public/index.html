@@ -7969,7 +7969,7 @@ function makeOps(md) {
       on($("#stagebox"), "mousedown", (e) => {
         const tg = e.target;
         if (tg !== cv && tg.closest && tg.closest("button, input, select, textarea, a, .ops-shop, .look-panel, .look-btn, .card")) return;
-        if (V.meIdx < 0) { specNext(); return; }
+        if (V.meIdx < 0 || F.watchTm) { specNext(); return; }
         if (coarse) return;
         if (document.pointerLockElement !== cv) {
           // first click only grabs the mouse; it never fires. Drag-to-look works meanwhile.
@@ -7997,7 +7997,7 @@ function makeOps(md) {
       on(window, "keydown", (e) => {
         if (APP.view !== "game" || (e.target && e.target.tagName === "INPUT")) return;
         if (e.code === "Tab") { F.tab = true; e.preventDefault(); }
-        if (V.meIdx < 0) { if (e.code === "Space" || e.code === "ArrowRight") { F.specOff = (F.specOff || 0) + 1; F.specManual = true; F.specAuto = 0; e.preventDefault(); } if (e.code === "ArrowLeft") { F.specOff = (F.specOff || 0) - 1; F.specManual = true; F.specAuto = 0; } return; }
+        if (V.meIdx < 0 || F.watchTm) { if (e.code === "Space" || e.code === "ArrowRight") { F.specOff = (F.specOff || 0) + 1; F.specManual = true; F.specAuto = 0; e.preventDefault(); } if (e.code === "ArrowLeft") { F.specOff = (F.specOff || 0) - 1; F.specManual = true; F.specAuto = 0; } return; }
         if (e.repeat) return;
         const shopOpen = F.shop && !F.shop.hidden;
         if (shopOpen && (/^Digit[0-9]$/.test(e.code) || e.code === "Minus" || (team && e.code === "Equal"))) { const k = e.code === "Equal" ? 11 : e.code === "Minus" ? 10 : e.code === "Digit0" ? 9 : +e.code.slice(-1) - 1, it = [...OW_BUY, ARMOR_IT, FRAG_IT, SMOKE_IT, AMMO_IT][k]; if (it != null) this.buy(V, it); return; }
@@ -8016,7 +8016,7 @@ function makeOps(md) {
       on(window, "keyup", (e) => { if (e.code === "KeyF" && F.hkKey) { F.hkKey = false; F.hk = null; } if (e.code === "KeyE") F.act = false; if (e.code === "Tab") F.tab = false; });
       // touch
       on(cv, "touchstart", (e) => {
-        if (V.meIdx < 0) { specNext(); return; }
+        if (V.meIdx < 0 || F.watchTm) { specNext(); return; }
         const r = cv.getBoundingClientRect();
         for (const t of e.changedTouches) {
           if (t.clientX - r.left < r.width * 0.42 && !F.stick) F.stick = { id: t.identifier, bx: t.clientX, by: t.clientY, x: t.clientX, y: t.clientY };
@@ -9395,10 +9395,13 @@ function makeOps(md) {
       const me = V.meIdx, mypl = me >= 0 && g.pl ? g.pl[me] : null;
       const dead = mypl && !mypl[1];
       let cx = F.me.x, cz = F.me.z, ca = F.me.a + (F.recA || 0), cp = F.me.p + (F.rec || 0), eye = F.eyeH || EYE;
-      // only people who aren't in the match can watch through players. When you're out, your camera stays where you fell
-      // (no watching through teammates' eyes to call out enemies) until the next round or your respawn
-      if (me < 0) {
-        const cands = V.ro.map((r, i) => i).filter(i => g.pl && g.pl[i] && g.pl[i][1] && (me < 0 || g.pl[i][2] === mypl[2]) && F.remote[i]);
+      // spectators watch through any living player. In Breach, once you're out you see where you fell for a moment,
+      // then watch your living teammates (never the other side) until the next round; no walking around
+      const now = performance.now(); F.deadAt = dead ? F.deadAt || now : 0;
+      const tmCands = me >= 0 && dead && team && now - F.deadAt > 2500 ? V.ro.map((r, i) => i).filter(i => i !== me && g.pl && g.pl[i] && g.pl[i][1] && g.pl[i][2] === mypl[2] && F.remote[i]) : [];
+      F.watchTm = tmCands.length > 0;
+      if (me < 0 || F.watchTm) {
+        const cands = me < 0 ? V.ro.map((r, i) => i).filter(i => g.pl && g.pl[i] && g.pl[i][1] && F.remote[i]) : tmCands;
         // spectators follow one player; click / Space / arrows switch, otherwise it moves on every 8 s
         F.specOff = F.specOff || 0; F.specAuto = (F.specAuto || 0) + dt;
         if (F.specAuto > (F.specManual ? 25 : 8)) { F.specAuto = 0; F.specOff++; F.specManual = false; }
@@ -9411,7 +9414,7 @@ function makeOps(md) {
         }
         else F.specName = "";
       } else if (dead) {
-        // out: you stay where you fell (no walking, no watching through teammates), but the mouse swings a camera round
+        // out (or no teammate left to watch): you stay where you fell, and the mouse swings a camera round
         // that spot, pulled in where a wall or floor is in the way
         F.specName = ""; const by = (F.jh || 0) + 1.1, cpp = clamp(cp, -1.1, 0.5), fx = -Math.sin(ca) * Math.cos(cpp), fy = Math.sin(cpp), fz = -Math.cos(ca) * Math.cos(cpp);
         let dist = 3.4; const o = [F.me.x, by, F.me.z], d = [-fx, -fy, -fz];
@@ -9657,7 +9660,15 @@ function makeOps(md) {
         ctx.font = "600 12px Inter, sans-serif"; ctx.fillStyle = "#9da1a9"; ctx.fillText((matchMedia("(pointer: coarse)").matches ? "Tap" : "Click or Space") + " for the next player · you're in the next game", W / 2, H - 52);
       }
       // dead overlay
-      if (pl && !alive) {
+      if (pl && !alive && F.watchTm) {
+        // watching a teammate: keep their view clear and say whose eyes these are at the bottom
+        const tx = "WATCHING " + (F.specName || "").toUpperCase();
+        ctx.textAlign = "center"; ctx.font = "700 15px 'JetBrains Mono', monospace"; const tw = Math.max(ctx.measureText(tx).width, 320) + 36;
+        box(W / 2 - tw / 2, H - 112, tw, 74, 10, 0.78);
+        ctx.font = "700 12px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ff4d5e"; ctx.fillText("ELIMINATED", W / 2, H - 92);
+        ctx.font = "700 15px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6"; ctx.fillText(tx, W / 2, H - 72);
+        ctx.font = "600 12px Inter, sans-serif"; ctx.fillStyle = "#9da1a9"; ctx.fillText((matchMedia("(pointer: coarse)").matches ? "Tap" : "Click or Space") + " for the next teammate \u00b7 back next round", W / 2, H - 52);
+      } else if (pl && !alive) {
         ctx.fillStyle = "rgba(10,11,13,.35)"; ctx.fillRect(0, 0, W, H);
         plate(W / 2 - 190, H * 0.4 - 36, 380, 96, "#ff4d5e", "l", 0.8, 14); ctx.textAlign = "center"; ctx.font = "700 38px 'Chakra Petch', sans-serif"; ctx.fillStyle = "#ff4d5e"; ctx.fillText("ELIMINATED", W / 2, H * 0.4);
         ctx.font = "700 16px 'JetBrains Mono', monospace"; ctx.fillStyle = "#f5f1e6";
