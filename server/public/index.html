@@ -3979,7 +3979,7 @@ const PPL = {
 // shaders here combine that with scanned PBR materials, a real-time sun, shadows of moving things and reflections.
 // Everything runs on the player's own graphics card; the quality level scales the cost from office laptops to gaming PCs.
 const NX = {
-  VER: 6,            // cache buster for baked files and textures (the server caches /models for a week)
+  VER: 7,            // cache buster for baked files and textures (the server caches /models for a week)
   LM_SCALE: 16,      // lightmaps store sqrt(irradiance / 16)
   url(f) { return "models/" + f + "?v=" + NX.VER; },
 
@@ -4814,6 +4814,29 @@ NXW.kit = (B) => {
         if (dx) B.decal("decal", [dx > 0 ? x0 + CS - 0.3 : x0, y + 0.005, z0 + CS], [0.3, 0, 0], [0, 0, -CS], 64, { k: "hazard", r: 1 }); else B.decal("decal", [x0, y + 0.005, dz > 0 ? z0 + CS : z0 + 0.3], [CS, 0, 0], [0, 0, -0.3], 64, { k: "hazard", r: 0 }); }));
     });
   };
+  // ---- jumpable decks for any theme: "1" = 1.2 m (crates, low platforms), "2" = 2.6 m (balconies, catwalks reached from
+  // a jump pad "^"). A solid block with its own top, a dark kick at the foot, a light line on the top edge, a ring under each pad
+  K.decks = (top, side, lineCol, frameMat) => {
+    const FR = frameMat || "trimSteel";
+    const DH = { "1": 1.2, "2": 2.6 }, hAt = (x, z) => DH[ch(x, z)] || 0;
+    for (let z = 1; z < G - 1; z++) for (let x = 1; x < G - 1; x++) {
+      const hh = hAt(x, z); if (!hh || A.solid(x, z)) continue; const c = A.ci(x, z), x0 = x * CS, z0 = z * CS; let fm = 0, y0 = hh;
+      B.floorY[c] = hh; B.floor(top, x0, z0, x0 + CS, z0 + CS, hh);
+      DIRS.forEach(([dx, dz]) => { const nh = A.solid(x + dx, z + dz) ? 99 : hAt(x + dx, z + dz); if (nh >= hh) return; fm |= dx > 0 ? PX : dx < 0 ? NXb : dz > 0 ? PZ : NZ; y0 = Math.min(y0, nh);
+        const ex = x0 + CS / 2 + dx * CS / 2, ez = z0 + CS / 2 + dz * CS / 2, hx = dz ? CS / 2 : 0.012, hz = dx ? CS / 2 : 0.012, ox = dx * 0.012, oz = dz * 0.012;
+        box("trimBlack", ex - hx + ox, nh, ez - hz + oz, ex + hx + ox, nh + 0.1, ez + hz + oz, { f: ALL, occ: false, seg: 2 });
+        box("trimBlack", ex - hx * 1.02 + ox * 2, hh - 0.05, ez - hz * 1.02 + oz * 2, ex + hx * 1.02 + ox * 2, hh + 0.004, ez + hz * 1.02 + oz * 2, { f: ALL, occ: false, seg: 2 });
+        B.decal("decal", [dz ? x0 : ex - dx * 0.2 - 0.06, hh + 0.005, dx ? z0 + CS : ez - dz * 0.2 + 0.06], dz ? [CS, 0, 0] : [0.12, 0, 0], dz ? [0, 0, -0.12] : [0, 0, -CS], 40, { k: "line", col: lineCol == null ? 3 : lineCol });
+        // along the open edge: a crate frame (corner posts + a band) on low blocks, a railing on high ones (never on the
+        // side a jump pad lands you from)
+        const ax = dz ? 1 : 0, az = dx ? 1 : 0, sx = ex - ax * CS / 2, sz = ez - az * CS / 2, px = dx * 0.03, pz = dz * 0.03, th = 0.06;
+        const bar = (u0, u1, y0b, y1b) => box(FR, sx + ax * u0 + px - (ax ? 0 : th), y0b, sz + az * u0 + pz - (az ? 0 : th), sx + ax * u1 + px + (ax ? 0 : th), y1b, sz + az * u1 + pz + (az ? 0 : th), { f: ALL, occ: false, seg: 2 });
+        if (hh < 2) { for (const u of [0.04, CS / 2 - 0.06, CS - 0.16]) bar(u, u + 0.12, nh, hh - 0.04); bar(0.04, CS - 0.04, nh + (hh - nh) * 0.45, nh + (hh - nh) * 0.45 + 0.12); }
+        else if (ch(x + dx, z + dz) !== "^") { for (let u = 0.1; u < CS; u += CS / 3) bar(u, u + 0.06, hh, hh + 1.02); bar(0.04, CS - 0.04, hh + 0.98, hh + 1.04); bar(0.04, CS - 0.04, hh + 0.5, hh + 0.54); } });
+      box(side, x0, y0, z0, x0 + CS, hh - 0.02, z0 + CS, { f: fm, seg: 1.3 });
+    }
+    K.cellsOf("^").forEach(([x, z]) => B.decal("decal", [x * CS + 0.3, 0.006, z * CS + CS - 0.3], [CS - 0.6, 0, 0], [0, 0, -(CS - 0.6)], 60, { k: "ring", col: 0, n: 8, chev: 1 }));
+  };
   // ---- lit signs for sites and spawns on a plain wall that looks into them. cols: sign colour index per zone [A, B, blue, red]
   K.signs = (M, cols, v0, ok) => {
     v0 = v0 || 2.2; [["a", "SITE A", M.sites[0], cols[0]], ["b", "SITE B", M.sites[1], cols[1]], ["u", "BLUE TEAM", M.spawns[1], cols[2]], ["r", "RED TEAM", M.spawns[0], cols[3]]].forEach(([k, t, sub, col]) => {
@@ -5234,6 +5257,7 @@ NXW.themes.farm = (B, M, env) => {
     for (let x = 1; x < G - 1; x++) { tube("trimSteel", x * CS, 4.75, zc2, x * CS + CS, 4.75, zc2, 0.4, 12, { seg: 2 }); box("trimBlack", x * CS + 1.98, 5.15, zc2 - 0.02, x * CS + 2.02, HC - 0.6, zc2 + 0.02, { f: PX | NXb | PZ | NZ, occ: false }); if (solid(x, z)) cyl("trimSteel", x * CS + CS / 2, 3.22, zc2, 0.24, 1.2, 10, { occ: false, cap: false }); } }
 
   // ---- floor paint: sites, a walking line along every cabinet row, the dock
+  K.decks("v_deckTop", "v_deck", 0);   // crates and the catwalk over the middle racks
   K.siteMarks([0, 2]);
   faces.forEach(f => { if (f.kind !== "racks") return; B.decal("decal", B.fpos(f, 0, 0.004, 0.86), B.fdir(f, CS, 0, 0), B.fdir(f, 0, 0, -0.07), 48, { k: "line", col: 1 }); });
   const rc = K.cellsOf("r"); if (rc.length) { const mx = rc.reduce((s, q) => s + q[0], 0) / rc.length * CS + CS / 2, mz = rc.reduce((s, q) => s + q[1], 0) / rc.length * CS + CS / 2; K.floorText(mx - 5, mz - 0.7, 10, 1.4, "LOADING DOCK", 1); }
@@ -5387,6 +5411,7 @@ NXW.themes.desert = (B, M, env) => {
   K.cellsOf("a").forEach(([x, z]) => { if (hsh(x, z, 61) > 0.3) return; const x0 = x * CS, z0 = z * CS; box(CLOTH[Math.floor(hsh(x, z, 62) * 4) % 4], x0 + 0.5, 3.4, z0 + 0.5, x0 + CS - 0.5, 3.43, z0 + CS - 0.5, { f: ALL, seg: 1.2 }); for (const [px, pz] of [[0.5, 0.5], [3.5, 0.5], [0.5, 3.5], [3.5, 3.5]]) box("d_dwood", x0 + px - 0.035, 0, z0 + pz - 0.035, x0 + px + 0.035, 3.5, z0 + pz + 0.035, { f: ALL & ~NY, occ: false, seg: 1.2 }); });
   // rugs laid in the two sites
   [["a", 0.8], ["b", 0.5]].forEach(([k, q]) => K.cellsOf(k).forEach(([x, z]) => { if (hsh(x, z, 71) > 0.16) return; B.decal("decal", [x * CS + 0.9, 0.007, z * CS + 3.5], [2.2, 0, 0], [0, 0, -3], 60, { k: "rug", v: Math.floor(hsh(x, z, 72) * 6) }); }));
+  K.decks("d_wood", "d_clay", 2, "d_dwood");   // crate stacks and the roof terrace over the plaza
   K.siteMarks([0, 1]); K.signs(M, [0, 1, 3, 2], 2.75, (q) => q.free);
 
   // ---- beyond the walls: towers, a dome and palms, lit by the open sky
@@ -5500,6 +5525,7 @@ NXW.themes.roof = (B, M, env) => {
   K.cellsOf("u").forEach(([x, z]) => DIRS.forEach(([dx, dz]) => { const bx = x + dx, bz = z + dz; if (!border(bx, bz) || (bx + bz) % 2) return; const px = bx * CS + CS / 2 + dx * 0.9, pz = bz * CS + CS / 2 + dz * 0.9, hh = 11 + hsh(bx, bz, 41) * 6;
     tube("trimSteel", px, 0, pz, px, hh, pz, 0.1, 8, { seg: 3 }); for (const k of [0.45, 0.65, 0.85]) { box("trimSteel", px - 0.9, hh * k, pz - 0.03, px + 0.9, hh * k + 0.05, pz + 0.03, { f: ALL, occ: false }); box("trimSteel", px - 0.03, hh * k, pz - 0.9, px + 0.03, hh * k + 0.05, pz + 0.9, { f: ALL, occ: false }); for (const [ax, az] of [[0.9, 0], [-0.9, 0], [0, 0.9], [0, -0.9]]) box("plasticWhite", px + ax - 0.09, hh * k - 0.6, pz + az - 0.09, px + ax + 0.09, hh * k + 0.7, pz + az + 0.09, { f: ALL, occ: false }); }
     box(ledRed, px - 0.07, hh, pz - 0.07, px + 0.07, hh + 0.16, pz + 0.07, { f: ALL, occ: false }); }));
+  K.decks("v_deckTop", "r_unit", 3);   // AC housings and the raised plant deck
   // ---- helipad paint and edge lights, site rings, signs on the glass
   const hp = cen("a"); if (hp) { const hx = hp[0] * CS + CS / 2, hz = hp[1] * CS + CS / 2, R = Math.min(5.6, Math.sqrt(K.cellsOf("a").length) * CS * 0.42); B.decal("decal", [hx - R, 0.007, hz + R], [2 * R, 0, 0], [0, 0, -2 * R], 44, { k: "heli", t: "N 5t" });
     for (let i = 0; i < 12; i++) { const a = i / 12 * 6.283, lx = hx + Math.cos(a) * (R + 0.35), lz = hz + Math.sin(a) * (R + 0.35); cyl("trimBlack", lx, 0, lz, 0.09, 0.05, 8, { occ: false }); cyl(ledGreen, lx, 0.05, lz, 0.055, 0.04, 8, { occ: false }); } }
@@ -6790,47 +6816,47 @@ const OPS_MAPS = {
   "#...#...rrrrrr...#...#",
   "######################",
   ] },
-  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
+  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", open: true, theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
     "#aaaa.....uuuuuu.#",
     "#aaaa.....uuuuuu.#",
     "#..##..##.##..#..#",
-    "#................#",
+    "#...........1....#",
     "#................#",
     "#..##..##.##..#..#",
     "#.......##.......#",
-    "#..##.#.##.......#",
-    "#.......##.#b##b.#",
+    "#..##.#.22^......#",
+    "#...1..^22.#b##b.#",
     "#.......##..bbbb.#",
     "#..##..##.##..#..#",
-    "#................#",
-    "#................#",
+    "#............1...#",
+    "#....1...........#",
     "#..##..##.##..#..#",
     "#rrrrrr..........#",
     "#rrrrrr..........#",
     "##################",
   ] },
-  sand: { n: "Sandstorm District", sub: "Outdoor streets", theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
+  sand: { n: "Sandstorm District", sub: "Outdoor streets", open: true, theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
     "##########################",
     "#......###uuuuuu###......#",
     "#..#......uuuuuu.....#...#",
-    "#.........uuuuuu.........#",
+    "#..1......uuuuuu......1..#",
     "#...#....###..#####...#..#",
     "#........###..#####......#",
     "##....#..###..####....####",
     "##....#..###..####bb##..##",
     "##..###aa###....#bbb##..##",
-    "##..###aaaa.....bbbb##..##",
+    "##..###aaaa.1...bbbb##..##",
     "##..###aaaa...####..##..##",
     "##..#########.####..##..##",
     "##..######....####......##",
     "##..######....####.....###",
     "##.#########..#######..###",
     "##.##.........#######..###",
-    "##..#..................###",
-    "##..#..................###",
-    "##..#.........#######..###",
-    "##..#.........#######..###",
+    "##..#..............1...###",
+    "##..#..1...............###",
+    "##..#.........22#####..###",
+    "##..#........^22#####..###",
     "##..####..##..#######..###",
     "##..#####rrrrrrrr####..###",
     "##.......rrrrrrrr......###",
@@ -6897,25 +6923,25 @@ const OPS_MAPS = {
     "###.....11vvvv.......11#",
     "##########vvvv##########",
   ] },
-  roof: { n: "Rooftop", sub: "Outdoor rooftops", theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
+  roof: { n: "Rooftop", sub: "Outdoor rooftops", open: true, theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
     "########################",
     "#aaaaa.................#",
     "#aaaaa...........uuuuuu#",
     "#aaaaa...##......uuuuuu#",
     "#...##...##....##......#",
-    "#...##.........##......#",
+    "#...##.........##.1....#",
     "#......##..............#",
     "#......##.......##.....#",
-    "#.........##....##.##..#",
-    "#...##....##.......##..#",
-    "#...##........##.......#",
+    "#.........22^...##.##..#",
+    "#...##...^22.......##..#",
+    "#...##.1......##.......#",
     "#...........####.......#",
     "#....#.#..####..##..##.#",
-    "#.##................##.#",
+    "#.##..1.............##.#",
     "#.##..##...##....##bbbb#",
     "#.....##...##....##bbbb#",
     "#.................bbbbb#",
-    "#......................#",
+    "#...........1..........#",
     "#..##....##........##..#",
     "#..##....##....##..##..#",
     "#rrrrrr........##......#",
@@ -8184,7 +8210,7 @@ function makeOps(md) {
         if (onG) {
           F.jh = gNow; F.vy = 0;
           if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.jump(0.5); }
-          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") {
+          if (!gNow && oCh(F.me.x, F.me.z) === "^") {   // jump pads work in every mode
             const J = OPS_JUMP[Math.floor(F.me.z / CS) * OG + Math.floor(F.me.x / CS)];
             if (J) { // booster: a fixed arc that lands on the far side whatever way you walked onto it
               const dx = J[0] - F.me.x, dz = J[1] - F.me.z, T = clamp(Math.hypot(dx, dz) / 15, 0.9, 2.6); F.vel.x = dx / T; F.vel.z = dz / T; F.vy = 8.5 * T; F.padFly = T * 0.82; F.hk = null; SFX.swish(1); SFX.pad(0.9);
@@ -8627,7 +8653,7 @@ function makeOps(md) {
       const mStd = (o) => new T.MeshStandardMaterial(o), metal = mStd({ color: 0x3a3f58, roughness: 0.35, metalness: 0.8 });
       // ---- breakable props
       this.buildProps(V, scene, mStd);
-      if (OPS_M.only || arena) this.buildArena(V, scene, mStd);   // jump decks and pads (map) + pickups and the router (mode)
+      if (OPS_M.only || OPS_M.open || arena) this.buildArena(V, scene, mStd);   // jump decks and pads (map) + pickups and the router (mode)
       F.boomL = new T.PointLight(0xff7a2a, 0, 26, 1.6); F.boomL.position.y = 1.6; scene.add(F.boomL);
       F.vfx = []; F.scorch = []; F.box1 = new T.BoxGeometry(1, 1, 1); F.ringG = new T.RingGeometry(0.82, 1, 48); F.prA = []; F.prS = []; F.prT = [];
       // ---- payload
@@ -9528,7 +9554,7 @@ function makeOps(md) {
       }
       if (Array.isArray(g.fx)) { const mx = g.fx.reduce((m, f) => Math.max(m, f[0]), 0); if (F.fxSeen == null) F.fxSeen = mx; else { g.fx.forEach(f => { if (f[0] > F.fxSeen) { if (f[3] === 3) { const [d, pan] = this.sfxAt(F, f[1], f[2]); SFX.hiss(clamp(1 - d / 40, 0.1, 1), pan); } else this.explode(V, f[1], f[2], f[3], f[4] || 0); } }); F.fxSeen = Math.max(F.fxSeen, mx); } }
       this.nadesDraw(V, g, dt, t);
-      if (OPS_M.only || arena) this.arenaDraw(V, g, dt, t);
+      if (OPS_M.only || OPS_M.open || arena) this.arenaDraw(V, g, dt, t);
       if (g.rd !== F.scRd) { F.scRd = g.rd; F.scorch.forEach(m => { F.scene.remove(m); m.material.dispose(); }); F.scorch = []; }
       F.boomL.intensity = Math.max(0, F.boomL.intensity - dt * (F.boomL.userData.k || 0));
       this.vfxTick(F, dt);
@@ -9604,7 +9630,7 @@ function makeOps(md) {
         ctx.globalAlpha = 1; F.pops = F.pops.filter(o => o.life > 0);
       }
       // gun hint after spawning
-      if (pl && pl[1] && F.spawnHintT > 0 && (!F.shop || F.shop.hidden)) { F.spawnHintT -= dt; ctx.globalAlpha = Math.min(1, F.spawnHintT); ctx.textAlign = "center"; ctx.font = "700 14px 'JetBrains Mono', monospace"; const tx = cap ? "GRAB THE ROUTER · HOLD IT 60 S" : troph ? "GRAB GUNS FROM THE PADS · FIND THE GOLDEN ROUTER" : laser ? (matchMedia("(pointer: coarse)").matches ? "HOOK BUTTON TO SWING" : "RIGHT-CLICK OR F TO HOOK") : matchMedia("(pointer: coarse)").matches ? "TAP BUY FOR GUNS" : "PRESS B FOR GUNS"; const tw = ctx.measureText(tx).width + 28; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.72 - 16, tw, 32, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText(tx, W / 2, H * 0.72); ctx.globalAlpha = 1; }
+      if (pl && pl[1] && F.spawnHintT > 0 && (!F.shop || F.shop.hidden)) { F.spawnHintT -= dt; ctx.globalAlpha = Math.min(1, F.spawnHintT); ctx.textAlign = "center"; ctx.font = "700 14px 'JetBrains Mono', monospace"; const tx = md === "capture" ? "GRAB THE ROUTER · HOLD IT 60 S" : troph ? "GRAB GUNS FROM THE PADS · FIND THE GOLDEN ROUTER" : laser ? (matchMedia("(pointer: coarse)").matches ? "HOOK BUTTON TO SWING" : "RIGHT-CLICK OR F TO HOOK") : matchMedia("(pointer: coarse)").matches ? "TAP BUY FOR GUNS" : "PRESS B FOR GUNS"; const tw = ctx.measureText(tx).width + 28; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.72 - 16, tw, 32, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText(tx, W / 2, H * 0.72); ctx.globalAlpha = 1; }
       F.hurtT = Math.max(0, F.hurtT - dt);
       if (F.hurtT > 0 && !F.post) { const gr = ctx.createRadialGradient(W / 2, H / 2, 160, W / 2, H / 2, 560); gr.addColorStop(0, "rgba(255,40,60,0)"); gr.addColorStop(1, "rgba(255,40,60," + F.hurtT * 1.3 + ")"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
       const alive = pl && pl[1];
@@ -9752,7 +9778,7 @@ function makeOps(md) {
       OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "#") { ctx.fillStyle = "rgba(170,180,230,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "a" || ch === "b") { ctx.fillStyle = ch === "a" ? "rgba(76,201,240,.25)" : "rgba(61,220,151,.25)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
       for (const k in (OPS_M.upSites || {})) { ctx.fillStyle = k === "a" ? "rgba(76,201,240,.3)" : "rgba(61,220,151,.3)"; ctx.strokeStyle = k === "a" ? "#4cc9f0" : "#3ddc97"; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); for (const [x, z] of OPS_M.upSites[k]) { ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); ctx.strokeRect(mx + x * ms + 0.5, my + z * ms + 0.5, ms - 1, ms - 1); } ctx.setLineDash([]); }
       if (OPS_M.sky) OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "v") { ctx.fillStyle = "rgba(255,77,94,.16)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
-      if (OPS_M.only) { OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { const hh = oCellH(x, z); if (hh) { ctx.fillStyle = hh > 2 ? "rgba(255,138,61,.45)" : "rgba(76,201,240,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "^") { ctx.fillStyle = "#3ddc97"; ctx.fillRect(mx + x * ms + ms * 0.25, my + z * ms + ms * 0.25, ms * 0.5, ms * 0.5); } }));
+      if (OPS_M.open) { OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { const hh = oCellH(x, z); if (hh) { ctx.fillStyle = hh > 2 ? "rgba(255,138,61,.45)" : "rgba(76,201,240,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "^") { ctx.fillStyle = "#3ddc97"; ctx.fillRect(mx + x * ms + ms * 0.25, my + z * ms + ms * 0.25, ms * 0.5, ms * 0.5); } }));
         if (Array.isArray(g.tr)) { ctx.fillStyle = Math.floor(t * 3) % 2 ? "#ffd23f" : "#fff2b0"; ctx.beginPath(); ctx.arc(mx + g.tr[0] / CS * ms, my + g.tr[2] / CS * ms, 4, 0, 7); ctx.fill(); } }
       ctx.font = "700 12px 'Chakra Petch', sans-serif"; if (OPS_CELLS.a.length) { ctx.textAlign = "center"; ctx.fillStyle = "#4cc9f0"; ctx.fillText("A", mx + OPS_SITE[0][0] / CS * ms, my + OPS_SITE[0][1] / CS * ms); ctx.fillStyle = "#3ddc97"; ctx.fillText(OPS_SITE[1][2] > 1 ? "B\u2191" : "B", mx + OPS_SITE[1][0] / CS * ms, my + OPS_SITE[1][1] / CS * ms); }
       V.ro.forEach((r, i) => {

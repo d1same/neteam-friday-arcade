@@ -124,6 +124,7 @@ NXW.themes.farm = (B, M, env) => {
     for (let x = 1; x < G - 1; x++) { tube("trimSteel", x * CS, 4.75, zc2, x * CS + CS, 4.75, zc2, 0.4, 12, { seg: 2 }); box("trimBlack", x * CS + 1.98, 5.15, zc2 - 0.02, x * CS + 2.02, HC - 0.6, zc2 + 0.02, { f: PX | NXb | PZ | NZ, occ: false }); if (solid(x, z)) cyl("trimSteel", x * CS + CS / 2, 3.22, zc2, 0.24, 1.2, 10, { occ: false, cap: false }); } }
 
   // ---- floor paint: sites, a walking line along every cabinet row, the dock
+  K.decks("v_deckTop", "v_deck", 0);   // crates and the catwalk over the middle racks
   K.siteMarks([0, 2]);
   faces.forEach(f => { if (f.kind !== "racks") return; B.decal("decal", B.fpos(f, 0, 0.004, 0.86), B.fdir(f, CS, 0, 0), B.fdir(f, 0, 0, -0.07), 48, { k: "line", col: 1 }); });
   const rc = K.cellsOf("r"); if (rc.length) { const mx = rc.reduce((s, q) => s + q[0], 0) / rc.length * CS + CS / 2, mz = rc.reduce((s, q) => s + q[1], 0) / rc.length * CS + CS / 2; K.floorText(mx - 5, mz - 0.7, 10, 1.4, "LOADING DOCK", 1); }

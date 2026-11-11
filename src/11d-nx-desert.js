@@ -54,6 +54,7 @@ NXW.themes.desert = (B, M, env) => {
   K.cellsOf("a").forEach(([x, z]) => { if (hsh(x, z, 61) > 0.3) return; const x0 = x * CS, z0 = z * CS; box(CLOTH[Math.floor(hsh(x, z, 62) * 4) % 4], x0 + 0.5, 3.4, z0 + 0.5, x0 + CS - 0.5, 3.43, z0 + CS - 0.5, { f: ALL, seg: 1.2 }); for (const [px, pz] of [[0.5, 0.5], [3.5, 0.5], [0.5, 3.5], [3.5, 3.5]]) box("d_dwood", x0 + px - 0.035, 0, z0 + pz - 0.035, x0 + px + 0.035, 3.5, z0 + pz + 0.035, { f: ALL & ~NY, occ: false, seg: 1.2 }); });
   // rugs laid in the two sites
   [["a", 0.8], ["b", 0.5]].forEach(([k, q]) => K.cellsOf(k).forEach(([x, z]) => { if (hsh(x, z, 71) > 0.16) return; B.decal("decal", [x * CS + 0.9, 0.007, z * CS + 3.5], [2.2, 0, 0], [0, 0, -3], 60, { k: "rug", v: Math.floor(hsh(x, z, 72) * 6) }); }));
+  K.decks("d_wood", "d_clay", 2, "d_dwood");   // crate stacks and the roof terrace over the plaza
   K.siteMarks([0, 1]); K.signs(M, [0, 1, 3, 2], 2.75, (q) => q.free);
 
   // ---- beyond the walls: towers, a dome and palms, lit by the open sky
