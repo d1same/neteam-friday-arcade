@@ -82,6 +82,7 @@ NXW.themes.vault = (B, M, env) => {
       for (let i = 0; i < 4; i++) { const a = i * 1.5708 + 0.7854, px = hx + Math.cos(a) * R, pz = hz + Math.sin(a) * R; box("trimBlack", px - 0.008, y, pz - 0.008, px + 0.008, H - 0.3, pz + 0.008, { f: PX | NXb | PZ | NZ, occ: false, seg: 3 }); } }
     rectLight([hx, 5.2, hz], [1.6, 0, 0], [0, 0, 1.6], [0, -1, 0], mul(GOLD, 22), { range: 16 });
     B.decal("decal", [hx - 3.4, 0.006, hz + 3.4], [6.8, 0, 0], [0, 0, -6.8], 60, { k: "ring", col: 1, n: 12, chev: 1 }); }
+  K.siteMarks([0, 1]);   // bomb site floor paint (Breach)
   K.cellsOf("^").forEach(([x, z]) => B.decal("decal", [x * CS + 0.3, 0.006, z * CS + CS - 0.3], [CS - 0.6, 0, 0], [0, 0, -(CS - 0.6)], 60, { k: "ring", col: 0, n: 8, chev: 1 }));
 };
 NXW.themes.vault.H = 8;

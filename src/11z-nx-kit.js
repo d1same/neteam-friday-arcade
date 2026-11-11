@@ -31,7 +31,7 @@ NXW.kit = (B) => {
   K.cellsOf = (k) => { const out = []; for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (ch(x, z) === k) out.push([x, z]); return out; };
   K.siteMarks = (cols, y) => {
     y = y || 0; [["a", "A", cols[0]], ["b", "B", cols[1]]].forEach(([k, L, col]) => {
-      const cells = K.cellsOf(k); if (!cells.length) return; const mx = cells.reduce((s, q) => s + q[0], 0) / cells.length * CS + CS / 2, mz = cells.reduce((s, q) => s + q[1], 0) / cells.length * CS + CS / 2;
+      const cells = K.cellsOf(k); if (!cells.length) return; const si = OPS_SITE[k === "a" ? 0 : 1], mx = si[0], mz = si[1];   // on a floor cell of the site, never inside a block
       B.decal("decal", [mx - 2.4, y + 0.006, mz + 2.4], [4.8, 0, 0], [0, 0, -4.8], 100, { k: "site", t: L, col });
       cells.forEach(([x, z]) => DIRS.forEach(([dx, dz]) => { if (ch(x + dx, z + dz) !== ".") return; const x0 = x * CS, z0 = z * CS;
         if (dx) B.decal("decal", [dx > 0 ? x0 + CS - 0.3 : x0, y + 0.005, z0 + CS], [0.3, 0, 0], [0, 0, -CS], 64, { k: "hazard", r: 1 }); else B.decal("decal", [x0, y + 0.005, dz > 0 ? z0 + CS : z0 + 0.3], [CS, 0, 0], [0, 0, -0.3], 64, { k: "hazard", r: 0 }); }));

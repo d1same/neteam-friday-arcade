@@ -122,6 +122,7 @@ NXW.themes.sky = (B, M, env) => {
   K.cellsOf("^").forEach(([x, z]) => { const x0 = x * CS, z0 = z * CS, s = voidAt(x + 1, z) ? 1 : -1;
     B.decal("decal", [x0 + 0.3, 0.007, z0 + CS - 0.3], [CS - 0.6, 0, 0], [0, 0, -(CS - 0.6)], 60, { k: "ring", col: 0, n: 8, chev: 1 });
     K.floorText(s > 0 ? x0 - 3.2 : x0 + CS + 0.6, z0 + 0.7, 2.6, 2.6, "BOOST", 3, false); });
+  K.siteMarks([0, 1]);   // bomb site floor paint (Breach)
   // the street far below for the light baker
   W.dress.push({ kind: "city", sides: [0, 1, 2, 3], all: true, avoid: TW.map(([a, b, c, d]) => [a - 6, b - 6, c + 6, d + 6]), floor: 54, em: 0.12 });
 };

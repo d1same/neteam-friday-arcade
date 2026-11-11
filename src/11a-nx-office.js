@@ -262,7 +262,7 @@ NXW.themes.office = (B, M, env) => {
   // ---- floor markings and signs
   const siteCells = (k) => { const out = []; for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (ch(x, z) === k) out.push([x, z]); return out; };
   [["a", "A", 0, CYAN], ["b", "B", 1, GREEN]].forEach(([k, L, col]) => {
-    const cells = siteCells(k); if (!cells.length) return; const mx = cells.reduce((s, q) => s + q[0], 0) / cells.length * CS + CS / 2, mz = cells.reduce((s, q) => s + q[1], 0) / cells.length * CS + CS / 2;
+    const cells = siteCells(k); if (!cells.length) return; const si = OPS_SITE[k === "a" ? 0 : 1], mx = si[0], mz = si[1];   // on a floor cell of the site, never inside a block
     B.decal("decal", [mx - 2.4, 0.006, mz + 2.4], [4.8, 0, 0], [0, 0, -4.8], 100, { k: "site", t: L, col });
     // hazard edge where the site meets the hall
     cells.forEach(([x, z]) => DIRS.forEach(([dx, dz]) => { if (ch(x + dx, z + dz) !== ".") return; const x0 = x * CS, z0 = z * CS;
