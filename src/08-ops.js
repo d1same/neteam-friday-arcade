@@ -2807,10 +2807,10 @@ function makeOps(md) {
         const U = gm.userData, ad = U.knife ? 0 : F.ads || 0, base = U.knife ? [0.2, -0.2, -0.38] : [U.vm[0] * (1 - ad), U.vm[1] + ad * 0.045, U.vm[2] + ad * 0.05];
         if (ad > 0) { F.sway.x *= 1 - 0.6 * ad; F.sway.y *= 1 - 0.6 * ad; }
         F.throwT = Math.max(0, (F.throwT || 0) - dt); const thw = F.throwT > 0 ? Math.sin((1 - F.throwT / 0.45) * Math.PI) : 0;
-        const W1 = OW[F.cur], ps = U.knife ? { tilt: 0, dip: 0 } : GUNS.pose(gm, { reload: F.reloadT > 0 ? 1 - F.reloadT / W1.rl : -1, kick: F.kick, cyc: W1.rate > 0.5 && F.fireCd > 0 ? 1 - F.fireCd / W1.rate : 1 });
+        const W1 = OW[F.cur], ps = U.knife ? { tilt: 0, dip: 0 } : GUNS.pose(gm, { reload: F.reloadT > 0 ? 1 - F.reloadT / W1.rl : -1, kick: F.kick, cyc: W1.rate > 0.5 && F.fireCd > 0 ? 1 - F.fireCd / W1.rate : 1, rl: W1.rl, id: W1.id });
         const kz = U.knife ? 0.045 : 0.03 + W1.kick * 0.9, sw2 = sw * sw;
-        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 * (1 - 0.7 * ad) + F.sway.x + thw * 0.08, base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22, base[2] + F.kick * kz);
-        gm.rotation.set(F.kick * (U.knife ? 0.08 : 0.035 + W1.kick * 1.6) + sw2 * 0.9 + ps.tilt * 0.25, F.sway.x * 2 + ps.tilt * 0.5, -ps.tilt * 0.9 - sw2 * 0.4);
+        gm.position.set(base[0] + Math.sin(F.bob * 0.5) * 0.006 * (1 - 0.7 * ad) + F.sway.x + thw * 0.08 + (ps.ox || 0), base[1] - ps.dip - sw2 * 0.32 + Math.abs(Math.cos(F.bob * 0.5)) * 0.005 + F.sway.y - thw * 0.22 + (ps.oy || 0), base[2] + F.kick * kz + (ps.oz || 0));
+        gm.rotation.set(F.kick * (U.knife ? 0.08 : 0.035 + W1.kick * 1.6) + sw2 * 0.9 + ps.tilt * 0.25 + (ps.rx || 0), F.sway.x * 2 + ps.tilt * 0.5 + (ps.ry || 0), -ps.tilt * 0.9 - sw2 * 0.4 + (ps.rz || 0));
         if (gm.userData.knife) {
           // swing: slash sweeps sideways, stab thrusts forward
           F.swingT = Math.max(0, (F.swingT || 0) - dt); const sp = Math.sin((1 - F.swingT / 0.32) * Math.PI) * (F.swingT > 0 ? 1 : 0);
