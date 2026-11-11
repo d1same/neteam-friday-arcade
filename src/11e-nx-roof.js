@@ -57,6 +57,8 @@ NXW.themes.roof = (B, M, env) => {
         B.fbox(f, "trimBlack", 1.85, 2.36, 0, 2.15, 2.5, 0.14, { f: ALL, occ: false }); B.fbox(f, lampWarm, 1.88, 2.345, 0.02, 2.12, 2.36, 0.13, { f: NY, occ: false }); rectLight(B.fpos(f, 2, 2.33, 0.08), [fr.rx * 0.12, 0, fr.rz * 0.12], [fr.nx * 0.05, 0, fr.nz * 0.05], [0, -1, 0], mul(WARM, 190), { range: 8 }); }
       else if (h1 < 0.5) { B.fbox(f, "f_shutter", 1.2, 1.5, 0, 2.8, 2.3, 0.04, { occ: false }); for (const [u0, v0, u1, v1] of [[1.14, 1.44, 2.86, 1.5], [1.14, 2.3, 2.86, 2.36]]) B.fbox(f, "trimBlack", u0, v0, 0, u1, v1, 0.06, { occ: false }); }
       else if (h1 < 0.7) { K.riser(f, "trimSteel", 0.5 + h2 * 3, 0.08, 0, h + 0.5, 0.06); }
+      else if (h1 < 0.86 && h > 2.2) { // a lit ad panel on the brick (its joke is picked when the map loads)
+        B.fbox(f, "trimBlack", 0.32, 0.62, 0, 3.68, h - 0.38, 0.06, { occ: false, seg: 1.5 }); B.fdecal(f, "glow", 0.4, 0.7, 3.6, h - 0.46, 0.065, 60, { k: "bill", l: ["NETEAM", "MANAGED IT \u00b7 NYC"], col: Math.floor(h2 * 5) }); }
     } else { // plant: grey casing, louvres, service panels, a yellow band
       B.wall(f, "r_unit", 0, 0, CS, h); f.kind = "plain"; f.alb = matAlb("r_unit"); B.fbox(f, "trimBlack", 0, 0, 0, CS, 0.16, 0.05, { occ: false, seg: 2 }); B.fbox(f, "f_yellow", 0, h - 0.24, 0, CS, h - 0.14, 0.014, { occ: false, seg: 2 });
       if (h1 < 0.5) { B.fbox(f, "f_shutter", 0.5, 0.5, 0, 3.5, h - 0.7, 0.05, { occ: false, seg: 1.5 }); for (const [u0, v0, u1, v1] of [[0.42, 0.42, 0.5, h - 0.62], [3.5, 0.42, 3.58, h - 0.62], [0.5, 0.42, 3.5, 0.5], [0.5, h - 0.7, 3.5, h - 0.62]]) B.fbox(f, "trimBlack", u0, v0, 0, u1, v1, 0.07, { occ: false, seg: 2 }); }

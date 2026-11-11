@@ -1945,7 +1945,7 @@ function makeOps(md) {
       F.dress = (av, i) => { const P = F.ppl, lk = P && PPL.lookOf(V, i, team); if (!lk || av.look === lk.id) return; try { rig(av, P[lk.model], lk); av.look = lk.id; } catch (e) { console.warn("person model", e); } };
       // the full soldier and detailed guns for small matches on capable cards; light ones when there are many players or the card is modest
       F.crowd = NX.tier().i <= 1 || V.ro.length > 6;
-      const people = NX.tier().i > 0 && (store("nfa-gfx") || {}).ppl !== 0;
+      const people = (store("nfa-gfx") || {}).ppl !== 0;   // every quality level: office laptops on Performance see the Business vs IT people too
       (people ? GFX.people() : Promise.resolve(null)).then((P) => { if (P && !F.gone && F.avatars) { F.ppl = P; F.avatars.forEach((av, i) => F.dress(av, i)); return; } return GFX.soldier(F.crowd).then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
         if (!gl || F.gone || !F.avatars) return;
         const SU = THREE_EXTRAS.SkeletonUtils;
@@ -2395,7 +2395,8 @@ function makeOps(md) {
       const a = new T.Vector3(...from), b = new T.Vector3(...to); const len = a.distanceTo(b); if (len < 0.1) return;
       const m = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(hex).multiplyScalar(3), transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
       m.scale.z = len; m.position.copy(a).lerp(b, 0.5); m.lookAt(b); F.scene.add(m); F.tracers.push({ m, life: beam ? 0.35 : 0.07, max: beam ? 0.35 : 0.07 });
-      if (beam) { m.scale.x = m.scale.y = 3.2; const core = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(4, 4, 4), transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })); core.scale.set(1.1, 1.1, len); core.position.copy(m.position); core.quaternion.copy(m.quaternion); F.scene.add(core); F.tracers.push({ m: core, life: 0.2, max: 0.2 }); }
+      if (beam) { m.scale.x = m.scale.y = 3.2; const core = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(4, 4, 4), transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })); core.scale.set(1.1, 1.1, len); core.position.copy(m.position); core.quaternion.copy(m.quaternion); F.scene.add(core); F.tracers.push({ m: core, life: 0.2, max: 0.2 });
+        const halo = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(hex).multiplyScalar(0.9), transparent: true, opacity: 0.22, blending: T.AdditiveBlending, depthWrite: false })); halo.scale.set(9, 9, len); halo.position.copy(m.position); halo.quaternion.copy(m.quaternion); F.scene.add(halo); F.tracers.push({ m: halo, life: 0.45, max: 0.45 }); }
       this.burst(V, to, spark ? "#ffd59a" : "#ff3b4e", spark ? 4 : 9, spark ? 3.5 : 2, spark ? 1 : 0);
     },
     // ---- jump arena (client art): decks, jump pads, pickups, the Golden Router, rockets, hook cables
@@ -3050,6 +3051,6 @@ const opsTwist = (() => { let q, q2, pq, up; return (bone, ang) => {
   bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
 }; })();
 GAMES.golden = makeOps("trophy");
-GAMES.laser = makeOps("laser");
+GAMES.laser = makeOps("laser");       // retired from the lobby (Capture the Router is the laser game now); kept so past Laser Arena matches still show
 GAMES.capture = makeOps("capture");
-GAME_ORDER.push("breach", "deathmatch", "golden", "laser", "capture");
+GAME_ORDER.push("breach", "deathmatch", "golden", "capture");

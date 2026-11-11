@@ -12,13 +12,30 @@ const NXD = {
     for (const d of W.decals) {
       const [sx, sy, w, h] = d.s, fn = NXD["k_" + d.k]; if (!fn) continue;
       x.save(); x.beginPath(); x.rect(sx, sy, w, h); x.clip(); x.translate(sx, sy);
-      try { fn(x, w, h, d, NXW.rng(NXW.strSeed(JSON.stringify([d.k, d.sd, d.v, d.t, d.n, d.col, d.l])) || 7)); } catch (e) { console.warn("[nx] decal", d.k, e && e.message); }
+      try { const dj = NXD.joke(d); fn(x, w, h, dj, NXW.rng(NXW.strSeed(JSON.stringify([d.k, d.sd, d.v, d.t, d.n, d.col, d.l])) || 7)); } catch (e) { console.warn("[nx] decal", d.k, e && e.message); }
       x.restore();
     }
     // stretch the border pixels into the gutters so mip-mapping never pulls in a neighbour
     const P = A.pad || 0;
     if (P) for (const d of W.decals) { const [sx, sy, w, h] = d.s; x.drawImage(cv, sx, sy, 1, h, sx - P, sy, P, h); x.drawImage(cv, sx + w - 1, sy, 1, h, sx + w, sy, P, h); x.drawImage(cv, sx - P, sy, w + 2 * P, 1, sx - P, sy - P, w + 2 * P, P); x.drawImage(cv, sx - P, sy + h - 1, w + 2 * P, 1, sx - P, sy + h, w + 2 * P, P); }
     return cv;
+  },
+  // ---- the fun layer: IT jokes and fake ads. Each poster, billboard, ticket screen and rack label picks its own line
+  // every time a map loads, so the walls read differently from match to match. Pure canvas text: costs nothing per frame.
+  JOKES: {
+    poster: [["IT'S", "ALWAYS", "DNS"], ["HAVE YOU", "TRIED TURNING", "IT OFF & ON?"], ["THERE'S NO", "PLACE LIKE", "127.0.0.1"], ["WORKS ON", "MY MACHINE", "\u2713 CERTIFIED"], ["CTRL", "ALT", "DEFEAT"], ["404", "COFFEE", "NOT FOUND"], ["REPLY-ALL", "IS NOT A", "STRATEGY"], ["PASSWORD123", "IS NOT A", "PASSWORD"], ["PATCH", "TUESDAY", "SURVIVOR"], ["WE FIX", "WHAT YOU", "BROKE"], ["HAVE YOU", "CHECKED", "THE CABLE?"], ["FRIDAY", "DEPLOYS:", "BRAVE OR FOOLISH?"], ["TEAMWORK", "NOBODY READS", "THE DOCS"], ["THINK", "BEFORE", "YOU CLICK"], ["MFA", "OR IT", "DIDN'T HAPPEN"], ["BACKUP", "3 \u00b7 2 \u00b7 1", "ALWAYS"], ["NO TICKET", "NO", "PROBLEM"], ["SUDO", "MAKE ME A", "SANDWICH"], ["CLEAR", "YOUR", "CACHE"], ["THE CLOUD", "IS JUST", "SOMEONE'S PC"], ["KEEP CALM", "AND", "CALL IT"], ["LOCK", "YOUR", "SCREEN"], ["UPTIME", "99.999", "PERCENT"], ["NETEAM", "SOLUTIONS", "SINCE 2001"]],
+    bill: [["NETEAM FIBER", "FASTER THAN YOUR EXCUSES"], ["VPN", "VERY PATIENT NETWORK"], ["NETEAM SOLUTIONS", "WE FIX WHAT YOU BROKE"], ["IT'S ALWAYS DNS", "ASK US HOW WE KNOW"], ["24/7 HELPDESK", "YES, EVEN AT 3 AM"], ["ZERO-DAY? ZERO WORRIES", "MANAGED SECURITY \u00b7 NETEAM"], ["BACKUPS", "BECAUSE HOPE IS NOT A PLAN"], ["UPGRADE TO WINDOWS 95", "OFFER ENDS SOON"], ["REBOOT HOTLINE", "DIAL 1-800-OFF-ON"], ["NETEAM CLOUD", "IT'S STILL SOMEONE'S PC"], ["FREE WI-FI", "PASSWORD: password"], ["PHISHING SEASON", "CLICK RESPONSIBLY"], ["PATCH TUESDAY", "NOW EVERY DAY"], ["NEED IT SUPPORT?", "HAVE YOU TRIED NETEAM?"]],
+    ticket: [["P1", "Printer is haunted"], ["P3", "Mouse not working (it's unplugged)"], ["P2", "Internet is down (Wi-Fi was off)"], ["P1", "CEO can't find the any key"], ["P4", "Monitor too bright, please dim the sun"], ["P2", "Coffee machine on the network?"], ["P3", "Password reset #14 this week"], ["P1", "Reply-all storm, 900 people"], ["P4", "Keyboard full of crumbs"], ["P2", "Teams says I'm away, I'm here"], ["P3", "Who deployed on a Friday?"], ["P1", "It's DNS. It's always DNS."], ["P4", "Can I get admin? Just for a sec"], ["P2", "Laptop makes a jet engine noise"]],
+    label: ["DO NOT TOUCH \u2013 DAVE", "DON'T UNPLUG", "PROD (SCARY)", "LEGACY \u00b7 DO NOT ASK", "MYSTERY BOX", "IT WORKED YESTERDAY", "NOT THE PRINTER", "BACKUP OF BACKUP"],
+    warn: ["DANGER|NO FRIDAY DEPLOYS", "CAUTION|CABLE SPAGHETTI", "WARNING|DO NOT REBOOT", "NOTICE|IT'S ALWAYS DNS"],
+  },
+  joke(d) {
+    const J = NXD.JOKES, pick = (a) => a[Math.floor(Math.random() * a.length)];
+    if (d.k === "poster" && Math.random() < 0.8) return Object.assign({}, d, { l: pick(J.poster), v: Math.floor(Math.random() * 6) });
+    if (d.k === "bill" && Math.random() < 0.7) return Object.assign({}, d, { l: pick(J.bill) });
+    if (d.k === "label" && Math.random() < 0.12) return Object.assign({}, d, { t: pick(J.label) });
+    if (d.k === "warn" && Math.random() < 0.18) return Object.assign({}, d, { t: pick(J.warn) });
+    return d;
   },
   fit(x, txt, maxW, px, w, f) { for (let i = 0; i < 40; i++) { x.font = NXD.FONT(w, Math.round(px), f); if (x.measureText(txt).width <= maxW || px < 6) break; px *= 0.94; } return px; },
   // scratches and missing flecks for paint on the floor
@@ -69,8 +86,11 @@ const NXD = {
       const pts = []; for (let i = 0; i < 230; i++) { const a = r(), b = r(), blob = Math.sin(a * 9 + 1) * Math.cos(b * 7 + 0.5) + Math.sin(a * 4 + b * 5); if (blob < 0.15) continue; x.fillStyle = "rgba(90,130,170,.55)"; x.fillRect(X0 + a * PW, Y0 + b * PH, Math.max(1, u * 0.9), Math.max(1, u * 0.9)); if (r() < 0.07) pts.push([X0 + a * PW, Y0 + b * PH]); }
       x.lineWidth = Math.max(1, u * 0.5); for (let i = 1; i < pts.length; i++) { const [ax, ay] = pts[i - 1], [bx, by] = pts[i]; x.strokeStyle = i % 3 ? C.c : C.g; x.globalAlpha = 0.8; x.beginPath(); x.moveTo(ax, ay); x.quadraticCurveTo((ax + bx) / 2, Math.min(ay, by) - 14 * u, bx, by); x.stroke(); }
       x.globalAlpha = 1; pts.forEach(([px, py]) => { x.fillStyle = "#fff"; x.shadowColor = C.c; x.shadowBlur = 4 * u; x.beginPath(); x.arc(px, py, 1.3 * u, 0, 6.3); x.fill(); }); x.shadowBlur = 0;
-    } else if (v === 3) { // ticket queue
-      const rows = 7, rh = PH / rows; for (let i = 0; i < rows; i++) { const py = Y0 + i * rh, st = r(); x.fillStyle = i % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.06)"; x.fillRect(X0, py, PW, rh - u); const col = st < 0.6 ? C.g : st < 0.88 ? C.a : C.r; x.fillStyle = col; x.fillRect(X0 + 2 * u, py + rh * 0.25, 9 * u, rh * 0.45); x.fillStyle = "rgba(200,220,240,.55)"; x.fillRect(X0 + 14 * u, py + rh * 0.34, (20 + r() * 40) * u, rh * 0.26); x.fillStyle = "rgba(200,220,240,.25)"; x.fillRect(X0 + PW - 22 * u, py + rh * 0.34, 18 * u, rh * 0.26); }
+    } else if (v === 3) { // ticket queue: the helpdesk's actual tickets when the screen is big enough to read
+      const rows = 7, rh = PH / rows, T = NXD.JOKES.ticket.slice().sort(() => Math.random() - 0.5), PC = { P1: C.r, P2: C.a, P3: C.c, P4: C.g };
+      for (let i = 0; i < rows; i++) { const py = Y0 + i * rh, st = r(); x.fillStyle = i % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.06)"; x.fillRect(X0, py, PW, rh - u);
+        if (big) { const [pr, tx] = T[i % T.length]; x.fillStyle = PC[pr]; x.fillRect(X0 + 2 * u, py + rh * 0.2, 9 * u, rh * 0.55); text(pr, X0 + 6.5 * u, py + rh * 0.48, 3.6, "#07111f", 700, "center"); text(tx, X0 + 14 * u, py + rh * 0.48, 4.2, C.t, 500); text("#" + (4100 + Math.floor(r() * 899)), X0 + PW - 2 * u, py + rh * 0.48, 3.4, C.m, 600, "right"); continue; }
+        const col = st < 0.6 ? C.g : st < 0.88 ? C.a : C.r; x.fillStyle = col; x.fillRect(X0 + 2 * u, py + rh * 0.25, 9 * u, rh * 0.45); x.fillStyle = "rgba(200,220,240,.55)"; x.fillRect(X0 + 14 * u, py + rh * 0.34, (20 + r() * 40) * u, rh * 0.26); x.fillStyle = "rgba(200,220,240,.25)"; x.fillRect(X0 + PW - 22 * u, py + rh * 0.34, 18 * u, rh * 0.26); }
     } else if (v === 4) { // uptime bars
       const n = 30, bw = PW / n; for (let i = 0; i < n; i++) { const q = r(), col = q < 0.9 ? C.g : q < 0.97 ? C.a : C.r, bh = PH * 0.42 * (0.75 + r() * 0.25); x.fillStyle = col; x.fillRect(X0 + i * bw + bw * 0.15, Y0 + PH - bh, bw * 0.7, bh); }
       text("99.98%", X0, Y0 + PH * 0.24, 24, C.t, 700); if (big) text("ALL SYSTEMS OPERATIONAL", X0 + PW, Y0 + PH * 0.24, 4.5, C.g, 600, "right");

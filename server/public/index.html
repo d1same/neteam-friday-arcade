@@ -149,6 +149,9 @@ header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; jus
 .start-row .hint { color: var(--muted); font-size: 13px; flex: 1; min-width: 200px; }
 body.playing { -webkit-user-select: none; user-select: none; overscroll-behavior: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 body.playing #gameView { touch-action: none; }
+.host-wait { position: absolute; left: 50%; top: 38%; transform: translate(-50%, -50%); z-index: 60; display: grid; gap: 6px; text-align: center; padding: 18px 26px; border-radius: 12px; background: rgba(12,14,18,.82); border: 1px solid rgba(255,138,61,.5); color: #f1ede6; font: 500 14px/1.4 Inter, system-ui, sans-serif; pointer-events: none; max-width: min(420px, 86vw); }
+.host-wait b { font: 700 20px/1.2 "Chakra Petch", sans-serif; color: #ff8a3d; }
+.host-wait[hidden] { display: none; }
 body.playing #gameView input, body.playing #gameView textarea { -webkit-user-select: text; user-select: text; }
 .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); cursor: pointer; user-select: none; }
 .toggle input { width: 18px; height: 18px; accent-color: var(--bulb); }
@@ -1595,6 +1598,13 @@ function makeLocalDb() {
   return { local: true, doc, collection };
 }
 
+// a strip across the top of the page while the arcade server can't be reached (null hides it)
+function netBanner(text) {
+  let el = document.getElementById("netBanner");
+  if (!text) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("div"); el.id = "netBanner"; el.setAttribute("role", "status"); el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:200;padding:9px 16px;text-align:center;background:#3a2414;color:#ffd9bf;border-bottom:1px solid #ff8a3d;font:500 14px/1.4 Inter,system-ui,sans-serif"; document.body.append(el); }
+  el.textContent = text;
+}
 // ---------- self-hosted server backend (Docker) ----------
 function connectServer(timeoutMs = 2500) {
   return new Promise((resolve) => {
@@ -1615,6 +1625,9 @@ function makeServerBackend(firstWs) {
   // scoreboard writes made while the connection is down wait here and go out when it is back
   const outbox = [];
   function write(m) { if (ws && ws.readyState === 1 && isOpen) ws.send(JSON.stringify(m)); else { outbox.push(m); if (outbox.length > 40) outbox.shift(); } }
+  // match saves wait for the server's answer: resolved when it was stored, rejected when it was refused
+  const acks = new Map();
+  function writeAck(m) { return new Promise((res, rej) => { const t = setTimeout(() => { acks.delete(m.path); rej(new Error("no answer")); }, 30000); acks.set(m.path, (ok) => { clearTimeout(t); acks.delete(m.path); ok ? res() : rej(new Error("refused")); }); write(m); }); }
   const peers = new Map();
   const handlers = new Set(), connHandlers = new Set();
   let snap = Object.freeze([]), pend = { joined: [], left: [], updated: [] }, sched = false;
@@ -1649,7 +1662,9 @@ function makeServerBackend(firstWs) {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.t === "welcome") {
         myPeer = m.peer; isOpen = true;
-        for (const [k, p] of peers) if (k !== myPeer) { pend.left.push(p); peers.delete(k); }
+        // after a reconnect only the people who really went away count as left (no flicker for everyone else)
+        const back = new Set((m.peers || []).map(x => x.peer));
+        for (const [k, p] of peers) if (k !== myPeer && !back.has(k)) { pend.left.push(p); peers.delete(k); }
         peers.delete(myPeer);
         upsert(myPeer, uid, mine);
         (m.peers || []).forEach(x => { if (x.peer !== myPeer) upsert(x.peer, x.by, x.presence); });
@@ -1659,6 +1674,7 @@ function makeServerBackend(firstWs) {
         connHandlers.forEach(f => f(true));
       } else if (m.t === "p") { if (m.peer !== myPeer) upsert(m.peer, m.by, m.presence); }
       else if (m.t === "left") { const p = peers.get(m.peer); if (p) { pend.left.push(p); peers.delete(m.peer); notify(); } }
+      else if (m.t === "ack") { const f = acks.get(m.path); if (f) f(!!m.ok); }
       else if (m.t === "db") { const s = subs.get(m.id); if (s) s.cb(m.data); }
     };
     ws.onclose = () => {
@@ -1690,7 +1706,7 @@ function makeServerBackend(firstWs) {
     return {
       id: path.split("/").pop(), path,
       get: () => new Promise((res) => { const un = subscribe(path, "doc", (d) => { un(); res(docSnap(path, d)); }); }),
-      set: async (data) => write({ t: "set", path, data }),
+      set: async (data) => path.startsWith("matches/") ? writeAck({ t: "set", path, data }) : write({ t: "set", path, data }),
       update: async (data) => write({ t: "update", path, data }),
       delete: async () => {}, // the server keeps records append-only
       onSnapshot(next) { return subscribe(path, "doc", (d) => next(docSnap(path, d))); },
@@ -1725,7 +1741,13 @@ const NET = {
     }
     this.user = user;
     if (!hasClaude && /^https?:$/.test(location.protocol)) {
-      const sock = await connectServer();
+      // a slow or restarting server must not drop anyone into a lonely offline mode: keep trying for about half a minute
+      let sock = null;
+      for (let k = 0; k < 7 && !sock; k++) {
+        if (k) { netBanner("Can't reach the arcade server yet. Retrying\u2026"); await new Promise(r => setTimeout(r, 1500)); }
+        sock = await connectServer(k ? 4000 : 2500);
+      }
+      netBanner(sock ? null : "Couldn't reach the arcade server, so this is offline mode: only this browser can play. Reload the page to try again.");
       if (sock) { const b = makeServerBackend(sock); this.server = true; this.room = b.room; this.db = b.db; this.uid = b.uid; return this; }
     }
     if (room) { this.room = room; }
@@ -3654,16 +3676,32 @@ const GUNS = {
       U.mag = grp(tip, C(0.044, 0.044, 0.36, 0.46, 0.06, M.bright, 14));
       U.muzzle = [0, 0.06, -0.55]; U.port = null; U.rh = [0.026, -0.06, 0.02]; U.lh = [0, -0.05, -0.22]; U.lroll = 0.5; U.magDrop = [0, 0, -1]; U.vm = [0.2, -0.24, -0.48];
     } else if (id === "laser") {
+      // Photon Laser: white ceramic shell over a dark frame, glowing side strips, three coils round the emitter,
+      // an energy cell in a glass housing on top (it refills as the gun recharges) and a lens that lights up when it's ready
       U.kind = "laser";
-      g.add(E([[-0.14, 0.0], [0.34, 0.0], [0.4, 0.03], [0.4, 0.06], [0.3, 0.085], [-0.1, 0.085], [-0.14, 0.06]], 0.046, M.bright, 0.008));
-      g.add(E([[-0.14, 0.0], [-0.14, 0.06], [-0.34, 0.05], [-0.36, -0.07], [-0.33, -0.075], [-0.24, 0.0]], 0.036, M.poly, 0.008));
-      g.add(E(gripPts(-0.07, 0.004, 0.048, 0.11, 0.028), 0.03, M.poly, 0.006), E(gripPts(0.2, 0.004, 0.04, 0.085, 0.006), 0.03, M.poly, 0.006));
-      g.add(C(0.016, 0.016, 0.4, 0.62, 0.045, M.blued, 16));
-      const glow = new T.MeshStandardMaterial({ color: new T.Color(w0.col), emissive: new T.Color(w0.col), emissiveIntensity: 2.4, roughness: 0.3 });
-      for (let k = 0; k < 5; k++) { const r = new T.Mesh(new T.TorusGeometry(0.026, 0.006, 8, 20), glow); r.position.set(0, 0.045, -(0.43 + k * 0.04)); g.add(r); }
-      g.add(C(0.02, 0.012, 0.62, 0.66, 0.045, M.bright, 16), B(0.3, 0.012, 0.048, glow, 0.12, 0.045), B(0.14, 0.02, 0.02, M.blued, 0.1, 0.095));
-      U.mag = grp(E([[0.02, 0.0], [0.11, 0.0], [0.1, -0.06], [0.03, -0.06]], 0.034, glow, 0.004));
-      U.muzzle = [0, 0.045, -0.67]; U.port = null; U.rh = [0.026, -0.06, 0.045]; U.lh = [0, -0.07, -0.22]; U.lroll = 0.5; U.vm = [0.17, -0.215, -0.52];
+      const col = new T.Color(w0.col), glowM = (k) => new T.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.4), emissive: col, emissiveIntensity: k, roughness: 0.3 });
+      const shell = new T.MeshStandardMaterial({ color: 0xe6e8ec, metalness: 0.1, roughness: 0.32 }), glass = new T.MeshStandardMaterial({ color: 0xbfe4ff, metalness: 0, roughness: 0.05, transparent: true, opacity: 0.22, depthWrite: false });
+      const strip = glowM(2), coil = glowM(2.4), cell = glowM(2.6), tip = glowM(3);
+      U.glow = { strip, coil, cell, tip };
+      g.add(E([[-0.16, 0.0], [0.2, 0.0], [0.34, 0.016], [0.42, 0.04], [0.42, 0.062], [0.3, 0.084], [0.08, 0.094], [-0.08, 0.094], [-0.16, 0.07]], 0.052, shell, 0.012));       // ceramic shell
+      g.add(E([[-0.15, -0.012], [0.36, -0.012], [0.36, 0.006], [-0.15, 0.006]], 0.044, M.blued, 0.004));                                                                     // dark under-frame
+      [-1, 1].forEach(sd => g.add(B(0.4, 0.008, 0.004, strip, 0.12, 0.05, sd * 0.0275), B(0.18, 0.005, 0.004, strip, 0.0, 0.074, sd * 0.0275)));                          // side light strips
+      for (let k = 0; k < 3; k++) g.add(B(0.012, 0.03, 0.054, M.blued, -0.05 + k * 0.025, 0.035));                                                                           // vents
+      g.add(E([[-0.16, 0.02], [-0.16, 0.07], [-0.3, 0.058], [-0.33, 0.03], [-0.2, 0.02]], 0.04, shell, 0.008), E([[-0.3, 0.058], [-0.345, 0.05], [-0.36, -0.06], [-0.32, -0.07], [-0.3, 0.0], [-0.33, 0.03]], 0.036, M.poly, 0.008));   // stock: shell spine, rubber butt
+      [-1, 1].forEach(sd => g.add(B(0.12, 0.005, 0.004, strip, -0.23, 0.046, sd * 0.021)));
+      g.add(E(gripPts(-0.07, 0.004, 0.048, 0.11, 0.028), 0.032, M.poly, 0.006), E(gripPts(0.22, -0.01, 0.036, 0.075, -0.004), 0.03, M.poly, 0.006));
+      g.add(E([[-0.04, 0.0], [0.035, 0.0], [0.03, -0.036], [-0.034, -0.036], [-0.034, -0.03], [0.024, -0.03], [0.028, -0.006], [-0.04, -0.006]], 0.012, M.blued, 0.001));
+      // emitter: dark core, three glowing coils, a glass sleeve, a crown and the lens
+      g.add(C(0.013, 0.013, 0.4, 0.66, 0.048, M.blued, 16));
+      for (let k = 0; k < 3; k++) { const r = new T.Mesh(new T.TorusGeometry(0.029, 0.0065, 8, 22), coil); r.position.set(0, 0.048, -(0.47 + k * 0.06)); g.add(r); }
+      g.add(C(0.036, 0.036, 0.44, 0.62, 0.048, glass, 18));
+      g.add(C(0.03, 0.03, 0.43, 0.45, 0.048, M.bright, 18), C(0.03, 0.026, 0.62, 0.68, 0.048, M.bright, 18), C(0.016, 0.016, 0.676, 0.684, 0.048, tip, 16));
+      // energy cell on top: glass housing, glowing core, metal end caps
+      U.mag = grp(C(0.017, 0.017, -0.02, 0.15, 0.118, glass, 14), C(0.009, 0.009, -0.01, 0.14, 0.118, cell, 10), C(0.019, 0.019, -0.03, -0.012, 0.118, M.bright, 14), C(0.019, 0.019, 0.142, 0.16, 0.118, M.bright, 14));
+      g.add(B(0.02, 0.016, 0.012, M.blued, 0.02, 0.1), B(0.02, 0.016, 0.012, M.blued, 0.12, 0.1));
+      // holo sight: thin frame with a faint lit pane
+      g.add(B(0.004, 0.034, 0.03, M.blued, 0.26, 0.11), B(0.05, 0.004, 0.03, M.blued, 0.26, 0.094), B(0.002, 0.026, 0.024, glowM(0.6), 0.262, 0.112));
+      U.muzzle = [0, 0.048, -0.69]; U.port = null; U.rh = [0.026, -0.06, 0.045]; U.lh = [0, -0.075, -0.24]; U.lroll = 0.5; U.vm = [0.17, -0.215, -0.52];
     } else {
       // rifle family: rifle (AK-style, wood), carbine (AR-style, polymer), smg (compact), lmg (belt box + bipod)
       const P = { rifle: { hg: 0.3, bl: 0.6, fm: M.wood, sm: M.wood, mg: [0.05, 0.075, 0.19, 0.055], recv: M.blued },
@@ -3814,7 +3852,11 @@ const GUNS = {
         if (U.bolt) { const rk = Math.sin(ss(0.84, 0.98, k) * Math.PI); bolt = rk * (U.kind === "bolt" ? 0.07 : 0.05); if (U.kind !== "bolt" && rk > 0) lh = [0.04, 0.04, -0.05 + bolt]; }
       }
     }
-    if (U.mag) { U.mag.position.set(md[0] * magY, md[1] * magY, U.kind === "tube" ? magY * 0.6 : 0); U.mag.visible = magVis; }
+    if (U.kind === "laser" && U.glow) { // recharging after a shot: everything dims, then fills back up; ready = the lens glows
+      const ch = clamp(cyc, 0, 1), pul = 0.85 + 0.15 * Math.sin(performance.now() / 120), G2 = U.glow;
+      G2.cell.emissiveIntensity = (0.5 + 2.6 * ch) * pul; G2.coil.emissiveIntensity = 0.6 + 2.2 * ch * ch; G2.strip.emissiveIntensity = 0.8 + 1.4 * ch; G2.tip.emissiveIntensity = ch >= 1 ? 3.2 * pul : 0.4 + ch * 1.2;
+      U.mag.position.set(0, 0, 0); U.mag.visible = true; magY = 0;
+    } else if (U.mag) { U.mag.position.set(md[0] * magY, md[1] * magY, U.kind === "tube" ? magY * 0.6 : 0); U.mag.visible = magVis; }
     if (U.slide) U.slide.position.z = slide; if (U.bolt) U.bolt.position.z = bolt; if (U.pump) U.pump.position.z = pump;
     if (U.armL) { const lp = U.pump && !(k >= 0 && k < 0.84) ? [lh[0], lh[1], U.lh[2] + pump] : lh; GUNS.setArm(U.armL, lp, U.lElbow, U.lroll); }
     return { tilt, dip };
@@ -3937,7 +3979,7 @@ const PPL = {
 // shaders here combine that with scanned PBR materials, a real-time sun, shadows of moving things and reflections.
 // Everything runs on the player's own graphics card; the quality level scales the cost from office laptops to gaming PCs.
 const NX = {
-  VER: 4,            // cache buster for baked files and textures (the server caches /models for a week)
+  VER: 5,            // cache buster for baked files and textures (the server caches /models for a week)
   LM_SCALE: 16,      // lightmaps store sqrt(irradiance / 16)
   url(f) { return "models/" + f + "?v=" + NX.VER; },
 
@@ -5162,7 +5204,8 @@ NXW.themes.farm = (B, M, env) => {
       } else if (h2 < 0.5) { // fire point
         B.fbox(f, "redPaint", 1.6, 0.9, 0, 2.4, 2.0, 0.02, { occ: false }); B.fdecal(f, "decal", 1.66, 1.72, 2.34, 1.94, 0.025, 200, { k: "text", t: "FIRE POINT", col: 0, clean: 1 });
         for (const u of [1.82, 2.18]) { const p = B.fpos(f, u, 1.0, 0.12); cyl("f_pipeRed", p[0], 1.0, p[2], 0.075, 0.5, 10, { occ: false }); cyl("trimBlack", p[0], 1.5, p[2], 0.03, 0.1, 6, { occ: false }); }
-      } else if (h2 < 0.62) B.fdecal(f, "decal", 1.6, 1.3, 2.4, 2.36, 0.012, 200, { k: "warn", t: h2 < 0.56 ? "AUTHORISED|STAFF ONLY" : "HEARING|PROTECTION" });
+      } else if (h2 < 0.55) B.fdecal(f, "decal", 1.42, 1.05, 2.58, 2.53, 0.012, 200, { k: "poster", l: ["NETEAM", "SERVER", "FARM"], v: Math.floor(h2 * 60) % 6 });   // a joke poster, picked at load
+      else if (h2 < 0.62) B.fdecal(f, "decal", 1.6, 1.3, 2.4, 2.36, 0.012, 200, { k: "warn", t: h2 < 0.585 ? "AUTHORISED|STAFF ONLY" : "HEARING|PROTECTION" });
       else if (h2 < 0.8) { // cable ladder up the wall
         for (const u of [1.75, 2.25]) B.fbox(f, "trimSteel", u - 0.02, 0.3, 0.03, u + 0.02, 5.7, 0.07, { f: ALL, occ: false, seg: 1.5 }); for (let v = 0.5; v < 5.7; v += 0.4) B.fbox(f, "trimSteel", 1.77, v, 0.04, 2.23, v + 0.03, 0.06, { f: ALL, occ: false });
         B.fbox(f, "f_yellow", 1.86, 0.3, 0.07, 2.0, 5.7, 0.13, { f: ALL, occ: false, seg: 1.5 }); B.fbox(f, "plasticBlack", 2.04, 0.3, 0.07, 2.14, 5.7, 0.11, { f: ALL, occ: false, seg: 1.5 });
@@ -5424,6 +5467,8 @@ NXW.themes.roof = (B, M, env) => {
         B.fbox(f, "trimBlack", 1.85, 2.36, 0, 2.15, 2.5, 0.14, { f: ALL, occ: false }); B.fbox(f, lampWarm, 1.88, 2.345, 0.02, 2.12, 2.36, 0.13, { f: NY, occ: false }); rectLight(B.fpos(f, 2, 2.33, 0.08), [fr.rx * 0.12, 0, fr.rz * 0.12], [fr.nx * 0.05, 0, fr.nz * 0.05], [0, -1, 0], mul(WARM, 190), { range: 8 }); }
       else if (h1 < 0.5) { B.fbox(f, "f_shutter", 1.2, 1.5, 0, 2.8, 2.3, 0.04, { occ: false }); for (const [u0, v0, u1, v1] of [[1.14, 1.44, 2.86, 1.5], [1.14, 2.3, 2.86, 2.36]]) B.fbox(f, "trimBlack", u0, v0, 0, u1, v1, 0.06, { occ: false }); }
       else if (h1 < 0.7) { K.riser(f, "trimSteel", 0.5 + h2 * 3, 0.08, 0, h + 0.5, 0.06); }
+      else if (h1 < 0.86 && h > 2.2) { // a lit ad panel on the brick (its joke is picked when the map loads)
+        B.fbox(f, "trimBlack", 0.32, 0.62, 0, 3.68, h - 0.38, 0.06, { occ: false, seg: 1.5 }); B.fdecal(f, "glow", 0.4, 0.7, 3.6, h - 0.46, 0.065, 60, { k: "bill", l: ["NETEAM", "MANAGED IT \u00b7 NYC"], col: Math.floor(h2 * 5) }); }
     } else { // plant: grey casing, louvres, service panels, a yellow band
       B.wall(f, "r_unit", 0, 0, CS, h); f.kind = "plain"; f.alb = matAlb("r_unit"); B.fbox(f, "trimBlack", 0, 0, 0, CS, 0.16, 0.05, { occ: false, seg: 2 }); B.fbox(f, "f_yellow", 0, h - 0.24, 0, CS, h - 0.14, 0.014, { occ: false, seg: 2 });
       if (h1 < 0.5) { B.fbox(f, "f_shutter", 0.5, 0.5, 0, 3.5, h - 0.7, 0.05, { occ: false, seg: 1.5 }); for (const [u0, v0, u1, v1] of [[0.42, 0.42, 0.5, h - 0.62], [3.5, 0.42, 3.58, h - 0.62], [0.5, 0.42, 3.5, 0.5], [0.5, h - 0.7, 3.5, h - 0.62]]) B.fbox(f, "trimBlack", u0, v0, 0, u1, v1, 0.07, { occ: false, seg: 2 }); }
@@ -6214,13 +6259,30 @@ const NXD = {
     for (const d of W.decals) {
       const [sx, sy, w, h] = d.s, fn = NXD["k_" + d.k]; if (!fn) continue;
       x.save(); x.beginPath(); x.rect(sx, sy, w, h); x.clip(); x.translate(sx, sy);
-      try { fn(x, w, h, d, NXW.rng(NXW.strSeed(JSON.stringify([d.k, d.sd, d.v, d.t, d.n, d.col, d.l])) || 7)); } catch (e) { console.warn("[nx] decal", d.k, e && e.message); }
+      try { const dj = NXD.joke(d); fn(x, w, h, dj, NXW.rng(NXW.strSeed(JSON.stringify([d.k, d.sd, d.v, d.t, d.n, d.col, d.l])) || 7)); } catch (e) { console.warn("[nx] decal", d.k, e && e.message); }
       x.restore();
     }
     // stretch the border pixels into the gutters so mip-mapping never pulls in a neighbour
     const P = A.pad || 0;
     if (P) for (const d of W.decals) { const [sx, sy, w, h] = d.s; x.drawImage(cv, sx, sy, 1, h, sx - P, sy, P, h); x.drawImage(cv, sx + w - 1, sy, 1, h, sx + w, sy, P, h); x.drawImage(cv, sx - P, sy, w + 2 * P, 1, sx - P, sy - P, w + 2 * P, P); x.drawImage(cv, sx - P, sy + h - 1, w + 2 * P, 1, sx - P, sy + h, w + 2 * P, P); }
     return cv;
+  },
+  // ---- the fun layer: IT jokes and fake ads. Each poster, billboard, ticket screen and rack label picks its own line
+  // every time a map loads, so the walls read differently from match to match. Pure canvas text: costs nothing per frame.
+  JOKES: {
+    poster: [["IT'S", "ALWAYS", "DNS"], ["HAVE YOU", "TRIED TURNING", "IT OFF & ON?"], ["THERE'S NO", "PLACE LIKE", "127.0.0.1"], ["WORKS ON", "MY MACHINE", "\u2713 CERTIFIED"], ["CTRL", "ALT", "DEFEAT"], ["404", "COFFEE", "NOT FOUND"], ["REPLY-ALL", "IS NOT A", "STRATEGY"], ["PASSWORD123", "IS NOT A", "PASSWORD"], ["PATCH", "TUESDAY", "SURVIVOR"], ["WE FIX", "WHAT YOU", "BROKE"], ["HAVE YOU", "CHECKED", "THE CABLE?"], ["FRIDAY", "DEPLOYS:", "BRAVE OR FOOLISH?"], ["TEAMWORK", "NOBODY READS", "THE DOCS"], ["THINK", "BEFORE", "YOU CLICK"], ["MFA", "OR IT", "DIDN'T HAPPEN"], ["BACKUP", "3 \u00b7 2 \u00b7 1", "ALWAYS"], ["NO TICKET", "NO", "PROBLEM"], ["SUDO", "MAKE ME A", "SANDWICH"], ["CLEAR", "YOUR", "CACHE"], ["THE CLOUD", "IS JUST", "SOMEONE'S PC"], ["KEEP CALM", "AND", "CALL IT"], ["LOCK", "YOUR", "SCREEN"], ["UPTIME", "99.999", "PERCENT"], ["NETEAM", "SOLUTIONS", "SINCE 2001"]],
+    bill: [["NETEAM FIBER", "FASTER THAN YOUR EXCUSES"], ["VPN", "VERY PATIENT NETWORK"], ["NETEAM SOLUTIONS", "WE FIX WHAT YOU BROKE"], ["IT'S ALWAYS DNS", "ASK US HOW WE KNOW"], ["24/7 HELPDESK", "YES, EVEN AT 3 AM"], ["ZERO-DAY? ZERO WORRIES", "MANAGED SECURITY \u00b7 NETEAM"], ["BACKUPS", "BECAUSE HOPE IS NOT A PLAN"], ["UPGRADE TO WINDOWS 95", "OFFER ENDS SOON"], ["REBOOT HOTLINE", "DIAL 1-800-OFF-ON"], ["NETEAM CLOUD", "IT'S STILL SOMEONE'S PC"], ["FREE WI-FI", "PASSWORD: password"], ["PHISHING SEASON", "CLICK RESPONSIBLY"], ["PATCH TUESDAY", "NOW EVERY DAY"], ["NEED IT SUPPORT?", "HAVE YOU TRIED NETEAM?"]],
+    ticket: [["P1", "Printer is haunted"], ["P3", "Mouse not working (it's unplugged)"], ["P2", "Internet is down (Wi-Fi was off)"], ["P1", "CEO can't find the any key"], ["P4", "Monitor too bright, please dim the sun"], ["P2", "Coffee machine on the network?"], ["P3", "Password reset #14 this week"], ["P1", "Reply-all storm, 900 people"], ["P4", "Keyboard full of crumbs"], ["P2", "Teams says I'm away, I'm here"], ["P3", "Who deployed on a Friday?"], ["P1", "It's DNS. It's always DNS."], ["P4", "Can I get admin? Just for a sec"], ["P2", "Laptop makes a jet engine noise"]],
+    label: ["DO NOT TOUCH \u2013 DAVE", "DON'T UNPLUG", "PROD (SCARY)", "LEGACY \u00b7 DO NOT ASK", "MYSTERY BOX", "IT WORKED YESTERDAY", "NOT THE PRINTER", "BACKUP OF BACKUP"],
+    warn: ["DANGER|NO FRIDAY DEPLOYS", "CAUTION|CABLE SPAGHETTI", "WARNING|DO NOT REBOOT", "NOTICE|IT'S ALWAYS DNS"],
+  },
+  joke(d) {
+    const J = NXD.JOKES, pick = (a) => a[Math.floor(Math.random() * a.length)];
+    if (d.k === "poster" && Math.random() < 0.8) return Object.assign({}, d, { l: pick(J.poster), v: Math.floor(Math.random() * 6) });
+    if (d.k === "bill" && Math.random() < 0.7) return Object.assign({}, d, { l: pick(J.bill) });
+    if (d.k === "label" && Math.random() < 0.12) return Object.assign({}, d, { t: pick(J.label) });
+    if (d.k === "warn" && Math.random() < 0.18) return Object.assign({}, d, { t: pick(J.warn) });
+    return d;
   },
   fit(x, txt, maxW, px, w, f) { for (let i = 0; i < 40; i++) { x.font = NXD.FONT(w, Math.round(px), f); if (x.measureText(txt).width <= maxW || px < 6) break; px *= 0.94; } return px; },
   // scratches and missing flecks for paint on the floor
@@ -6271,8 +6333,11 @@ const NXD = {
       const pts = []; for (let i = 0; i < 230; i++) { const a = r(), b = r(), blob = Math.sin(a * 9 + 1) * Math.cos(b * 7 + 0.5) + Math.sin(a * 4 + b * 5); if (blob < 0.15) continue; x.fillStyle = "rgba(90,130,170,.55)"; x.fillRect(X0 + a * PW, Y0 + b * PH, Math.max(1, u * 0.9), Math.max(1, u * 0.9)); if (r() < 0.07) pts.push([X0 + a * PW, Y0 + b * PH]); }
       x.lineWidth = Math.max(1, u * 0.5); for (let i = 1; i < pts.length; i++) { const [ax, ay] = pts[i - 1], [bx, by] = pts[i]; x.strokeStyle = i % 3 ? C.c : C.g; x.globalAlpha = 0.8; x.beginPath(); x.moveTo(ax, ay); x.quadraticCurveTo((ax + bx) / 2, Math.min(ay, by) - 14 * u, bx, by); x.stroke(); }
       x.globalAlpha = 1; pts.forEach(([px, py]) => { x.fillStyle = "#fff"; x.shadowColor = C.c; x.shadowBlur = 4 * u; x.beginPath(); x.arc(px, py, 1.3 * u, 0, 6.3); x.fill(); }); x.shadowBlur = 0;
-    } else if (v === 3) { // ticket queue
-      const rows = 7, rh = PH / rows; for (let i = 0; i < rows; i++) { const py = Y0 + i * rh, st = r(); x.fillStyle = i % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.06)"; x.fillRect(X0, py, PW, rh - u); const col = st < 0.6 ? C.g : st < 0.88 ? C.a : C.r; x.fillStyle = col; x.fillRect(X0 + 2 * u, py + rh * 0.25, 9 * u, rh * 0.45); x.fillStyle = "rgba(200,220,240,.55)"; x.fillRect(X0 + 14 * u, py + rh * 0.34, (20 + r() * 40) * u, rh * 0.26); x.fillStyle = "rgba(200,220,240,.25)"; x.fillRect(X0 + PW - 22 * u, py + rh * 0.34, 18 * u, rh * 0.26); }
+    } else if (v === 3) { // ticket queue: the helpdesk's actual tickets when the screen is big enough to read
+      const rows = 7, rh = PH / rows, T = NXD.JOKES.ticket.slice().sort(() => Math.random() - 0.5), PC = { P1: C.r, P2: C.a, P3: C.c, P4: C.g };
+      for (let i = 0; i < rows; i++) { const py = Y0 + i * rh, st = r(); x.fillStyle = i % 2 ? "rgba(255,255,255,.03)" : "rgba(255,255,255,.06)"; x.fillRect(X0, py, PW, rh - u);
+        if (big) { const [pr, tx] = T[i % T.length]; x.fillStyle = PC[pr]; x.fillRect(X0 + 2 * u, py + rh * 0.2, 9 * u, rh * 0.55); text(pr, X0 + 6.5 * u, py + rh * 0.48, 3.6, "#07111f", 700, "center"); text(tx, X0 + 14 * u, py + rh * 0.48, 4.2, C.t, 500); text("#" + (4100 + Math.floor(r() * 899)), X0 + PW - 2 * u, py + rh * 0.48, 3.4, C.m, 600, "right"); continue; }
+        const col = st < 0.6 ? C.g : st < 0.88 ? C.a : C.r; x.fillStyle = col; x.fillRect(X0 + 2 * u, py + rh * 0.25, 9 * u, rh * 0.45); x.fillStyle = "rgba(200,220,240,.55)"; x.fillRect(X0 + 14 * u, py + rh * 0.34, (20 + r() * 40) * u, rh * 0.26); x.fillStyle = "rgba(200,220,240,.25)"; x.fillRect(X0 + PW - 22 * u, py + rh * 0.34, 18 * u, rh * 0.26); }
     } else if (v === 4) { // uptime bars
       const n = 30, bw = PW / n; for (let i = 0; i < n; i++) { const q = r(), col = q < 0.9 ? C.g : q < 0.97 ? C.a : C.r, bh = PH * 0.42 * (0.75 + r() * 0.25); x.fillStyle = col; x.fillRect(X0 + i * bw + bw * 0.15, Y0 + PH - bh, bw * 0.7, bh); }
       text("99.98%", X0, Y0 + PH * 0.24, 24, C.t, 700); if (big) text("ALL SYSTEMS OPERATIONAL", X0 + PW, Y0 + PH * 0.24, 4.5, C.g, 600, "right");
@@ -8615,7 +8680,7 @@ function makeOps(md) {
       F.dress = (av, i) => { const P = F.ppl, lk = P && PPL.lookOf(V, i, team); if (!lk || av.look === lk.id) return; try { rig(av, P[lk.model], lk); av.look = lk.id; } catch (e) { console.warn("person model", e); } };
       // the full soldier and detailed guns for small matches on capable cards; light ones when there are many players or the card is modest
       F.crowd = NX.tier().i <= 1 || V.ro.length > 6;
-      const people = NX.tier().i > 0 && (store("nfa-gfx") || {}).ppl !== 0;
+      const people = (store("nfa-gfx") || {}).ppl !== 0;   // every quality level: office laptops on Performance see the Business vs IT people too
       (people ? GFX.people() : Promise.resolve(null)).then((P) => { if (P && !F.gone && F.avatars) { F.ppl = P; F.avatars.forEach((av, i) => F.dress(av, i)); return; } return GFX.soldier(F.crowd).then((g2) => g2 ? soldier(g2) : GFX.operator().then((gl) => {
         if (!gl || F.gone || !F.avatars) return;
         const SU = THREE_EXTRAS.SkeletonUtils;
@@ -9065,7 +9130,8 @@ function makeOps(md) {
       const a = new T.Vector3(...from), b = new T.Vector3(...to); const len = a.distanceTo(b); if (len < 0.1) return;
       const m = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(hex).multiplyScalar(3), transparent: true, opacity: 0.9, blending: T.AdditiveBlending, depthWrite: false }));
       m.scale.z = len; m.position.copy(a).lerp(b, 0.5); m.lookAt(b); F.scene.add(m); F.tracers.push({ m, life: beam ? 0.35 : 0.07, max: beam ? 0.35 : 0.07 });
-      if (beam) { m.scale.x = m.scale.y = 3.2; const core = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(4, 4, 4), transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })); core.scale.set(1.1, 1.1, len); core.position.copy(m.position); core.quaternion.copy(m.quaternion); F.scene.add(core); F.tracers.push({ m: core, life: 0.2, max: 0.2 }); }
+      if (beam) { m.scale.x = m.scale.y = 3.2; const core = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(4, 4, 4), transparent: true, opacity: 1, blending: T.AdditiveBlending, depthWrite: false })); core.scale.set(1.1, 1.1, len); core.position.copy(m.position); core.quaternion.copy(m.quaternion); F.scene.add(core); F.tracers.push({ m: core, life: 0.2, max: 0.2 });
+        const halo = new T.Mesh(F.tracerGeo, new T.MeshBasicMaterial({ color: new T.Color(hex).multiplyScalar(0.9), transparent: true, opacity: 0.22, blending: T.AdditiveBlending, depthWrite: false })); halo.scale.set(9, 9, len); halo.position.copy(m.position); halo.quaternion.copy(m.quaternion); F.scene.add(halo); F.tracers.push({ m: halo, life: 0.45, max: 0.45 }); }
       this.burst(V, to, spark ? "#ffd59a" : "#ff3b4e", spark ? 4 : 9, spark ? 3.5 : 2, spark ? 1 : 0);
     },
     // ---- jump arena (client art): decks, jump pads, pickups, the Golden Router, rockets, hook cables
@@ -9720,9 +9786,9 @@ const opsTwist = (() => { let q, q2, pq, up; return (bone, ang) => {
   bone.parent.getWorldQuaternion(pq); bone.quaternion.copy(pq.invert().multiply(q2));
 }; })();
 GAMES.golden = makeOps("trophy");
-GAMES.laser = makeOps("laser");
+GAMES.laser = makeOps("laser");       // retired from the lobby (Capture the Router is the laser game now); kept so past Laser Arena matches still show
 GAMES.capture = makeOps("capture");
-GAME_ORDER.push("breach", "deathmatch", "golden", "laser", "capture");
+GAME_ORDER.push("breach", "deathmatch", "golden", "capture");
 
 // ======================= NETEAM GRAND PRIX: 3D street race through a night-time NYC =======================
 const RC_TRACKS = {
@@ -11491,7 +11557,18 @@ function enterGame(host) {
   renderOverlay(V, true);
   resizeGame();
 }
+// the host's game stopped arriving (their Wi-Fi blipped or the laptop slept): say so instead of freezing silently.
+// The server keeps them listed for about 10 s, so the match carries on if they come straight back.
+function hostWaitFrame(V, host) {
+  const meHost = APP.S && APP.S.id === host.h.id, offline = NET.room && NET.room.connected && !NET.room.connected();
+  const wait = !meHost && host.h.ph !== "results" && (offline || V.age > 2500);
+  let el = $("#hostWait");
+  if (wait && !el) { el = document.createElement("div"); el.id = "hostWait"; el.className = "host-wait"; el.innerHTML = "<b></b><span></span>"; $("#gameView").append(el); }
+  if (el) { el.hidden = !wait; if (wait) { el.firstChild.textContent = offline ? "Reconnecting\u2026" : "Waiting for the host\u2026"; el.lastChild.textContent = offline ? "Your connection dropped. You'll be back in the match in a moment." : "Their connection dropped. The match carries on if they're back within a few seconds."; } }
+  V.hostWait = wait;
+}
 function exitGame() {
+  if ($("#hostWait")) $("#hostWait").hidden = true;
   if (APP.V && APP.V.mod.clientExit) { try { APP.V.mod.clientExit(APP.V); } catch (e) {} }
   APP.view = "lobby"; APP.V = null; APP.myIn = null; document.body.classList.remove("playing");
   if (fsElement()) { try { (document.exitFullscreen || document.webkitExitFullscreen).call(document); } catch (e) {} }
@@ -11552,7 +11629,7 @@ function readInput() {
 }
 function gameFrame(dt, t) {
   const host = findHost();
-  if (!host || (APP.optOut && host.h.id === APP.optOut)) { exitGame(); return; }
+  if (!host || (APP.optOut && host.h.id === APP.optOut)) { if (!host && APP.V && APP.V.hostWait) toast("The host didn't come back, so the match ended."); exitGame(); return; }
   let V = APP.V;
   if (host.h.id !== V.sid) { enterGame(host); V = APP.V; }
   if (host.h !== V.lastH) { V.lastH = host.h; V.h = host.h; V.g = host.h.g; V.recvAt = now(); }
@@ -11565,6 +11642,7 @@ function gameFrame(dt, t) {
     else { let ch = false; host.h.ro.forEach((r, i) => { const o = V.ro[i]; if (r && o && r.k !== o.k && typeof r.k === "string") { Object.assign(o, { k: r.k, n: cleanNick(r.n) || "Tech", c: validChar(r.c) || o.c, u: r.u, b: r.b ? 1 : 0, boss: 0 }); ch = true; if (V.mod.rosterChanged) try { V.mod.rosterChanged(V, i); } catch (e) {} } }); if (ch) buildChips(V); }
   }
   V.age = now() - V.recvAt;
+  hostWaitFrame(V, host);
   if (V.ready) { readyFrame(V, dt, t); return; }
   const mod = V.mod, ph = V.h.ph;
   if (ph !== V.prevPh) {
@@ -12248,6 +12326,8 @@ function frame() {
 
 async function boot() {
   APP.peerMap = {};
+  // the lobby's game list is complete only now (later files add the 3D games): a stored pick of a retired game falls back to the first
+  if (!GAMES[APP.sel] || !GAME_ORDER.includes(APP.sel)) APP.sel = store("nfa-sel") && GAME_ORDER.includes(store("nfa-sel")) ? store("nfa-sel") : GAME_ORDER[0];
   renderMe(); buildCards(); bindEvents(); renderBoard(); updateLobby();
   requestAnimationFrame(frame);
   await NET.init();

@@ -108,6 +108,13 @@ function makeLocalDb() {
   return { local: true, doc, collection };
 }
 
+// a strip across the top of the page while the arcade server can't be reached (null hides it)
+function netBanner(text) {
+  let el = document.getElementById("netBanner");
+  if (!text) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement("div"); el.id = "netBanner"; el.setAttribute("role", "status"); el.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:200;padding:9px 16px;text-align:center;background:#3a2414;color:#ffd9bf;border-bottom:1px solid #ff8a3d;font:500 14px/1.4 Inter,system-ui,sans-serif"; document.body.append(el); }
+  el.textContent = text;
+}
 // ---------- self-hosted server backend (Docker) ----------
 function connectServer(timeoutMs = 2500) {
   return new Promise((resolve) => {
@@ -128,6 +135,9 @@ function makeServerBackend(firstWs) {
   // scoreboard writes made while the connection is down wait here and go out when it is back
   const outbox = [];
   function write(m) { if (ws && ws.readyState === 1 && isOpen) ws.send(JSON.stringify(m)); else { outbox.push(m); if (outbox.length > 40) outbox.shift(); } }
+  // match saves wait for the server's answer: resolved when it was stored, rejected when it was refused
+  const acks = new Map();
+  function writeAck(m) { return new Promise((res, rej) => { const t = setTimeout(() => { acks.delete(m.path); rej(new Error("no answer")); }, 30000); acks.set(m.path, (ok) => { clearTimeout(t); acks.delete(m.path); ok ? res() : rej(new Error("refused")); }); write(m); }); }
   const peers = new Map();
   const handlers = new Set(), connHandlers = new Set();
   let snap = Object.freeze([]), pend = { joined: [], left: [], updated: [] }, sched = false;
@@ -162,7 +172,9 @@ function makeServerBackend(firstWs) {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.t === "welcome") {
         myPeer = m.peer; isOpen = true;
-        for (const [k, p] of peers) if (k !== myPeer) { pend.left.push(p); peers.delete(k); }
+        // after a reconnect only the people who really went away count as left (no flicker for everyone else)
+        const back = new Set((m.peers || []).map(x => x.peer));
+        for (const [k, p] of peers) if (k !== myPeer && !back.has(k)) { pend.left.push(p); peers.delete(k); }
         peers.delete(myPeer);
         upsert(myPeer, uid, mine);
         (m.peers || []).forEach(x => { if (x.peer !== myPeer) upsert(x.peer, x.by, x.presence); });
@@ -172,6 +184,7 @@ function makeServerBackend(firstWs) {
         connHandlers.forEach(f => f(true));
       } else if (m.t === "p") { if (m.peer !== myPeer) upsert(m.peer, m.by, m.presence); }
       else if (m.t === "left") { const p = peers.get(m.peer); if (p) { pend.left.push(p); peers.delete(m.peer); notify(); } }
+      else if (m.t === "ack") { const f = acks.get(m.path); if (f) f(!!m.ok); }
       else if (m.t === "db") { const s = subs.get(m.id); if (s) s.cb(m.data); }
     };
     ws.onclose = () => {
@@ -203,7 +216,7 @@ function makeServerBackend(firstWs) {
     return {
       id: path.split("/").pop(), path,
       get: () => new Promise((res) => { const un = subscribe(path, "doc", (d) => { un(); res(docSnap(path, d)); }); }),
-      set: async (data) => write({ t: "set", path, data }),
+      set: async (data) => path.startsWith("matches/") ? writeAck({ t: "set", path, data }) : write({ t: "set", path, data }),
       update: async (data) => write({ t: "update", path, data }),
       delete: async () => {}, // the server keeps records append-only
       onSnapshot(next) { return subscribe(path, "doc", (d) => next(docSnap(path, d))); },
@@ -238,7 +251,13 @@ const NET = {
     }
     this.user = user;
     if (!hasClaude && /^https?:$/.test(location.protocol)) {
-      const sock = await connectServer();
+      // a slow or restarting server must not drop anyone into a lonely offline mode: keep trying for about half a minute
+      let sock = null;
+      for (let k = 0; k < 7 && !sock; k++) {
+        if (k) { netBanner("Can't reach the arcade server yet. Retrying\u2026"); await new Promise(r => setTimeout(r, 1500)); }
+        sock = await connectServer(k ? 4000 : 2500);
+      }
+      netBanner(sock ? null : "Couldn't reach the arcade server, so this is offline mode: only this browser can play. Reload the page to try again.");
       if (sock) { const b = makeServerBackend(sock); this.server = true; this.room = b.room; this.db = b.db; this.uid = b.uid; return this; }
     }
     if (room) { this.room = room; }

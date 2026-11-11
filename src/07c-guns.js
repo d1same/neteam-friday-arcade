@@ -131,16 +131,32 @@ const GUNS = {
       U.mag = grp(tip, C(0.044, 0.044, 0.36, 0.46, 0.06, M.bright, 14));
       U.muzzle = [0, 0.06, -0.55]; U.port = null; U.rh = [0.026, -0.06, 0.02]; U.lh = [0, -0.05, -0.22]; U.lroll = 0.5; U.magDrop = [0, 0, -1]; U.vm = [0.2, -0.24, -0.48];
     } else if (id === "laser") {
+      // Photon Laser: white ceramic shell over a dark frame, glowing side strips, three coils round the emitter,
+      // an energy cell in a glass housing on top (it refills as the gun recharges) and a lens that lights up when it's ready
       U.kind = "laser";
-      g.add(E([[-0.14, 0.0], [0.34, 0.0], [0.4, 0.03], [0.4, 0.06], [0.3, 0.085], [-0.1, 0.085], [-0.14, 0.06]], 0.046, M.bright, 0.008));
-      g.add(E([[-0.14, 0.0], [-0.14, 0.06], [-0.34, 0.05], [-0.36, -0.07], [-0.33, -0.075], [-0.24, 0.0]], 0.036, M.poly, 0.008));
-      g.add(E(gripPts(-0.07, 0.004, 0.048, 0.11, 0.028), 0.03, M.poly, 0.006), E(gripPts(0.2, 0.004, 0.04, 0.085, 0.006), 0.03, M.poly, 0.006));
-      g.add(C(0.016, 0.016, 0.4, 0.62, 0.045, M.blued, 16));
-      const glow = new T.MeshStandardMaterial({ color: new T.Color(w0.col), emissive: new T.Color(w0.col), emissiveIntensity: 2.4, roughness: 0.3 });
-      for (let k = 0; k < 5; k++) { const r = new T.Mesh(new T.TorusGeometry(0.026, 0.006, 8, 20), glow); r.position.set(0, 0.045, -(0.43 + k * 0.04)); g.add(r); }
-      g.add(C(0.02, 0.012, 0.62, 0.66, 0.045, M.bright, 16), B(0.3, 0.012, 0.048, glow, 0.12, 0.045), B(0.14, 0.02, 0.02, M.blued, 0.1, 0.095));
-      U.mag = grp(E([[0.02, 0.0], [0.11, 0.0], [0.1, -0.06], [0.03, -0.06]], 0.034, glow, 0.004));
-      U.muzzle = [0, 0.045, -0.67]; U.port = null; U.rh = [0.026, -0.06, 0.045]; U.lh = [0, -0.07, -0.22]; U.lroll = 0.5; U.vm = [0.17, -0.215, -0.52];
+      const col = new T.Color(w0.col), glowM = (k) => new T.MeshStandardMaterial({ color: col.clone().multiplyScalar(0.4), emissive: col, emissiveIntensity: k, roughness: 0.3 });
+      const shell = new T.MeshStandardMaterial({ color: 0xe6e8ec, metalness: 0.1, roughness: 0.32 }), glass = new T.MeshStandardMaterial({ color: 0xbfe4ff, metalness: 0, roughness: 0.05, transparent: true, opacity: 0.22, depthWrite: false });
+      const strip = glowM(2), coil = glowM(2.4), cell = glowM(2.6), tip = glowM(3);
+      U.glow = { strip, coil, cell, tip };
+      g.add(E([[-0.16, 0.0], [0.2, 0.0], [0.34, 0.016], [0.42, 0.04], [0.42, 0.062], [0.3, 0.084], [0.08, 0.094], [-0.08, 0.094], [-0.16, 0.07]], 0.052, shell, 0.012));       // ceramic shell
+      g.add(E([[-0.15, -0.012], [0.36, -0.012], [0.36, 0.006], [-0.15, 0.006]], 0.044, M.blued, 0.004));                                                                     // dark under-frame
+      [-1, 1].forEach(sd => g.add(B(0.4, 0.008, 0.004, strip, 0.12, 0.05, sd * 0.0275), B(0.18, 0.005, 0.004, strip, 0.0, 0.074, sd * 0.0275)));                          // side light strips
+      for (let k = 0; k < 3; k++) g.add(B(0.012, 0.03, 0.054, M.blued, -0.05 + k * 0.025, 0.035));                                                                           // vents
+      g.add(E([[-0.16, 0.02], [-0.16, 0.07], [-0.3, 0.058], [-0.33, 0.03], [-0.2, 0.02]], 0.04, shell, 0.008), E([[-0.3, 0.058], [-0.345, 0.05], [-0.36, -0.06], [-0.32, -0.07], [-0.3, 0.0], [-0.33, 0.03]], 0.036, M.poly, 0.008));   // stock: shell spine, rubber butt
+      [-1, 1].forEach(sd => g.add(B(0.12, 0.005, 0.004, strip, -0.23, 0.046, sd * 0.021)));
+      g.add(E(gripPts(-0.07, 0.004, 0.048, 0.11, 0.028), 0.032, M.poly, 0.006), E(gripPts(0.22, -0.01, 0.036, 0.075, -0.004), 0.03, M.poly, 0.006));
+      g.add(E([[-0.04, 0.0], [0.035, 0.0], [0.03, -0.036], [-0.034, -0.036], [-0.034, -0.03], [0.024, -0.03], [0.028, -0.006], [-0.04, -0.006]], 0.012, M.blued, 0.001));
+      // emitter: dark core, three glowing coils, a glass sleeve, a crown and the lens
+      g.add(C(0.013, 0.013, 0.4, 0.66, 0.048, M.blued, 16));
+      for (let k = 0; k < 3; k++) { const r = new T.Mesh(new T.TorusGeometry(0.029, 0.0065, 8, 22), coil); r.position.set(0, 0.048, -(0.47 + k * 0.06)); g.add(r); }
+      g.add(C(0.036, 0.036, 0.44, 0.62, 0.048, glass, 18));
+      g.add(C(0.03, 0.03, 0.43, 0.45, 0.048, M.bright, 18), C(0.03, 0.026, 0.62, 0.68, 0.048, M.bright, 18), C(0.016, 0.016, 0.676, 0.684, 0.048, tip, 16));
+      // energy cell on top: glass housing, glowing core, metal end caps
+      U.mag = grp(C(0.017, 0.017, -0.02, 0.15, 0.118, glass, 14), C(0.009, 0.009, -0.01, 0.14, 0.118, cell, 10), C(0.019, 0.019, -0.03, -0.012, 0.118, M.bright, 14), C(0.019, 0.019, 0.142, 0.16, 0.118, M.bright, 14));
+      g.add(B(0.02, 0.016, 0.012, M.blued, 0.02, 0.1), B(0.02, 0.016, 0.012, M.blued, 0.12, 0.1));
+      // holo sight: thin frame with a faint lit pane
+      g.add(B(0.004, 0.034, 0.03, M.blued, 0.26, 0.11), B(0.05, 0.004, 0.03, M.blued, 0.26, 0.094), B(0.002, 0.026, 0.024, glowM(0.6), 0.262, 0.112));
+      U.muzzle = [0, 0.048, -0.69]; U.port = null; U.rh = [0.026, -0.06, 0.045]; U.lh = [0, -0.075, -0.24]; U.lroll = 0.5; U.vm = [0.17, -0.215, -0.52];
     } else {
       // rifle family: rifle (AK-style, wood), carbine (AR-style, polymer), smg (compact), lmg (belt box + bipod)
       const P = { rifle: { hg: 0.3, bl: 0.6, fm: M.wood, sm: M.wood, mg: [0.05, 0.075, 0.19, 0.055], recv: M.blued },
@@ -291,7 +307,11 @@ const GUNS = {
         if (U.bolt) { const rk = Math.sin(ss(0.84, 0.98, k) * Math.PI); bolt = rk * (U.kind === "bolt" ? 0.07 : 0.05); if (U.kind !== "bolt" && rk > 0) lh = [0.04, 0.04, -0.05 + bolt]; }
       }
     }
-    if (U.mag) { U.mag.position.set(md[0] * magY, md[1] * magY, U.kind === "tube" ? magY * 0.6 : 0); U.mag.visible = magVis; }
+    if (U.kind === "laser" && U.glow) { // recharging after a shot: everything dims, then fills back up; ready = the lens glows
+      const ch = clamp(cyc, 0, 1), pul = 0.85 + 0.15 * Math.sin(performance.now() / 120), G2 = U.glow;
+      G2.cell.emissiveIntensity = (0.5 + 2.6 * ch) * pul; G2.coil.emissiveIntensity = 0.6 + 2.2 * ch * ch; G2.strip.emissiveIntensity = 0.8 + 1.4 * ch; G2.tip.emissiveIntensity = ch >= 1 ? 3.2 * pul : 0.4 + ch * 1.2;
+      U.mag.position.set(0, 0, 0); U.mag.visible = true; magY = 0;
+    } else if (U.mag) { U.mag.position.set(md[0] * magY, md[1] * magY, U.kind === "tube" ? magY * 0.6 : 0); U.mag.visible = magVis; }
     if (U.slide) U.slide.position.z = slide; if (U.bolt) U.bolt.position.z = bolt; if (U.pump) U.pump.position.z = pump;
     if (U.armL) { const lp = U.pump && !(k >= 0 && k < 0.84) ? [lh[0], lh[1], U.lh[2] + pump] : lh; GUNS.setArm(U.armL, lp, U.lElbow, U.lroll); }
     return { tilt, dip };
