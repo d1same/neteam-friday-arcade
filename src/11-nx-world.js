@@ -254,7 +254,7 @@ const NXW = (() => {
 
     const FCI = charts.length, CCI = FCI + 1;
     charts.push({ kind: "floor", lv: li, w: G * FP, h: G * FP });
-    charts.push({ kind: "ceil", lv: li, w: outdoor ? 0 : G * CP, h: outdoor ? 0 : G * CP });
+    charts.push({ kind: "ceil", lv: li, w: outdoor && !TH.mixed ? 0 : G * CP, h: outdoor && !TH.mixed ? 0 : G * CP });   // mixed: an open-air map with roofed halls
     const floorLm = (x0, z0, x1, z1) => [FCI, x0 / CS * FP, z0 / CS * FP, x1 / CS * FP, z1 / CS * FP];
     const ceilLm = (x0, z0, x1, z1) => [CCI, x0 / CS * CP, z0 / CS * CP, x1 / CS * CP, z1 / CS * CP];
     for (const r of runs) { r.chart = charts.length; charts.push({ kind: "wall", w: r.faces.length * CS * WP, h: Math.ceil(r.h * WP), run: allRuns.length + r.id, hm: r.h, y0: lv.y0 }); }

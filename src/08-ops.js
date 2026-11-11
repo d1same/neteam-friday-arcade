@@ -186,9 +186,33 @@ const OPS_MAPS = {
     "#rrrrrr................#",
     "########################",
   ] },
+  campus: { n: "Data Center Campus", sub: "Indoor halls \u00b7 outdoor yards", open: true, theme: "roof", nx: "campus", wallH: 5.2, indoor: [[1, 4, 6, 10], [8, 12, 14, 16], [16, 12, 20, 16]], sites: ["HALL A", "CHILLER YARD"], spawns: ["TRUCK GATE", "OPS CENTER"], rows: [
+    "######################",
+    "#......##uuuuu##.....#",
+    "#......##uuuuu##.....#",
+    "####.####.....#......#",
+    "#......#.......#.....#",
+    "#.##...#..1....#....1#",
+    "#.##.......##..#bbb..#",
+    "#....aa#...##...bbbb.#",
+    "#.##.aa#..........bb.#",
+    "#.##.aa#..1...#2^.1..#",
+    "#......#......#2.....#",
+    "####.####.#######.####",
+    "#.....#........#.....#",
+    "#.##..#..##....#.##..#",
+    "#.##.......1.......#.#",
+    "#......#..##...#.##..#",
+    "#.1....#.......#.....#",
+    "#####.##.......###.###",
+    "#........rrrrrr......#",
+    "#..1.....rrrrrr...1..#",
+    "#........rrrrrr......#",
+    "######################",
+  ] },
 };
 // small maps for small groups, big maps for big groups
-function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq", "sand", "roof"] : ["sand", "roof"]; return pool[Math.floor(Math.random() * pool.length)]; }
+function opsPickMap(n) { const pool = n <= 6 ? ["farm", "hq"] : n <= 10 ? ["hq", "sand", "roof", "campus"] : ["sand", "roof", "campus"]; return pool[Math.floor(Math.random() * pool.length)]; }
 // feet height of whoever is moving, and how high a step they can take onto a box (more with legs tucked mid-air)
 let OPS_FEET = 0, OPS_STEP = 0.35;
 // multi-level maps (see opsBuildLevels): per-cell solid spans, stair runs, upper floor height
@@ -438,6 +462,8 @@ function mlHit(x, z, lo, hi) {
   return mlRampH(x, z) > lo;
 }
 // the lowest ceiling above someone standing at `feet`
+// open-air maps with roofed halls (M.indoor = [[x0, z0, x1, z1] in cells]): the roof over a spot, or Infinity under the sky
+function opsRoof(x, z) { const R = OPS_M && OPS_M.indoor; if (!R) return Infinity; const cx = Math.floor(x / CS), cz = Math.floor(z / CS); for (const [a, b, c, d] of R) if (cx >= a && cx <= c && cz >= b && cz <= d) return OPS_M.wallH || OWH; return Infinity; }
 function mlCeil(x, z, feet) { const sp = mlSpans(x, z); if (!sp) return feet; let c = ML_TOP; for (const [a] of sp) if (a > feet + 0.55 && a < c) c = a; return c; }
 function mlCeilR(x, z, r, feet) { let c = ML_TOP; for (const [a, b] of [[-r, -r], [r, -r], [-r, r], [r, r]]) c = Math.min(c, mlCeil(x + a, z + b, feet)); return c; }
 // a straight 3D ray against floors, walls, slabs and stairs: distance to the first hit (maxT if none)
@@ -720,6 +746,7 @@ function makeOps(md) {
           if (hitProp && ny < OPS_PROPS[pi].h + 0.06 && n.vy < 0 && oPropAt(n.x, n.z, 0.06) >= 0) { n.y = OPS_PROPS[pi].h + 0.06; n.vy *= -0.3; n.vx *= 0.7; n.vz *= 0.7; }
           if (OPS_ML) { const c = mlCeil(n.x, n.z, n.y - 0.55); if (n.y > c - 0.1) { n.y = c - 0.1; n.vy = -Math.abs(n.vy) * 0.4; } }
           else if (roofed && n.y > OWH - 0.1) { n.y = OWH - 0.1; n.vy = -Math.abs(n.vy) * 0.4; }
+          else if (OPS_M.indoor) { const c = opsRoof(n.x, n.z); if (n.y > c - 0.1 && ny - n.vy * h < c) { n.y = c - 0.1; n.vy = -Math.abs(n.vy) * 0.4; } }
           const fl = OPS_ML ? Math.max(0, mlTop(n.x, n.z, n.y - 0.5)) : 0;   // (floors and stairs on multi-level maps)
           if (n.y < fl + 0.07) { n.y = fl + 0.07; n.vy = Math.abs(n.vy) < 1 ? 0 : -n.vy * 0.35; n.vx *= 0.62; n.vz *= 0.62; }
         }
@@ -741,7 +768,7 @@ function makeOps(md) {
         for (let st = 0; st < 4 && !r.done; st++) {
           const h = dt / 4, nx = r.x + r.vx * h, ny = r.y + r.vy * h, nz = r.z + r.vz * h;
           let hit = r.t > 3.2, dj = -1;
-          if (!hit && (oSolid(nx, nz) || ny <= oHAt(nx, nz) || (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && ny >= (OPS_M.wallH || 99) - 0.1))) hit = true;
+          if (!hit && (oSolid(nx, nz) || ny <= oHAt(nx, nz) || (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && ny >= (OPS_M.wallH || 99) - 0.1) || (OPS_M.indoor && ny >= opsRoof(nx, nz) - 0.1 && r.y < opsRoof(nx, nz)))) hit = true;
           if (!hit) { const pi = oPropAt(nx, nz, 0.1); if (pi >= 0 && ny < OPS_PROPS[pi].h) hit = true; }
           if (!hit) g.P.forEach((q, j) => { if (dj >= 0 || !q.alive || j === r.by && r.t < 0.25) return; if (Math.hypot(q.x - nx, q.z - nz) < 0.55 && ny > (q.jh || 0) && ny < (q.jh || 0) + 1.95) { dj = j; hit = true; } });
           if (hit) { r.done = 1; const bx = oSolid(nx, nz) ? r.x : nx, bz = oSolid(nx, nz) ? r.z : nz; this.blast(S, bx, bz, r.by, 4, Math.max(ny, oHAt(bx, bz) + 0.05), dj); break; }
@@ -1461,7 +1488,7 @@ function makeOps(md) {
           if (nj <= gNow && F.vy <= 0) {
             const iv = -(F.vy || 0); F.jh = gNow; F.vy = 0; SFX.land(clamp((iv - 3) / 11, 0.15, 1));
             if (arena && KEYS.has("Space") && F.cr < 0.5 && !(!gNow && oCh(F.me.x, F.me.z) === "^")) F.vy = JV; else F.landT = 0.18; // bunny hop: keep the speed (but a pad you land on fires next frame)
-          } else { F.jh = nj; if (OPS_ML) { const c = mlCeilR(F.me.x, F.me.z, PR, F.jh) - 1.8; if (F.jh > c) { F.jh = c; if (F.vy > 0) F.vy = 0; } } const top = (OPS_M.wallH || 99) - 1.95; if (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && F.jh > top) { F.jh = top; if (F.vy > 0) F.vy = 0; } }
+          } else { F.jh = nj; if (OPS_ML) { const c = mlCeilR(F.me.x, F.me.z, PR, F.jh) - 1.8; if (F.jh > c) { F.jh = c; if (F.vy > 0) F.vy = 0; } } const top = (OPS_M.wallH || 99) - 1.95; if (OPS_M.theme !== "roof" && OPS_M.theme !== "desert" && F.jh > top) { F.jh = top; if (F.vy > 0) F.vy = 0; } if (OPS_M.indoor) { const rt = Math.min(opsRoof(F.me.x - PR, F.me.z - PR), opsRoof(F.me.x + PR, F.me.z - PR), opsRoof(F.me.x - PR, F.me.z + PR), opsRoof(F.me.x + PR, F.me.z + PR)) - 1.95; if (F.jh > rt && gNow < rt) { F.jh = rt; if (F.vy > 0) F.vy = 0; } } }
         }
         F.inAir = (F.jh || 0) > gNow + 0.01 || F.vy > 0;
         F.landT = Math.max(0, (F.landT || 0) - dt);
@@ -1548,6 +1575,7 @@ function makeOps(md) {
         let t = oRay(me.x, me.z, dir[0] / h, dir[2] / h, W0.range) / h;
         if (dir[1] < -1e-4) t = Math.min(t, EY / -dir[1]);
         if (dir[1] > 1e-4 && OPS_M.theme !== "desert" && OPS_M.theme !== "roof") t = Math.min(t, ((OPS_M.ceilH || OPS_M.wallH || OWH) - EY) / dir[1]);
+        else if (dir[1] > 1e-4 && opsRoof(me.x, me.z) < EY + 9) t = Math.min(t, (opsRoof(me.x, me.z) - EY) / dir[1]);
         t = OPS_ML ? mlRay([me.x, EY, me.z], dir, W0.range) : oRayDecks([me.x, EY, me.z], dir, t);
         const prh = oRayProps([me.x, EY, me.z], dir, t); if (prh[1] >= 0) t = prh[0];
         // glass on the way (or just behind the wall face the shot stops at) shatters; the shot carries on through it
@@ -2033,7 +2061,7 @@ function makeOps(md) {
       const flash = new T.PointLight(0xffd59a, 0, 9, 2); flash.position.set(0.22, -0.12, -0.9); cam.add(flash); F.flash = flash;
       F.tracers = []; F.parts = [];
       // the sound of the place: reverb size, floor underfoot and a bed of ambience
-      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open", sky: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof", sky: "roof" }[th] || "office"); }
+      { const th = OPS_M.nx || OPS_M.theme; SFX.space({ office: "room", farm: "hall", vault: "vault", desert: "open", roof: "open", sky: "open", campus: "open" }[th] || "room"); SFX.floor = { desert: "sand", farm: "metal", vault: "metal" }[th] || "hard"; SFX.amb({ office: "office", farm: "farm", vault: "vault", desert: "desert", roof: "roof", sky: "roof", campus: "roof" }[th] || "office"); }
       F.tracerGeo = new T.BoxGeometry(0.025, 0.025, 1);
       // bullet holes: one mesh holding a ring of small quads, oldest overwritten first
       { const N = GFX.lowEnd() ? 60 : 180, g = new T.BufferGeometry(), uv = new Float32Array(N * 12); for (let i = 0; i < N; i++) uv.set([0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1], i * 12);
@@ -2394,7 +2422,7 @@ function makeOps(md) {
     // a bullet lands on the world: a hole in the surface, a kick of dust
     impact(V, end, dir) {
       const F = V.fps, K = F && F.holes; if (!K || !F.ready) return;
-      const top = OPS_M.ceilH || OPS_M.wallH || OWH, out = OPS_M.theme === "desert" || OPS_M.theme === "roof"; let n = null;
+      const top = OPS_M.ceilH || OPS_M.wallH || OWH, out = (OPS_M.theme === "desert" || OPS_M.theme === "roof") && opsRoof(end[0], end[2]) > 99; let n = null;
       if (end[1] < 0.08) n = [0, 1, 0];
       else if (oSolid(end[0] + dir[0] * 0.12, end[2] + dir[2] * 0.12)) { const fx = end[0] / CS, fz = end[2] / CS; n = Math.abs(fx - Math.round(fx)) < Math.abs(fz - Math.round(fz)) ? [dir[0] > 0 ? -1 : 1, 0, 0] : [0, 0, dir[2] > 0 ? -1 : 1]; }
       else if (!out && end[1] > top - 0.08) n = [0, -1, 0];
