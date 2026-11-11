@@ -56,12 +56,18 @@ const READY_MS = 60000, ALL_READY_MS = 3000;
 // (or the host starts it / the timer runs out). Anyone not ready watches and plays the next one.
 function roomState(S) {
   const myPeer = NET.myPeerLabel();
-  return lobbyPeers().map(p => {
+  const all = lobbyPeers().map(p => {
     const r = p.presence.rdy, mine = p.peer === myPeer;
     const v = mine ? (S.hr ? 1 : 0) : r && r.s === S.id ? (r.v === 1 ? 1 : r.v === -1 ? -1 : 0) : -2; // 1 ready, 0 not ready, -1 left, -2 still joining
     const mv = mine ? (S.hv || "") : r && r.s === S.id && typeof r.mv === "string" ? r.mv.slice(0, 24) : "";
-    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0, mv };
-  }).filter(r => r.v !== -1).slice(0, 24);
+    const u = p.by || (typeof p.presence.uid === "string" ? p.presence.uid.slice(0, 80) : "");
+    return { k: p.peer, n: cleanNick(p.presence.nick) || "Tech", c: validChar(p.presence.c) || [0, 0, 0, 0, 0], v, h: mine ? 1 : 0, mv, u };
+  }).filter(r => r.v !== -1);
+  // one person with the arcade open in several tabs is one player: keep their best tab (this one, then ready, then
+  // in the lobby, then still loading) and drop the rest, so a forgotten tab never sits there "Joining"
+  const rank = (r) => r.h * 8 + (r.v === 1 ? 4 : r.v === 0 ? 2 : 0), best = {};
+  all.forEach(r => { if (!r.u) return; const q = best[r.u]; if (!q || rank(r) > rank(q)) best[r.u] = r; });
+  return all.filter(r => { if (!r.u) return true; const q = best[r.u]; if (q !== r) { q.t = (q.t || 1) + 1; return false; } return true; }).map(r => { delete r.u; return r; }).slice(0, 24);
 }
 function startSession(gameId) {
   if (findHost()) { toast("A game is already running. Hop in when it ends."); return; }
@@ -478,10 +484,10 @@ function renderReady(V) {
   let root = ov.querySelector(".mlobby");
   if (!root) { ov.textContent = ""; root = mkEl("div", "scr mlobby"); root.append(scrBackdrop(id)); ov.append(root); }
   const sc = mkEl("div", "scr-scroll"), inn = mkEl("div", "ml-in card");
-  // left: the game, the clock and your ready button
-  const left = mkEl("div", "ml-left");
+  // top bar: the game on the left, the clock, the ready count and your buttons on the right
+  const bar = mkEl("div", "ml-top"), left = mkEl("div", "ml-left");
   left.append(mkEl("span", "scr-eyebrow", "Match lobby · " + (HERO_KIND[id] || "Game night")), mkEl("h2", null, V.mod.title), mkEl("p", "ml-tag", V.mod.blurb || V.mod.tag || ""));
-  const stat = mkEl("div", "ml-stat"), clk = mkEl("div", "ml-clock"), rdy = mkEl("div", "ml-rdy");
+  const ctl = mkEl("div", "ml-ctl"), stat = mkEl("div", "ml-stat"), clk = mkEl("div", "ml-clock"), rdy = mkEl("div", "ml-rdy");
   const cl = mkEl("span", "cap", V.h.aR ? "Everyone's ready" : "Starts in"); cl.id = "rdyLab";
   const cb = mkEl("b", V.h.aR ? "go" : null, fmtTime(Math.max(0, (V.h.tl || 0) - (V.age || 0)))); cb.id = "rdyClock"; clk.append(cl, cb);
   const rn = mkEl("b", null, String(nReady)); rn.append(mkEl("small", null, " / " + rr.length));
@@ -502,36 +508,57 @@ function renderReady(V) {
     back.addEventListener("click", () => { APP.optOut = V.sid; exitGame(); });
     act.append(back);
   }
-  const hint = mkEl("p", "ml-hint", "Starts when the clock runs out, or as soon as everyone is ready (host too). Not ready by then? You'll watch live and play the next game." + (APP.bots ? " Bots fill empty seats." : ""));
-  left.append(stat, act, hint);
-  // right: who is here, and the map vote
-  const right = mkEl("div", "ml-right");
-  const ros = mkEl("section", "ml-panel"), rh = mkEl("header"); rh.append(mkEl("span", "cap", "Players"), mkEl("b", null, String(rr.length)));
-  const list = mkEl("div", "ml-roster" + (rr.length > 6 ? " many" : ""));
+  const hint = mkEl("p", "ml-hint", "Starts when the clock runs out or when everyone is ready (host too). Not ready by then? You watch live and play the next game." + (APP.bots ? " Bots fill empty seats." : ""));
+  ctl.append(stat, act); bar.append(left, ctl, hint);
+  // players: a compact list on the side (one row per person, however many tabs they have open)
+  const ros = mkEl("section", "ml-panel ml-players"), rh = mkEl("header"); rh.append(mkEl("span", "cap", "Players"), mkEl("b", null, nReady + " / " + rr.length + " ready"));
+  const list = mkEl("div", "ml-roster");
   rr.forEach(r => {
     const row = mkEl("div", "ml-row" + (r.v === 1 ? " ok" : r.v === -2 ? " wait" : "") + (r.k === myKey ? " me" : ""));
     const ch = validChar(r.c) || [0, 0, 0, 0, 0], nm = mkEl("span", "nm", String(r.n || "Tech")); if (r.h) nm.append(mkEl("em", null, "Host"));
-    row.append(avatarCanvas(ch, 34, PALETTE[ch[1]] || PALETTE[0]), nm, mkEl("span", "st", r.v === 1 ? "Ready" : r.v === -2 ? "Joining" : "Not ready"));
+    if (r.t > 1) nm.append(mkEl("small", "tabs", r.t + " tabs"));
+    row.append(avatarCanvas(ch, 28, PALETTE[ch[1]] || PALETTE[0]), nm, mkEl("span", "st", r.v === 1 ? "Ready" : r.v === -2 ? "Joining" : "Not ready"));
     list.append(row);
   });
-  ros.append(rh, list); right.append(ros);
+  ros.append(rh, list);
+  // the map vote takes the main area: every map on one screen, sorted indoor / indoor + outdoor / outdoor, with a filter
+  let mp = null;
   if (V.mod.mapList) {
-    const ml = V.mod.mapList(), cnt = {}, race = id === "race"; rr.forEach(r => { if (r.mv) cnt[r.mv] = (cnt[r.mv] || 0) + 1; });
-    const mp = mkEl("section", "ml-panel"), mh = mkEl("header"); mh.append(mkEl("span", "cap", race ? "Vote for a track" : "Vote for a map"), mkEl("small", null, race ? "No votes = random" : "No votes = picked by player count"));
+    const ml = V.mod.mapList(), cnt = {}, who = {}, race = id === "race";
+    rr.forEach(r => { if (r.mv) { cnt[r.mv] = (cnt[r.mv] || 0) + 1; (who[r.mv] = who[r.mv] || []).push(r); } });
+    const KN = { indoor: "Indoor", mixed: "Indoor + outdoor", outdoor: "Outdoor" }, kinds = Object.keys(KN).filter(k => ml.some(m => m.kind === k));
+    if (V.mapF && !kinds.includes(V.mapF)) V.mapF = "";
+    mp = mkEl("section", "ml-panel ml-maps"); const mh = mkEl("header");
+    mh.append(mkEl("span", "cap", race ? "Vote for a track" : "Vote for a map"));
+    if (kinds.length > 1) {
+      const fl = mkEl("div", "ml-filter"); fl.setAttribute("role", "group"); fl.setAttribute("aria-label", "Show maps");
+      [["", "All", ml.length], ...kinds.map(k => [k, KN[k], ml.filter(m => m.kind === k).length])].forEach(([k, t, n]) => {
+        const on = (V.mapF || "") === k, b = mkEl("button", "mf" + (on ? " on" : ""), t); b.type = "button"; b.setAttribute("aria-pressed", String(on));
+        b.append(mkEl("small", null, String(n))); b.addEventListener("click", () => { V.mapF = k; renderReady(V); }); fl.append(b);
+      });
+      mh.append(fl);
+    }
     const grid = mkEl("div", "map-grid");
-    ml.forEach(m => {
+    // "Auto": no vote of your own; the game picks for the number of players (or at random for tracks)
+    { const on = !V.myVote, b = mkEl("button", "map-btn auto" + (on ? " on" : "")); b.type = "button"; b.setAttribute("aria-pressed", String(on));
+      const shot = mkEl("span", "map-shot"); shot.append(mkEl("span", "dice", "?"));
+      const tx = mkEl("span", "tx"); tx.append(mkEl("b", null, race ? "Random track" : "Auto pick"), mkEl("span", "sub", race ? "If nobody votes" : "Fits the player count"));
+      b.append(shot, tx); b.addEventListener("click", () => { if (V.myVote) setVote(V, V.myVote); }); grid.append(b); }
+    ml.filter(m => !V.mapF || m.kind === V.mapF).forEach(m => {
       const on = V.myVote === m.id, n = cnt[m.id] || 0, b = mkEl("button", "map-btn" + (on ? " on" : "")); b.type = "button"; b.setAttribute("aria-pressed", String(on));
-      const tx = mkEl("span", "tx"); tx.append(mkEl("b", null, m.n), mkEl("span", null, m.sub || ""));
-      const vc = mkEl("i", n ? "has" : null, n ? String(n) : ""); vc.title = n + (n === 1 ? " vote" : " votes");
-      // a real screenshot of the map, with its plan in the corner
+      // a real screenshot of the map, its plan in the corner, the kind of map and the votes on top
       const shot = mkEl("span", "map-shot"); shot.style.backgroundImage = "url(models/map-" + (race ? "race-" : "") + m.id + ".jpg?v=" + MAP_SHOT_V + ")";
-      shot.append(mapThumb(id, m.id), vc);
-      b.append(shot, tx);
+      if (m.kind) shot.append(mkEl("span", "kind " + m.kind, KN[m.kind]));
+      shot.append(mapThumb(id, m.id));
+      if (n) { const vc = mkEl("span", "votes"); (who[m.id] || []).slice(0, 4).forEach(r => { const ch = validChar(r.c) || [0, 0, 0, 0, 0]; vc.append(avatarCanvas(ch, 20, PALETTE[ch[1]] || PALETTE[0])); }); vc.append(mkEl("b", null, String(n))); vc.title = n + (n === 1 ? " vote" : " votes"); shot.append(vc); }
+      const tx = mkEl("span", "tx"); tx.append(mkEl("b", null, m.n));
+      const tg = mkEl("span", "tags"); if (m.pl) tg.append(mkEl("i", "pl", m.pl + " players")); (m.tags && m.tags.length ? m.tags : [m.sub || ""]).forEach(t => t && tg.append(mkEl("i", null, t)));
+      tx.append(tg); b.append(shot, tx);
       b.addEventListener("click", () => setVote(V, m.id)); grid.append(b);
     });
-    mp.append(mh, grid); right.append(mp);
+    mp.append(mh, grid);
   }
-  inn.append(left, right); sc.append(inn);
+  inn.append(bar); if (mp) inn.append(mp); inn.append(ros); if (!mp) inn.classList.add("nomaps"); sc.append(inn);
   const old = root.querySelector(".scr-scroll"), top = old ? old.scrollTop : 0;
   if (old) old.replaceWith(sc); else root.append(sc);
   sc.scrollTop = top;
@@ -751,7 +778,7 @@ function renderMe() {
 // homepage screenshots are cached for a week: raise this when the shot-<game>.jpg files change
 const SHOT_V = 5;
 // map vote previews (models/map-<id>.jpg, models/map-race-<track>.jpg): raise this when they change
-const MAP_SHOT_V = 1;
+const MAP_SHOT_V = 2;
 const HERO_KIND = { breach: "Team · Red vs Blue", deathmatch: "Free-for-all", golden: "Jump arena", laser: "Instagib arena", capture: "Lasers + router", race: "Street race" };
 function renderHero() {
   const id = APP.sel, g = GAMES[id]; if (!g || !$("#hero")) return;

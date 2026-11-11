@@ -2,7 +2,7 @@
 // Maps. # wall, r red spawn, u blue spawn, a = site A, b = site B. The host picks one sized to the player count.
 const OPS_MAPS = {
   // two storeys: an atrium in the middle with a gallery around it, two feature stairs, offices upstairs
-  hq: { n: "Neteam HQ", sub: "Two floors \u00b7 indoor", theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "MEZZANINE"], spawns: ["LOBBY", "NOC"],
+  hq: { n: "Neteam HQ", sub: "Two floors \u00b7 indoor", kind: "indoor", tags: ["Two floors", "Stairs"], pl: "4\u201310", theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "MEZZANINE"], spawns: ["LOBBY", "NOC"],
   stairs: [[7, 12, 0, -1, 2], [14, 10, 0, 1, 2]],
   // site B is upstairs: the east gallery where the east stair arrives (upper-floor cells)
   upSites: { b: [[14, 12], [15, 12], [16, 12], [14, 13], [15, 13], [14, 14], [15, 14]] },
@@ -53,7 +53,7 @@ const OPS_MAPS = {
   "#...#...rrrrrr...#...#",
   "######################",
   ] },
-  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", open: true, theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
+  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", kind: "indoor", tags: ["Compact", "Crates"], pl: "4\u20136", open: true, theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
     "#aaaa.....uuuuuu.#",
     "#aaaa.....uuuuuu.#",
@@ -73,7 +73,7 @@ const OPS_MAPS = {
     "#rrrrrr..........#",
     "##################",
   ] },
-  sand: { n: "Sandstorm District", sub: "Outdoor streets", open: true, theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
+  sand: { n: "Sandstorm District", sub: "Outdoor streets", kind: "outdoor", tags: ["Streets", "Jump pads"], pl: "6\u201310", open: true, theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
     "##########################",
     "#......###uuuuuu###......#",
     "#..#......uuuuuu.....#...#",
@@ -103,7 +103,7 @@ const OPS_MAPS = {
   ] },
   // jump arena for Golden Router: 1 = 1.2 m deck, 2 = 2.6 m deck, ^ = jump pad, T = trophy home. Open sky.
   // enclosed indoor arena: a tall vault with rooms, a walled core and a roof (decks, pads and rockets still work in 3D)
-  arena: { n: "Data Vault", sub: "Jump pads \u00b7 indoor", theme: "farm", nx: "vault", open: true, wallH: 8, only: "golden", sites: ["WEST VAULT", "EAST VAULT"], spawns: ["SOUTH GATE", "NORTH GATE"],
+  arena: { n: "Data Vault", sub: "Jump pads \u00b7 indoor", kind: "indoor", tags: ["Jump pads", "Vaults"], pl: "4\u20138", theme: "farm", nx: "vault", open: true, wallH: 8, only: "golden", sites: ["WEST VAULT", "EAST VAULT"], spawns: ["SOUTH GATE", "NORTH GATE"],
     // pickups [cell x, cell z, item]: weapon index, "H" health, "A" armor
     picks: [[6, 3, 10], [15, 18, 10], [1, 10, 5], [20, 11, 5], [10, 3, 8], [11, 18, 1], [3, 7, 9], [18, 14, 9], [6, 10, "H"], [15, 11, "H"], [8, 1, "H"], [13, 20, "H"], [1, 1, "A"], [20, 20, "A"]],
     rows: [
@@ -132,7 +132,7 @@ const OPS_MAPS = {
   ] },
   // Laser Arena only: two tower roofs high over the city with nothing between them. v = open air (fall in and you are out),
   // ^ = booster that throws you across: jumps [pad x, pad z, landing x, landing z]
-  sky: { n: "Uplink", sub: "Sky towers \u00b7 fall = out", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["WEST TOWER", "EAST TOWER"], spawns: ["SOUTH DECK", "NORTH DECK"], homes: [[6, 8], [17, 15]],
+  sky: { n: "Uplink", sub: "Sky towers \u00b7 fall = out", kind: "outdoor", tags: ["Sky towers", "Fall = out"], pl: "4\u20138", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["WEST TOWER", "EAST TOWER"], spawns: ["SOUTH DECK", "NORTH DECK"], homes: [[6, 8], [17, 15]],
     jumps: [[9, 4, 16, 4], [14, 5, 7, 5], [9, 11, 16, 11], [14, 12, 7, 12], [9, 18, 16, 18], [14, 19, 7, 19]],
     rows: [
     "##########vvvv##########",
@@ -160,7 +160,7 @@ const OPS_MAPS = {
     "###.....11vvvv.......11#",
     "##########vvvv##########",
   ] },
-  roof: { n: "Rooftop", sub: "Outdoor rooftops", open: true, theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
+  roof: { n: "Rooftop", sub: "Outdoor rooftops", kind: "outdoor", tags: ["Rooftops", "Jump pads"], pl: "6\u201310", open: true, theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
     "########################",
     "#aaaaa.................#",
     "#aaaaa...........uuuuuu#",
@@ -186,7 +186,7 @@ const OPS_MAPS = {
     "#rrrrrr................#",
     "########################",
   ] },
-  campus: { n: "Data Center Campus", sub: "Indoor halls \u00b7 outdoor yards", open: true, theme: "roof", nx: "campus", wallH: 5.2, indoor: [[1, 4, 6, 10], [8, 12, 14, 16], [16, 12, 20, 16]], sites: ["HALL A", "CHILLER YARD"], spawns: ["TRUCK GATE", "OPS CENTER"], rows: [
+  campus: { n: "Data Center Campus", sub: "Indoor halls \u00b7 outdoor yards", kind: "mixed", tags: ["Server halls", "Jump pads"], pl: "6\u201310", open: true, theme: "roof", nx: "campus", wallH: 5.2, indoor: [[1, 4, 6, 10], [8, 12, 14, 16], [16, 12, 20, 16]], sites: ["HALL A", "CHILLER YARD"], spawns: ["TRUCK GATE", "OPS CENTER"], rows: [
     "######################",
     "#......##uuuuu##.....#",
     "#......##uuuuu##.....#",
@@ -676,7 +676,8 @@ function makeOps(md) {
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: cap ? 240 : 300, GOAL: 25, HOLD: cap ? 60 : 90,
     // every map works in every mode: Breach uses its sites and spawn rooms, the free-for-all modes spread out over all of it
-    mapList() { return Object.keys(OPS_MAPS).filter(id => !OPS_MAPS[id].dev || store("nfa-dev")).map(id => ({ id, n: OPS_MAPS[id].n, sub: (OPS_MAPS[id].sub || "") + " \u00b7 4\u201310" })); },
+    // kind (indoor / outdoor / mixed) groups the vote cards, tags and pl (best player count) are shown on them
+    mapList() { const K = { indoor: 0, mixed: 1, outdoor: 2 }; return Object.keys(OPS_MAPS).filter(id => !OPS_MAPS[id].dev || store("nfa-dev")).map(id => { const M = OPS_MAPS[id]; return { id, n: M.n, sub: M.sub || "", kind: M.kind || "", tags: M.tags || [], pl: M.pl || "4\u201310" }; }).sort((a, b) => (K[a.kind] || 0) - (K[b.kind] || 0)); },
     fill(nHumans) { if (arena) return Math.max(6, Math.min(10, nHumans)); if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
     // ---------------- host ----------------
