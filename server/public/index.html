@@ -3979,7 +3979,7 @@ const PPL = {
 // shaders here combine that with scanned PBR materials, a real-time sun, shadows of moving things and reflections.
 // Everything runs on the player's own graphics card; the quality level scales the cost from office laptops to gaming PCs.
 const NX = {
-  VER: 5,            // cache buster for baked files and textures (the server caches /models for a week)
+  VER: 6,            // cache buster for baked files and textures (the server caches /models for a week)
   LM_SCALE: 16,      // lightmaps store sqrt(irradiance / 16)
   url(f) { return "models/" + f + "?v=" + NX.VER; },
 
@@ -4808,7 +4808,7 @@ NXW.kit = (B) => {
   K.cellsOf = (k) => { const out = []; for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (ch(x, z) === k) out.push([x, z]); return out; };
   K.siteMarks = (cols, y) => {
     y = y || 0; [["a", "A", cols[0]], ["b", "B", cols[1]]].forEach(([k, L, col]) => {
-      const cells = K.cellsOf(k); if (!cells.length) return; const mx = cells.reduce((s, q) => s + q[0], 0) / cells.length * CS + CS / 2, mz = cells.reduce((s, q) => s + q[1], 0) / cells.length * CS + CS / 2;
+      const cells = K.cellsOf(k); if (!cells.length) return; const si = OPS_SITE[k === "a" ? 0 : 1], mx = si[0], mz = si[1];   // on a floor cell of the site, never inside a block
       B.decal("decal", [mx - 2.4, y + 0.006, mz + 2.4], [4.8, 0, 0], [0, 0, -4.8], 100, { k: "site", t: L, col });
       cells.forEach(([x, z]) => DIRS.forEach(([dx, dz]) => { if (ch(x + dx, z + dz) !== ".") return; const x0 = x * CS, z0 = z * CS;
         if (dx) B.decal("decal", [dx > 0 ? x0 + CS - 0.3 : x0, y + 0.005, z0 + CS], [0.3, 0, 0], [0, 0, -CS], 64, { k: "hazard", r: 1 }); else B.decal("decal", [x0, y + 0.005, dz > 0 ? z0 + CS : z0 + 0.3], [CS, 0, 0], [0, 0, -0.3], 64, { k: "hazard", r: 0 }); }));
@@ -5093,7 +5093,7 @@ NXW.themes.office = (B, M, env) => {
   // ---- floor markings and signs
   const siteCells = (k) => { const out = []; for (let z = 0; z < G; z++) for (let x = 0; x < G; x++) if (ch(x, z) === k) out.push([x, z]); return out; };
   [["a", "A", 0, CYAN], ["b", "B", 1, GREEN]].forEach(([k, L, col]) => {
-    const cells = siteCells(k); if (!cells.length) return; const mx = cells.reduce((s, q) => s + q[0], 0) / cells.length * CS + CS / 2, mz = cells.reduce((s, q) => s + q[1], 0) / cells.length * CS + CS / 2;
+    const cells = siteCells(k); if (!cells.length) return; const si = OPS_SITE[k === "a" ? 0 : 1], mx = si[0], mz = si[1];   // on a floor cell of the site, never inside a block
     B.decal("decal", [mx - 2.4, 0.006, mz + 2.4], [4.8, 0, 0], [0, 0, -4.8], 100, { k: "site", t: L, col });
     // hazard edge where the site meets the hall
     cells.forEach(([x, z]) => DIRS.forEach(([dx, dz]) => { if (ch(x + dx, z + dz) !== ".") return; const x0 = x * CS, z0 = z * CS;
@@ -5326,6 +5326,7 @@ NXW.themes.vault = (B, M, env) => {
       for (let i = 0; i < 4; i++) { const a = i * 1.5708 + 0.7854, px = hx + Math.cos(a) * R, pz = hz + Math.sin(a) * R; box("trimBlack", px - 0.008, y, pz - 0.008, px + 0.008, H - 0.3, pz + 0.008, { f: PX | NXb | PZ | NZ, occ: false, seg: 3 }); } }
     rectLight([hx, 5.2, hz], [1.6, 0, 0], [0, 0, 1.6], [0, -1, 0], mul(GOLD, 22), { range: 16 });
     B.decal("decal", [hx - 3.4, 0.006, hz + 3.4], [6.8, 0, 0], [0, 0, -6.8], 60, { k: "ring", col: 1, n: 12, chev: 1 }); }
+  K.siteMarks([0, 1]);   // bomb site floor paint (Breach)
   K.cellsOf("^").forEach(([x, z]) => B.decal("decal", [x * CS + 0.3, 0.006, z * CS + CS - 0.3], [CS - 0.6, 0, 0], [0, 0, -(CS - 0.6)], 60, { k: "ring", col: 0, n: 8, chev: 1 }));
 };
 NXW.themes.vault.H = 8;
@@ -5905,6 +5906,7 @@ NXW.themes.sky = (B, M, env) => {
   K.cellsOf("^").forEach(([x, z]) => { const x0 = x * CS, z0 = z * CS, s = voidAt(x + 1, z) ? 1 : -1;
     B.decal("decal", [x0 + 0.3, 0.007, z0 + CS - 0.3], [CS - 0.6, 0, 0], [0, 0, -(CS - 0.6)], 60, { k: "ring", col: 0, n: 8, chev: 1 });
     K.floorText(s > 0 ? x0 - 3.2 : x0 + CS + 0.6, z0 + 0.7, 2.6, 2.6, "BOOST", 3, false); });
+  K.siteMarks([0, 1]);   // bomb site floor paint (Breach)
   // the street far below for the light baker
   W.dress.push({ kind: "city", sides: [0, 1, 2, 3], all: true, avoid: TW.map(([a, b, c, d]) => [a - 6, b - 6, c + 6, d + 6]), floor: 54, em: 0.12 });
 };
@@ -6737,7 +6739,7 @@ void main(){ vec2 inv = uP.xy; vec3 lw = vec3( 0.299, 0.587, 0.114 );
 // Maps. # wall, r red spawn, u blue spawn, a = site A, b = site B. The host picks one sized to the player count.
 const OPS_MAPS = {
   // two storeys: an atrium in the middle with a gallery around it, two feature stairs, offices upstairs
-  hq: { n: "Neteam HQ", theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "MEZZANINE"], spawns: ["LOBBY", "NOC"],
+  hq: { n: "Neteam HQ", sub: "Two floors \u00b7 indoor", theme: "office", wallH: 6.8, sites: ["SERVER ROOM", "MEZZANINE"], spawns: ["LOBBY", "NOC"],
   stairs: [[7, 12, 0, -1, 2], [14, 10, 0, 1, 2]],
   // site B is upstairs: the east gallery where the east stair arrives (upper-floor cells)
   upSites: { b: [[14, 12], [15, 12], [16, 12], [14, 13], [15, 13], [14, 14], [15, 14]] },
@@ -6788,7 +6790,7 @@ const OPS_MAPS = {
   "#...#...rrrrrr...#...#",
   "######################",
   ] },
-  farm: { n: "Server Farm", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
+  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
     "#aaaa.....uuuuuu.#",
     "#aaaa.....uuuuuu.#",
@@ -6808,7 +6810,7 @@ const OPS_MAPS = {
     "#rrrrrr..........#",
     "##################",
   ] },
-  sand: { n: "Sandstorm District", theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
+  sand: { n: "Sandstorm District", sub: "Outdoor streets", theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
     "##########################",
     "#......###uuuuuu###......#",
     "#..#......uuuuuu.....#...#",
@@ -6838,20 +6840,20 @@ const OPS_MAPS = {
   ] },
   // jump arena for Golden Router: 1 = 1.2 m deck, 2 = 2.6 m deck, ^ = jump pad, T = trophy home. Open sky.
   // enclosed indoor arena: a tall vault with rooms, a walled core and a roof (decks, pads and rockets still work in 3D)
-  arena: { n: "Data Vault", theme: "farm", nx: "vault", open: true, wallH: 8, only: "golden", sites: ["", ""], spawns: ["", ""],
+  arena: { n: "Data Vault", sub: "Jump pads \u00b7 indoor", theme: "farm", nx: "vault", open: true, wallH: 8, only: "golden", sites: ["WEST VAULT", "EAST VAULT"], spawns: ["SOUTH GATE", "NORTH GATE"],
     // pickups [cell x, cell z, item]: weapon index, "H" health, "A" armor
     picks: [[6, 3, 10], [15, 18, 10], [1, 10, 5], [20, 11, 5], [10, 3, 8], [11, 18, 1], [3, 7, 9], [18, 14, 9], [6, 10, "H"], [15, 11, "H"], [8, 1, "H"], [13, 20, "H"], [1, 1, "A"], [20, 20, "A"]],
     rows: [
     "######################",
-    "#11..^....##....^..11#",
-    "#11.......##.......11#",
+    "#11..^uuuu##uuuu^..11#",
+    "#11..uuuuu##uuuuu..11#",
     "#....2222....2222....#",
     "#...12..........21...#",
     "#^...2...1..1...2...^#",
     "#####....1..1....#####",
-    "#..1..............1..#",
-    "#..1..#..^..^..#..1..#",
-    "#....11#......#11....#",
+    "#aa1aa..........bb1bb#",
+    "#aa1aa#..^..^..#bb1bb#",
+    "#aaaa11#......#11bbbb#",
     "#......#..TT..#......#",
     "#......#..TT..#......#",
     "#....11#......#11....#",
@@ -6861,25 +6863,25 @@ const OPS_MAPS = {
     "#^...2...1..1...2...^#",
     "#...12..........21...#",
     "#....2222....2222....#",
-    "#11.......##.......11#",
-    "#11..^....##....^..11#",
+    "#11..rrrrr##rrrrr..11#",
+    "#11..^rrrr##rrrr^..11#",
     "######################",
   ] },
   // Laser Arena only: two tower roofs high over the city with nothing between them. v = open air (fall in and you are out),
   // ^ = booster that throws you across: jumps [pad x, pad z, landing x, landing z]
-  sky: { n: "Uplink", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["", ""], spawns: ["", ""], homes: [[6, 8], [17, 15]],
+  sky: { n: "Uplink", sub: "Sky towers \u00b7 fall = out", theme: "roof", nx: "sky", open: true, sky: true, wallH: 4.5, only: "laser", sites: ["WEST TOWER", "EAST TOWER"], spawns: ["SOUTH DECK", "NORTH DECK"], homes: [[6, 8], [17, 15]],
     jumps: [[9, 4, 16, 4], [14, 5, 7, 5], [9, 11, 16, 11], [14, 12, 7, 12], [9, 18, 16, 18], [14, 19, 7, 19]],
     rows: [
     "##########vvvv##########",
-    "#11.......vvvv11.....###",
-    "#11.......vvvv.........#",
+    "#11uuuuuu.vvvv11uuuuu###",
+    "#11uuuuuu.vvvv.uuuuuuuu#",
     "#....##...vvvv..1....2.#",
     "#....##..^vvvv.......2.#",
     "#.........vvvv^........#",
+    "#aa2aaaa1.vvvv..##bbbbb#",
     "#..2....1.vvvv..##.....#",
-    "#..2....1.vvvv..##.....#",
-    "#.........vvvv.........#",
-    "####......vvvv..11..1..#",
+    "#aaaaaaa..vvvv..bbbbbbb#",
+    "####aaaa..vvvv..11bb1bb#",
     "####...2..vvvv......1..#",
     "#......2.^vvvv.........#",
     "#.........vvvv^.2......#",
@@ -6889,13 +6891,13 @@ const OPS_MAPS = {
     "#.....##..vvvv.1....2..#",
     "#.....##..vvvv.1....2..#",
     "#........^vvvv.........#",
-    "#.2.......vvvv^..##....#",
-    "#.2....1..vvvv...##....#",
+    "#r2rrrrrr.vvvv^rr##rrrr#",
+    "#r2rrrr1r.vvvv.rr##rrrr#",
     "#.........vvvv.......11#",
     "###.....11vvvv.......11#",
     "##########vvvv##########",
   ] },
-  roof: { n: "Rooftop", theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
+  roof: { n: "Rooftop", sub: "Outdoor rooftops", theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
     "########################",
     "#aaaaa.................#",
     "#aaaaa...........uuuuuu#",
@@ -6969,7 +6971,11 @@ function opsSetMap(id) {
   OPS_JUMP = {}; (OPS_M.jumps || []).forEach(([px, pz, tx, tz]) => { OPS_JUMP[pz * OG + px] = [tx * CS + CS / 2, tz * CS + CS / 2, tx, tz]; });
   Object.entries(OPS_M.upSites || {}).forEach(([k, cs]) => cs.forEach(([x, z]) => OPS_CELLS[k].push([x, z, 1])));   // sites on the upper floor
   if (!OPS_CELLS.a.length) { OPS_SITE = [[0, 0, 0], [0, 0, 0]]; return; }
-  OPS_SITE = ["a", "b"].map(k => { const c = OPS_CELLS[k]; return [c.reduce((s, q) => s + q[0], 0) / c.length * CS + CS / 2, c.reduce((s, q) => s + q[1], 0) / c.length * CS + CS / 2, c[0][2] ? OPS_UPH : 0]; });
+  // each site's marker point: the site cell nearest the middle of the site (the plain average can land inside a wall
+  // block when a site wraps round one), nudged toward cells with more of the site around them
+  OPS_SITE = ["a", "b"].map(k => { const c = OPS_CELLS[k], mx = c.reduce((s, q) => s + q[0], 0) / c.length, mz = c.reduce((s, q) => s + q[1], 0) / c.length;
+    const has = (x, z) => c.some(q => q[0] === x && q[1] === z), sc = (q) => Math.hypot(q[0] - mx, q[1] - mz) - 0.15 * [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dz]) => has(q[0] + dx, q[1] + dz)).length;
+    const best = c.reduce((b, q) => sc(q) < sc(b) ? q : b, c[0]); return [best[0] * CS + CS / 2, best[1] * CS + CS / 2, best[2] ? OPS_UPH : 0]; });
 }
 const cellC = ([x, z]) => [x * CS + CS / 2, z * CS + CS / 2];
 // which bomb site ("a", "b" or null) someone stands in, feet at height jh: upstairs only the upper-floor sites count
@@ -7041,8 +7047,25 @@ opsSetMap("hq");   // after DECK_H: the default map has storeys, so its collisio
 // where the router sits when nobody has it: the map's "homes" (it alternates between them), else the T cells, else the middle
 function opsRouterHomes() {
   if (OPS_M && OPS_M.homes) return OPS_M.homes.map(([cx, cz]) => [cx * CS + CS / 2, cz * CS + CS / 2]);
-  const tc = OPS_CELLS.T.length ? OPS_CELLS.T : [[OG >> 1, OG >> 1]];
-  return [[tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2]];
+  if (OPS_CELLS.T.length) { const tc = OPS_CELLS.T; return [[tc.reduce((a, q) => a + q[0], 0) / tc.length * CS + CS / 2, tc.reduce((a, q) => a + q[1], 0) / tc.length * CS + CS / 2]]; }
+  // maps built for Breach: the open floor cell nearest the middle, preferring one with room around it (never a site or spawn room)
+  const m = (OG - 1) / 2, free = (x, z) => (OPS_MAP[z] || "")[x] === "." && !(OPS_RAMP && OPS_RAMP[z * OG + x]);
+  let best = null, bs = 1e9; for (let z = 1; z < OG - 1; z++) for (let x = 1; x < OG - 1; x++) { if (!free(x, z)) continue;
+    const sc = Math.hypot(x - m, z - m) - 0.6 * [[1, 0], [-1, 0], [0, 1], [0, -1]].filter(([dx, dz]) => free(x + dx, z + dz)).length; if (sc < bs) { bs = sc; best = [x, z]; } }
+  return [cellC(best || [OG >> 1, OG >> 1])];
+}
+// Golden Router pickups: the map's own list, or (maps made for Breach) the same kit spread over the floor, far apart,
+// same on every machine. [cell x, cell z, item]: weapon index, "H" health, "A" armor
+function opsPicks() {
+  if (OPS_M.picks) return OPS_M.picks;
+  if (OPS_M._picks) return OPS_M._picks;
+  const KIT = [10, 10, 5, 5, 8, 1, 9, 9, "H", "H", "H", "H", "A", "A"], home = opsRouterHomes()[0];
+  const cand = OPS_CELLS.open.filter(([x, z]) => OPS_MAP[z][x] === "." && !(OPS_RAMP && OPS_RAMP[z * OG + x]) && Math.hypot(x * CS + 2 - home[0], z * CS + 2 - home[1]) > 10);
+  const out = []; let sd = 9; for (const c of OPS_ID) sd = (sd * 31 + c.charCodeAt(0)) >>> 0;
+  for (const it of KIT) { let best = null, bd = -1;
+    for (let k = 0; k < 40 && cand.length; k++) { sd = (sd * 1103515245 + 12345) >>> 0; const c = cand[sd % cand.length]; const d = out.length ? Math.min(...out.map(o => Math.hypot(o[0] - c[0], o[1] - c[1]))) : 99; if (d > bd) { bd = d; best = c; } }
+    if (best) out.push([best[0], best[1], it]); }
+  return (OPS_M._picks = out);
 }
 function oVoid(x, z) { return !!(OPS_M && OPS_M.sky) && oCh(x, z) === "v"; }
 function oFloorAt(x, z) { return oVoid(x, z) ? OPS_DEEP : oHAt(x, z); }
@@ -7363,12 +7386,13 @@ function makeOps(md) {
     rec: troph ? { label: "Longest router hold", better: "max", fmt: v => v + "s" } : { label: "Most eliminations", better: "max", fmt: v => v + " elims" },
     custom3d: true, md,
     BUY: 9, ROUND: 105, POST: 5, BOMB: 40, PLANT: 3, DEFUSE: 5, WIN: 7, DUR: cap ? 240 : 300, GOAL: 25, HOLD: cap ? 60 : 90,
-    mapList() { return Object.keys(OPS_MAPS).filter(id => !OPS_MAPS[id].dev || store("nfa-dev")).filter(id => arena ? OPS_MAPS[id].only === "golden" || (laser && OPS_MAPS[id].only === "laser") : !OPS_MAPS[id].only).map(id => ({ id, n: OPS_MAPS[id].n, sub: OPS_MAPS[id].sky ? "Sky towers · fall = out · 2–10" : OPS_MAPS[id].only ? "Jump arena · 2–10" : id === "farm" ? "Small · 2–6" : id === "hq" ? "Medium · 4–10" : "Large · 6–16" })); },
+    // every map works in every mode: Breach uses its sites and spawn rooms, the free-for-all modes spread out over all of it
+    mapList() { return Object.keys(OPS_MAPS).filter(id => !OPS_MAPS[id].dev || store("nfa-dev")).map(id => ({ id, n: OPS_MAPS[id].n, sub: (OPS_MAPS[id].sub || "") + " \u00b7 4\u201310" })); },
     fill(nHumans) { if (arena) return Math.max(6, Math.min(10, nHumans)); if (!team) return Math.max(4, Math.min(8, nHumans)); const n = Math.max(6, nHumans + (nHumans % 2)); return Math.min(16, n); },
 
     // ---------------- host ----------------
     hostStart(S) {
-      const n = S.ro.length, mp = arena ? (laser && S.mapPick && OPS_MAPS[S.mapPick] && OPS_MAPS[S.mapPick].only ? S.mapPick : "arena") : S.mapPick && OPS_MAPS[S.mapPick] && !OPS_MAPS[S.mapPick].only ? S.mapPick : opsPickMap(n); opsSetMap(mp);
+      const n = S.ro.length, mp = S.mapPick && OPS_MAPS[S.mapPick] ? S.mapPick : gold ? "arena" : cap ? "sky" : opsPickMap(n); opsSetMap(mp);
       const P = S.ro.map((r, i) => ({ tm: 0, x: 0, z: 0, a: 0, hp: 100, alive: 1, k: 0, d: 0, hsk: 0, as: 0, dmg: 0, pln: 0, dfs: 0, hb: {}, idle: 0, seen: 0, gone: 0, arm: 0, w: -1, cur: 0, cr: 800, rsq: 0, rx: 0, rz: 0, lastClaim: 0, gr: [0, 0], thSeq: 0, lastHitT: -9, actT: 0, ax: 0, az: 0, rT: 0, jh: 0, hold: 0, rkSeq: 0, rkT: -9, kb: 0, kbs: 0, pk: 0, hasTr: 0, bs: 0, shot: null,
         bot: r.b ? { path: [], pT: 0, fT: 0.5, tgt: -1, react: 0, strafe: 1, sT: 0, boss: !!r.boss, goal: null, gT: 0 } : null }));
       if (team) {
@@ -7380,7 +7404,7 @@ function makeOps(md) {
       } else P.forEach((p, i) => { p.tm = i; p.w = gold ? -1 : laser ? LASER : 2; p.pw = 0; p.cur = gold ? 0 : laser ? LASER : 2; });
       OPS_SMOKES = [];
       const homes = opsRouterHomes(), hi = rint(0, homes.length - 1), [hx, hz] = homes[hi];
-      S.g = { gb: [], rk: [], rks: 0, wp: gold ? (OPS_M.picks || []).map(([cx, cz, it]) => ({ x: cx * CS + CS / 2, z: cz * CS + CS / 2, y: oCellH(cx, cz), it, rt: 0 })) : [], tr: troph ? { x: hx, z: hz, y: 0, hx, hz, hi, by: -1, idle: 0 } : null, pr: this.propsFresh(), fx: [], fxs: 0, gn: [], sm: [], gns: 0, md, mp, t: 0, rd: 0, ph: team ? "buy" : "live", pt: 0, sc: [0, 0], P, bomb: { st: 0, x: 0, z: 0, t: 0, site: 0 }, kf: [], kseq: 0, ann: null, aseq: 0, ls: [0, 0], over: false, rsite: 0 };
+      S.g = { gb: [], rk: [], rks: 0, wp: gold ? opsPicks().map(([cx, cz, it]) => ({ x: cx * CS + CS / 2, z: cz * CS + CS / 2, y: oCellH(cx, cz), it, rt: 0 })) : [], tr: troph ? { x: hx, z: hz, y: 0, hx, hz, hi, by: -1, idle: 0 } : null, pr: this.propsFresh(), fx: [], fxs: 0, gn: [], sm: [], gns: 0, md, mp, t: 0, rd: 0, ph: team ? "buy" : "live", pt: 0, sc: [0, 0], P, bomb: { st: 0, x: 0, z: 0, t: 0, site: 0 }, kf: [], kseq: 0, ann: null, aseq: 0, ls: [0, 0], over: false, rsite: 0 };
       if (team) this.startRound(S); else P.forEach((p, i) => this.spawnFFA(S, i, true));
     },
     // ---- breakable props (host)
@@ -8616,6 +8640,15 @@ function makeOps(md) {
       // the light lives in the scene and only its brightness changes: showing or hiding a light changes the number of
       // lights, and three.js then rebuilds every lit shader (a freeze in the middle of a round)
       bomb.add(bb, strap, scr, halo); bomb.visible = false; scene.add(bomb, led); F.bomb = bomb; F.bombLed = led; F.bombScr = scr; F.bombHalo = halo;
+      // ---- site markers: a big A / B floating over each bomb site, seen through walls from anywhere on the map (Breach only)
+      F.siteMk = team && OPS_CELLS.a.length ? OPS_SITE.map((si, k) => {
+        const col = k ? "#3ddc97" : "#4cc9f0", L = k ? "B" : "A";
+        const tx = GFX.tex(128, 128, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = "rgba(10,11,13,.62)"; x.beginPath(); x.arc(w / 2, h / 2, 54, 0, 7); x.fill();
+          x.lineWidth = 7; x.strokeStyle = col; x.beginPath(); x.arc(w / 2, h / 2, 54, 0, 7); x.stroke(); x.fillStyle = col; x.font = "700 70px 'Chakra Petch', sans-serif"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(L, w / 2, h / 2 + 5); });
+        const sp = new T.Sprite(new T.SpriteMaterial({ map: tx, transparent: true, depthTest: false, depthWrite: false })); sp.renderOrder = 12; sp.frustumCulled = false;
+        // over head height, kept under the ceiling (and under the upper floor when the site is downstairs)
+        const fy = si[2] || 0, top = OPS_ML ? mlCeil(si[0], si[1], fy) : fy + (OPS_M.ceilH || OPS_M.wallH || OWH);
+        sp.position.set(si[0], fy + Math.max(1.4, Math.min(2.6, top - fy - 0.5)), si[1]); scene.add(sp); return sp; }) : null;
       // ---- players: character card + soft shadow + team glow ring + gun + muzzle flash
       const shadowM = new T.MeshBasicMaterial({ map: GFX.shadowTex(), transparent: true, depthWrite: false });
       F.markTex = (t, hx) => GFX.tex(64, 64, (x, w, h) => { x.clearRect(0, 0, w, h); x.fillStyle = hx; x.strokeStyle = "#0a0b0d"; x.lineWidth = 6; x.beginPath(); if (t === 0) { x.moveTo(w / 2, 8); x.lineTo(w - 8, h - 10); x.lineTo(8, h - 10); x.closePath(); } else x.rect(12, 12, w - 24, h - 24); x.stroke(); x.fill(); });
@@ -9180,7 +9213,7 @@ function makeOps(md) {
         GFX.skin(ped.material, "metal", 3, 1, { color: 0x4a4f5a, metal: 0.8, rough: 1.2 });
         const tr = new T.Mesh(new T.CylinderGeometry(1.3, 1.3, 0.04, 6), mStd({ color: 0xffc83d, emissive: 0xffb000, emissiveIntensity: 1.2 })); tr.position.set(hx, 0.31, hz); scene.add(tr); });
       // pickups
-      F.picks = (gold ? OPS_M.picks || [] : []).map(([cx, cz, it]) => {
+      F.picks = (gold ? opsPicks() : []).map(([cx, cz, it]) => {
         const x = cx * CS + CS / 2, z = cz * CS + CS / 2, y = oCellH(cx, cz), col = it === "H" ? 0x3ddc97 : it === "A" ? 0x4cc9f0 : new T.Color(OW[it].col).getHex();
         const g = new T.Group(), baseM = mStd({ color: col, emissive: col, emissiveIntensity: 1.4, roughness: 0.4 });
         const base = new T.Mesh(new T.CylinderGeometry(0.62, 0.7, 0.08, 20), mStd({ color: 0x1b1d23, metalness: 0.6, roughness: 0.4 })); base.position.y = 0.04;
@@ -9452,6 +9485,9 @@ function makeOps(md) {
       F.rackMat.emissiveIntensity = 2.6 + Math.sin(t * 3) * 0.6;
       // payload
       const b = g.bomb || [0];
+      if (F.siteMk) { const bs = (b[0] === 1 || b[0] === 2) ? opsSiteAt(b[1], b[2], b[5] || 0) : null;
+        F.siteMk.forEach((sp, k) => { const d = Math.hypot(sp.position.x - F.cam.position.x, sp.position.z - F.cam.position.z), sz = clamp(d * 0.09, 1.2, 6), pl = bs === (k ? "b" : "a");
+          sp.scale.set(sz, sz, 1); sp.material.opacity = (d < 7 ? 0.25 + 0.6 * (d / 7) : 0.85) * (pl && b[0] === 1 ? 0.6 + 0.4 * Math.sin(t * 8) : 1); sp.material.color.set(pl && b[0] === 1 ? 0xff6070 : 0xffffff); }); }
       F.bomb.visible = b[0] === 1 || b[0] === 2; if (!F.bomb.visible) F.bombLed.intensity = 0; else F.bombLed.position.set(b[1], (b[5] || 0) + 0.7, b[2]);
       if (F.bomb.visible) { F.bomb.position.set(b[1], b[5] || 0, b[2]); const rate = b[3] < 100 ? 8 : 3; const on = b[0] === 1 && Math.floor(t * rate) % 2 === 0; F.bombLed.intensity = on ? 12 : 0; F.bombHalo.visible = on || b[0] === 2; F.bombHalo.material.color.set(b[0] === 2 ? 0x3ddc97 : 0xff2a3c); F.bombScr.material.color.set(b[0] === 2 ? 0x3ddc97 : on ? 0xff2a3c : 0x550010); }
       if (b[0] === 1) { const k = b[3] < 100 ? 4 : 1; if (Math.floor(t * k * 2) !== F.beepK) { F.beepK = Math.floor(t * k * 2); if (F.beepK % 2 === 0) SFX.tone(1900, 0.05, "sine", 0.035); } }
