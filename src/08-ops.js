@@ -53,47 +53,47 @@ const OPS_MAPS = {
   "#...#...rrrrrr...#...#",
   "######################",
   ] },
-  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
+  farm: { n: "Server Farm", sub: "Indoor \u00b7 compact", open: true, theme: "farm", ceilH: 6.4, sites: ["COLD AISLE", "HOT AISLE"], spawns: ["LOADING DOCK", "CONTROL ROOM"], rows: [
     "##################",
     "#aaaa.....uuuuuu.#",
     "#aaaa.....uuuuuu.#",
     "#..##..##.##..#..#",
-    "#................#",
+    "#...........1....#",
     "#................#",
     "#..##..##.##..#..#",
     "#.......##.......#",
-    "#..##.#.##.......#",
-    "#.......##.#b##b.#",
+    "#..##.#.22^......#",
+    "#...1..^22.#b##b.#",
     "#.......##..bbbb.#",
     "#..##..##.##..#..#",
-    "#................#",
-    "#................#",
+    "#............1...#",
+    "#....1...........#",
     "#..##..##.##..#..#",
     "#rrrrrr..........#",
     "#rrrrrr..........#",
     "##################",
   ] },
-  sand: { n: "Sandstorm District", sub: "Outdoor streets", theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
+  sand: { n: "Sandstorm District", sub: "Outdoor streets", open: true, theme: "desert", sites: ["MARKET", "OLD BAZAAR"], spawns: ["CANYON ROAD", "COMPOUND"], rows: [
     "##########################",
     "#......###uuuuuu###......#",
     "#..#......uuuuuu.....#...#",
-    "#.........uuuuuu.........#",
+    "#..1......uuuuuu......1..#",
     "#...#....###..#####...#..#",
     "#........###..#####......#",
     "##....#..###..####....####",
     "##....#..###..####bb##..##",
     "##..###aa###....#bbb##..##",
-    "##..###aaaa.....bbbb##..##",
+    "##..###aaaa.1...bbbb##..##",
     "##..###aaaa...####..##..##",
     "##..#########.####..##..##",
     "##..######....####......##",
     "##..######....####.....###",
     "##.#########..#######..###",
     "##.##.........#######..###",
-    "##..#..................###",
-    "##..#..................###",
-    "##..#.........#######..###",
-    "##..#.........#######..###",
+    "##..#..............1...###",
+    "##..#..1...............###",
+    "##..#.........22#####..###",
+    "##..#........^22#####..###",
     "##..####..##..#######..###",
     "##..#####rrrrrrrr####..###",
     "##.......rrrrrrrr......###",
@@ -160,25 +160,25 @@ const OPS_MAPS = {
     "###.....11vvvv.......11#",
     "##########vvvv##########",
   ] },
-  roof: { n: "Rooftop", sub: "Outdoor rooftops", theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
+  roof: { n: "Rooftop", sub: "Outdoor rooftops", open: true, theme: "roof", sites: ["HELIPAD", "WATER TOWER"], spawns: ["STAIRWELL", "ANTENNA FARM"], rows: [
     "########################",
     "#aaaaa.................#",
     "#aaaaa...........uuuuuu#",
     "#aaaaa...##......uuuuuu#",
     "#...##...##....##......#",
-    "#...##.........##......#",
+    "#...##.........##.1....#",
     "#......##..............#",
     "#......##.......##.....#",
-    "#.........##....##.##..#",
-    "#...##....##.......##..#",
-    "#...##........##.......#",
+    "#.........22^...##.##..#",
+    "#...##...^22.......##..#",
+    "#...##.1......##.......#",
     "#...........####.......#",
     "#....#.#..####..##..##.#",
-    "#.##................##.#",
+    "#.##..1.............##.#",
     "#.##..##...##....##bbbb#",
     "#.....##...##....##bbbb#",
     "#.................bbbbb#",
-    "#......................#",
+    "#...........1..........#",
     "#..##....##........##..#",
     "#..##....##....##..##..#",
     "#rrrrrr........##......#",
@@ -1447,7 +1447,7 @@ function makeOps(md) {
         if (onG) {
           F.jh = gNow; F.vy = 0;
           if ((F.wantJump || (arena && KEYS.has("Space"))) && F.cr < 0.5) { F.vy = JV; SFX.jump(0.5); }
-          if (arena && !gNow && oCh(F.me.x, F.me.z) === "^") {
+          if (!gNow && oCh(F.me.x, F.me.z) === "^") {   // jump pads work in every mode
             const J = OPS_JUMP[Math.floor(F.me.z / CS) * OG + Math.floor(F.me.x / CS)];
             if (J) { // booster: a fixed arc that lands on the far side whatever way you walked onto it
               const dx = J[0] - F.me.x, dz = J[1] - F.me.z, T = clamp(Math.hypot(dx, dz) / 15, 0.9, 2.6); F.vel.x = dx / T; F.vel.z = dz / T; F.vy = 8.5 * T; F.padFly = T * 0.82; F.hk = null; SFX.swish(1); SFX.pad(0.9);
@@ -1890,7 +1890,7 @@ function makeOps(md) {
       const mStd = (o) => new T.MeshStandardMaterial(o), metal = mStd({ color: 0x3a3f58, roughness: 0.35, metalness: 0.8 });
       // ---- breakable props
       this.buildProps(V, scene, mStd);
-      if (OPS_M.only || arena) this.buildArena(V, scene, mStd);   // jump decks and pads (map) + pickups and the router (mode)
+      if (OPS_M.only || OPS_M.open || arena) this.buildArena(V, scene, mStd);   // jump decks and pads (map) + pickups and the router (mode)
       F.boomL = new T.PointLight(0xff7a2a, 0, 26, 1.6); F.boomL.position.y = 1.6; scene.add(F.boomL);
       F.vfx = []; F.scorch = []; F.box1 = new T.BoxGeometry(1, 1, 1); F.ringG = new T.RingGeometry(0.82, 1, 48); F.prA = []; F.prS = []; F.prT = [];
       // ---- payload
@@ -2791,7 +2791,7 @@ function makeOps(md) {
       }
       if (Array.isArray(g.fx)) { const mx = g.fx.reduce((m, f) => Math.max(m, f[0]), 0); if (F.fxSeen == null) F.fxSeen = mx; else { g.fx.forEach(f => { if (f[0] > F.fxSeen) { if (f[3] === 3) { const [d, pan] = this.sfxAt(F, f[1], f[2]); SFX.hiss(clamp(1 - d / 40, 0.1, 1), pan); } else this.explode(V, f[1], f[2], f[3], f[4] || 0); } }); F.fxSeen = Math.max(F.fxSeen, mx); } }
       this.nadesDraw(V, g, dt, t);
-      if (OPS_M.only || arena) this.arenaDraw(V, g, dt, t);
+      if (OPS_M.only || OPS_M.open || arena) this.arenaDraw(V, g, dt, t);
       if (g.rd !== F.scRd) { F.scRd = g.rd; F.scorch.forEach(m => { F.scene.remove(m); m.material.dispose(); }); F.scorch = []; }
       F.boomL.intensity = Math.max(0, F.boomL.intensity - dt * (F.boomL.userData.k || 0));
       this.vfxTick(F, dt);
@@ -2867,7 +2867,7 @@ function makeOps(md) {
         ctx.globalAlpha = 1; F.pops = F.pops.filter(o => o.life > 0);
       }
       // gun hint after spawning
-      if (pl && pl[1] && F.spawnHintT > 0 && (!F.shop || F.shop.hidden)) { F.spawnHintT -= dt; ctx.globalAlpha = Math.min(1, F.spawnHintT); ctx.textAlign = "center"; ctx.font = "700 14px 'JetBrains Mono', monospace"; const tx = cap ? "GRAB THE ROUTER · HOLD IT 60 S" : troph ? "GRAB GUNS FROM THE PADS · FIND THE GOLDEN ROUTER" : laser ? (matchMedia("(pointer: coarse)").matches ? "HOOK BUTTON TO SWING" : "RIGHT-CLICK OR F TO HOOK") : matchMedia("(pointer: coarse)").matches ? "TAP BUY FOR GUNS" : "PRESS B FOR GUNS"; const tw = ctx.measureText(tx).width + 28; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.72 - 16, tw, 32, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText(tx, W / 2, H * 0.72); ctx.globalAlpha = 1; }
+      if (pl && pl[1] && F.spawnHintT > 0 && (!F.shop || F.shop.hidden)) { F.spawnHintT -= dt; ctx.globalAlpha = Math.min(1, F.spawnHintT); ctx.textAlign = "center"; ctx.font = "700 14px 'JetBrains Mono', monospace"; const tx = md === "capture" ? "GRAB THE ROUTER · HOLD IT 60 S" : troph ? "GRAB GUNS FROM THE PADS · FIND THE GOLDEN ROUTER" : laser ? (matchMedia("(pointer: coarse)").matches ? "HOOK BUTTON TO SWING" : "RIGHT-CLICK OR F TO HOOK") : matchMedia("(pointer: coarse)").matches ? "TAP BUY FOR GUNS" : "PRESS B FOR GUNS"; const tw = ctx.measureText(tx).width + 28; ctx.fillStyle = "rgba(10,11,13,.75)"; ctx.beginPath(); ctx.roundRect(W / 2 - tw / 2, H * 0.72 - 16, tw, 32, 8); ctx.fill(); ctx.fillStyle = "#ff8a3d"; ctx.fillText(tx, W / 2, H * 0.72); ctx.globalAlpha = 1; }
       F.hurtT = Math.max(0, F.hurtT - dt);
       if (F.hurtT > 0 && !F.post) { const gr = ctx.createRadialGradient(W / 2, H / 2, 160, W / 2, H / 2, 560); gr.addColorStop(0, "rgba(255,40,60,0)"); gr.addColorStop(1, "rgba(255,40,60," + F.hurtT * 1.3 + ")"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
       const alive = pl && pl[1];
@@ -3015,7 +3015,7 @@ function makeOps(md) {
       OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "#") { ctx.fillStyle = "rgba(170,180,230,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "a" || ch === "b") { ctx.fillStyle = ch === "a" ? "rgba(76,201,240,.25)" : "rgba(61,220,151,.25)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
       for (const k in (OPS_M.upSites || {})) { ctx.fillStyle = k === "a" ? "rgba(76,201,240,.3)" : "rgba(61,220,151,.3)"; ctx.strokeStyle = k === "a" ? "#4cc9f0" : "#3ddc97"; ctx.lineWidth = 1; ctx.setLineDash([2, 2]); for (const [x, z] of OPS_M.upSites[k]) { ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); ctx.strokeRect(mx + x * ms + 0.5, my + z * ms + 0.5, ms - 1, ms - 1); } ctx.setLineDash([]); }
       if (OPS_M.sky) OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch === "v") { ctx.fillStyle = "rgba(255,77,94,.16)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } }));
-      if (OPS_M.only) { OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { const hh = oCellH(x, z); if (hh) { ctx.fillStyle = hh > 2 ? "rgba(255,138,61,.45)" : "rgba(76,201,240,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "^") { ctx.fillStyle = "#3ddc97"; ctx.fillRect(mx + x * ms + ms * 0.25, my + z * ms + ms * 0.25, ms * 0.5, ms * 0.5); } }));
+      if (OPS_M.open) { OPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { const hh = oCellH(x, z); if (hh) { ctx.fillStyle = hh > 2 ? "rgba(255,138,61,.45)" : "rgba(76,201,240,.35)"; ctx.fillRect(mx + x * ms, my + z * ms, ms, ms); } else if (ch === "^") { ctx.fillStyle = "#3ddc97"; ctx.fillRect(mx + x * ms + ms * 0.25, my + z * ms + ms * 0.25, ms * 0.5, ms * 0.5); } }));
         if (Array.isArray(g.tr)) { ctx.fillStyle = Math.floor(t * 3) % 2 ? "#ffd23f" : "#fff2b0"; ctx.beginPath(); ctx.arc(mx + g.tr[0] / CS * ms, my + g.tr[2] / CS * ms, 4, 0, 7); ctx.fill(); } }
       ctx.font = "700 12px 'Chakra Petch', sans-serif"; if (OPS_CELLS.a.length) { ctx.textAlign = "center"; ctx.fillStyle = "#4cc9f0"; ctx.fillText("A", mx + OPS_SITE[0][0] / CS * ms, my + OPS_SITE[0][1] / CS * ms); ctx.fillStyle = "#3ddc97"; ctx.fillText(OPS_SITE[1][2] > 1 ? "B\u2191" : "B", mx + OPS_SITE[1][0] / CS * ms, my + OPS_SITE[1][1] / CS * ms); }
       V.ro.forEach((r, i) => {
