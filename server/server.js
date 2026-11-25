@@ -9,6 +9,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const zlib = require("zlib");
 const { WebSocketServer } = require("ws");
 
 const PORT = +process.env.PORT || 4802;
@@ -25,7 +26,7 @@ const MAX_PER_IP = +process.env.MAX_PER_IP || 64;          // generous: a whole 
 const MAX_MATCHES = 5000, MAX_PLAYERS = 2000, MAX_AVATARS = 5000, MAX_AVATAR_BYTES = 256 * 1024;
 const MATCH_FEED = 400;                                    // newest matches sent to each browser
 const MAX_SUBS = 16, MAX_BUFFERED = 8 * 1024 * 1024;
-const MSG_BURST = 240, MSG_PER_SEC = 120;                  // per-connection message budget
+const MSG_BURST = 360, MSG_PER_SEC = 180;                  // per-connection message budget (handles 30-45Hz play + immediate shot/event flushes)
 const MATCH_GAP_MS = 8000;                                 // one saved match per host at most this often
 const LEFT_GRACE_MS = 10000;                               // a dropped player stays listed this long before the others hear they left (Wi-Fi blips, a sleeping laptop)
 const leaving = new Map();                                 // peer -> timer that announces "left"
@@ -159,14 +160,25 @@ function avAllowed(ip) {
 }
 setInterval(() => { const nowT = Date.now(); for (const [ip, list] of avHits) if (!list.some(t => nowT - t < 10 * 60 * 1000)) avHits.delete(ip); }, 5 * 60 * 1000).unref();
 
-let indexCache = null; // { mtimeMs, buf }
-function sendIndex(res) {
+let indexCache = null; // { mtimeMs, buf, gz }
+function sendIndex(req, res) {
   const f = path.join(PUBLIC, "index.html");
   fs.stat(f, (err, st) => {
     if (err) return text(res, 500, "The game files are missing from this server.");
-    const done = (buf) => reply(res, 200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "content-security-policy": CSP }, buf);
-    if (indexCache && indexCache.mtimeMs === st.mtimeMs) return done(indexCache.buf);
-    fs.readFile(f, (e2, buf) => { if (e2) return text(res, 500, "The game files are missing from this server."); indexCache = { mtimeMs: st.mtimeMs, buf }; done(buf); });
+    const done = (c) => {
+      const ae = String(req.headers["accept-encoding"] || "");
+      const useGz = c.gz && /\bgzip\b/i.test(ae);
+      const hdr = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache", "content-security-policy": CSP, "vary": "accept-encoding" };
+      if (useGz) hdr["content-encoding"] = "gzip";
+      reply(res, 200, hdr, useGz ? c.gz : c.buf);
+    };
+    if (indexCache && indexCache.mtimeMs === st.mtimeMs) return done(indexCache);
+    fs.readFile(f, (e2, buf) => {
+      if (e2) return text(res, 500, "The game files are missing from this server.");
+      let gz = null; try { gz = zlib.gzipSync(buf, { level: 6 }); } catch (e3) {}
+      indexCache = { mtimeMs: st.mtimeMs, buf, gz };
+      done(indexCache);
+    });
   });
 }
 const STATIC_CACHE = "public, max-age=604800";
@@ -181,7 +193,7 @@ const server = http.createServer((req, res) => {
   if (url === "/health") return text(res, 200, "ok");
   if (url === "/api/avatar" && req.method === "POST") return avatarUpload(req, res);
   if (!read) { res.setHeader("allow", "GET, HEAD"); return text(res, 405, "Method not allowed"); }
-  if (url === "/" || url === "/index.html") return sendIndex(res);
+  if (url === "/" || url === "/index.html") return sendIndex(req, res);
   // game assets: one flat folder each, plain file names, a fixed list of types
   const sm = /^\/(vendor|sfx|models)\/[a-z0-9_-][a-z0-9._-]*\.([a-z0-9]+)$/i.exec(url);
   if (sm) {
@@ -236,7 +248,7 @@ const clients = new Map(); // ws -> {peer, by, presence, subs: Map, ...}
 const perIp = new Map();   // ip -> open sockets
 const retired = new Map(); // peer -> {tok, until}: seats that a reconnecting browser may take back
 const wss = new WebSocketServer({
-  server, path: "/ws", maxPayload: 128 * 1024,
+  server, path: "/ws", maxPayload: 128 * 1024, perMessageDeflate: false,
   verifyClient(info, cb) {
     if (!originOk(info.req)) { console.warn("Refused a connection from another site:", info.req.headers.origin, "(set ALLOWED_ORIGINS or ORIGIN_CHECK=off if this is your own proxy)"); return cb(false, 403, "Forbidden"); }
     if (clients.size >= MAX_CLIENTS || (perIp.get(ipOf(info.req)) || 0) >= MAX_PER_IP) return cb(false, 503, "Server full");
@@ -267,13 +279,18 @@ function notify(docPath) {
   }
 }
 const sameTok = (a, b) => typeof a === "string" && typeof b === "string" && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const BAD_KEY = /^(__proto__|constructor|prototype)$/;
 function onMessage(ws, c, raw) {
-  // message budget: a normal game sends well under 60 a second
+  // message budget: a normal game sends well under 60 a second (higher burst for 30Hz play + urgent shot flushes)
   const nowT = Date.now(); c.tokens = Math.min(MSG_BURST, c.tokens + (nowT - c.lastT) * MSG_PER_SEC / 1000); c.lastT = nowT;
   if (c.tokens < 1) { if (++c.dropped > 3000) { try { ws.close(1008, "Too many messages"); } catch (e) {} } return; }
   c.tokens -= 1;
   let m; try { m = JSON.parse(raw); } catch (e) { return; }
   if (!m || typeof m !== "object" || typeof m.t !== "string") return;
+  if (m.t === "ping") {
+    if (Number.isFinite(m.ts)) send(ws, { t: "pong", ts: m.ts });
+    return;
+  }
   if (m.t === "hello") {
     if (c.hello) return;
     c.by = typeof m.uid === "string" && UID.test(m.uid) ? m.uid : null;
@@ -297,6 +314,27 @@ function onMessage(ws, c, raw) {
     if (Buffer.byteLength(typeof raw === "string" ? raw : raw.toString()) > MAX_PRESENCE + 64) return;
     c.presence = m.presence;
     broadcast({ t: "p", peer: c.peer, by: c.by, presence: c.presence }, ws);
+  } else if (m.t === "pp") {
+    // incremental presence patch: only changed fields travel over the wire (e.g. player input `in` without resending profile)
+    if (!c.hello || !m.patch || typeof m.patch !== "object" || Array.isArray(m.patch)) return;
+    if (Buffer.byteLength(typeof raw === "string" ? raw : raw.toString()) > MAX_PRESENCE + 64) return;
+    const next = Object.assign({}, c.presence), clean = {};
+    for (const k of Object.keys(m.patch)) {
+      if (BAD_KEY.test(k)) continue;
+      const v = m.patch[k];
+      if (v === null) { delete next[k]; clean[k] = null; } else { next[k] = v; clean[k] = v; }
+    }
+    if (Buffer.byteLength(JSON.stringify(next)) > MAX_PRESENCE + 64) return;
+    c.presence = next;
+    broadcast({ t: "pp", peer: c.peer, by: c.by, patch: clean }, ws);
+  } else if (m.t === "hg") {
+    // compact host game tick: updates live game state without re-sending static roster / metadata every 33 ms
+    if (!c.hello || !c.presence || !c.presence.h || typeof m.id !== "string" || c.presence.h.id !== m.id) return;
+    if (Buffer.byteLength(typeof raw === "string" ? raw : raw.toString()) > MAX_PRESENCE + 64) return;
+    c.presence.h.sq = m.sq;
+    if (Number.isFinite(m.tl)) c.presence.h.tl = m.tl;
+    c.presence.h.g = m.g;
+    broadcast({ t: "hg", peer: c.peer, id: m.id, sq: m.sq, tl: c.presence.h.tl, g: m.g }, ws);
   } else if (m.t === "sub") {
     if (typeof m.id !== "string" || m.id.length > 24 || typeof m.path !== "string" || !SUB_PATH.test(m.path)) return;
     if (!c.subs.has(m.id) && c.subs.size >= MAX_SUBS) return;
@@ -329,6 +367,7 @@ function onMessage(ws, c, raw) {
   }
 }
 wss.on("connection", (ws, req) => {
+  try { if (req.socket && req.socket.setNoDelay) req.socket.setNoDelay(true); } catch (e) {}
   const ip = ipOf(req); perIp.set(ip, (perIp.get(ip) || 0) + 1);
   const c = { peer: crypto.randomBytes(8).toString("hex"), by: null, tok: null, presence: {}, subs: new Map(), hello: false, replaced: false, tokens: MSG_BURST, lastT: Date.now(), dropped: 0, lastMatch: 0 };
   clients.set(ws, c);

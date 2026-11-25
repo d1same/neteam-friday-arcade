@@ -129,6 +129,7 @@ function connectServer(timeoutMs = 2500) {
 function makeServerBackend(firstWs) {
   let uid = store("nfa-uid"); if (!uid) { uid = "u-" + randId(14); store("nfa-uid", uid); }
   let ws = firstWs, myPeer = null, mine = {}, isOpen = false;
+  let pingMs = null, pingT = 0, lastSentPing = -99;
   // a secret for this page load: lets us take our seat back (same peer id) after a network blip,
   // so a match in progress carries on instead of dropping us
   const tok = (() => { try { return Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, "0")).join(""); } catch (e) { return randId(16) + randId(16); } })();
@@ -145,33 +146,74 @@ function makeServerBackend(firstWs) {
   let subSeq = 0;
   function flush() {
     sched = false;
-    snap = Object.freeze(Array.from(peers.values()));
+    snap = Array.from(peers.values());
     const ch = { peers: snap, joined: pend.joined, left: pend.left, updated: pend.updated };
     pend = { joined: [], left: [], updated: [] };
     handlers.forEach(h => { try { h(ch); } catch (e) { console.error(e); } });
   }
-  function notify() { if (!sched) { sched = true; requestAnimationFrame ? setTimeout(flush, 0) : flush(); } }
+  const defer = typeof queueMicrotask === "function" ? queueMicrotask : (fn) => Promise.resolve().then(fn);
+  function notify() { if (!sched) { sched = true; defer(flush); } }
   function upsert(peer, by, presence) {
     const isMe = peer === myPeer;
     const had = peers.has(peer);
-    const p = Object.freeze({ peer, by, isMe, sameTab: isMe, kind: "viewer", guest: false, presence: Object.freeze(presence || {}), updatedAt: Date.now() });
+    const p = { peer, by, isMe, sameTab: isMe, kind: "viewer", guest: false, presence: presence || {}, updatedAt: Date.now() };
     peers.set(peer, p);
     (had ? pend.updated : pend.joined).push(p);
     notify();
   }
+  function patchPeer(peer, by, patch) {
+    const cur = peers.get(peer);
+    const next = Object.assign({}, cur ? cur.presence : {});
+    for (const k in patch) { if (patch[k] === null) delete next[k]; else next[k] = patch[k]; }
+    upsert(peer, by != null ? by : (cur ? cur.by : null), next);
+  }
+  function applyHostTick(peer, id, sq, tl, g) {
+    const cur = peers.get(peer);
+    if (!cur || !cur.presence || !cur.presence.h || cur.presence.h.id !== id) return;
+    const nh = Object.assign({}, cur.presence.h, { sq, tl, g });
+    const next = Object.assign({}, cur.presence, { h: nh });
+    upsert(peer, cur.by, next);
+  }
   function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
-  let lastP = 0, pT = 0;
-  function sendPresence() {
-    const n = Date.now();
-    if (n - lastP < 33) { if (!pT) pT = setTimeout(() => { pT = 0; sendPresence(); }, 34); return; }
-    lastP = n; send({ t: "p", presence: mine });
+  let lastP = 0, pT = 0, dirtyPatch = null;
+  function flushPatch(force) {
+    if (!dirtyPatch) return;
+    const n = performance.now();
+    if (!force && n - lastP < 16) {
+      if (!pT) pT = setTimeout(() => { pT = 0; flushPatch(true); }, Math.max(1, 16 - (n - lastP)));
+      return;
+    }
+    if (pT) { clearTimeout(pT); pT = 0; }
+    lastP = n;
+    const patch = dirtyPatch; dirtyPatch = null;
+    send({ t: "pp", patch });
+  }
+  function startPing() {
+    clearInterval(pingT);
+    const go = () => { if (ws && ws.readyState === 1 && isOpen) send({ t: "ping", ts: performance.now() }); };
+    setTimeout(go, 400);
+    pingT = setInterval(go, 2000);
   }
   function attach(sock) {
     ws = sock;
     ws.onmessage = (ev) => {
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.t === "pong") {
+        if (Number.isFinite(m.ts)) {
+          const rtt = Math.max(0, Math.min(2000, performance.now() - m.ts));
+          pingMs = pingMs == null ? rtt : pingMs * 0.65 + rtt * 0.35;
+          NET.pingMs = Math.round(pingMs);
+          if (Math.abs(NET.pingMs - lastSentPing) >= 3) {
+            lastSentPing = NET.pingMs;
+            room.presence({ pg: NET.pingMs });
+          }
+        }
+        return;
+      }
+      if (m.t === "hg") { if (m.peer !== myPeer) applyHostTick(m.peer, m.id, m.sq, m.tl, m.g); return; }
+      if (m.t === "pp") { if (m.peer !== myPeer && m.patch) patchPeer(m.peer, m.by, m.patch); return; }
       if (m.t === "welcome") {
-        myPeer = m.peer; isOpen = true;
+        myPeer = m.peer; isOpen = true; dirtyPatch = null;
         // after a reconnect only the people who really went away count as left (no flicker for everyone else)
         const back = new Set((m.peers || []).map(x => x.peer));
         for (const [k, p] of peers) if (k !== myPeer && !back.has(k)) { pend.left.push(p); peers.delete(k); }
@@ -181,6 +223,7 @@ function makeServerBackend(firstWs) {
         send({ t: "p", presence: mine });
         for (const [id, s] of subs) send({ t: "sub", id, path: s.path, kind: s.kind });
         while (outbox.length) send(outbox.shift());
+        startPing();
         connHandlers.forEach(f => f(true));
       } else if (m.t === "p") { if (m.peer !== myPeer) upsert(m.peer, m.by, m.presence); }
       else if (m.t === "left") { const p = peers.get(m.peer); if (p) { pend.left.push(p); peers.delete(m.peer); notify(); } }
@@ -188,22 +231,38 @@ function makeServerBackend(firstWs) {
       else if (m.t === "db") { const s = subs.get(m.id); if (s) s.cb(m.data); }
     };
     ws.onclose = () => {
-      isOpen = false; connHandlers.forEach(f => f(false));
+      isOpen = false; clearInterval(pingT); connHandlers.forEach(f => f(false));
       const retry = () => setTimeout(async () => { const s = await connectServer(4000); if (s) attach(s); else retry(); }, 1500);
       retry();
     };
     ws.send(JSON.stringify(myPeer ? { t: "hello", uid, tok, peer: myPeer } : { t: "hello", uid, tok }));
   }
+  function applyMine(patch, force) {
+    const m = Object.assign({}, mine);
+    if (!dirtyPatch) dirtyPatch = {};
+    for (const k in patch) {
+      if (patch[k] === null) { delete m[k]; dirtyPatch[k] = null; }
+      else { m[k] = patch[k]; dirtyPatch[k] = patch[k]; }
+    }
+    mine = m;
+    if (myPeer) upsert(myPeer, uid, mine);
+    flushPatch(force);
+    return Promise.resolve();
+  }
   const room = {
     server: true, uid,
-    presence(patch) {
-      const m = Object.assign({}, mine);
-      for (const k in patch) { if (patch[k] === null) delete m[k]; else m[k] = patch[k]; }
-      mine = JSON.parse(JSON.stringify(m));
+    presence(patch) { return applyMine(patch, false); },
+    presenceFast(patch) { return applyMine(patch, true); },
+    sendHostTick(id, sq, tl, g) {
+      if (!mine.h || mine.h.id !== id) return false;
+      const nh = Object.assign({}, mine.h, { sq, tl, g });
+      mine = Object.assign({}, mine, { h: nh });
       if (myPeer) upsert(myPeer, uid, mine);
-      sendPresence();
-      return Promise.resolve();
+      if (dirtyPatch && dirtyPatch.h) { dirtyPatch.h = nh; flushPatch(true); return true; }
+      send({ t: "hg", id, sq, tl, g });
+      return true;
     },
+    ping() { return pingMs == null ? null : Math.round(pingMs); },
     peers() { return snap; },
     onPeers(fn) { handlers.add(fn); setTimeout(() => fn({ peers: snap, joined: snap, left: [], updated: [] }), 0); return () => handlers.delete(fn); },
     connected() { return isOpen; },

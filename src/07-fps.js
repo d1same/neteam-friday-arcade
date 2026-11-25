@@ -75,12 +75,37 @@ function fCellPath(sx, sz, tx, tz) { // BFS on open cells; returns list of [cx,c
 }
 const FPS_OPEN = []; FPS_MAP.forEach((r, z) => [...r].forEach((ch, x) => { if (ch !== "#") FPS_OPEN.push([x, z]); }));
 // player aim preferences (kept per browser)
-function lookPrefs() { const L = store("nfa-look") || {}; return { iy: !!L.iy, ix: !!L.ix, s: clamp(+L.s || 1, 0.3, 3) }; }
-function saveLookPrefs(L) { store("nfa-look", { iy: !!L.iy, ix: !!L.ix, s: L.s }); }
+function lookPrefs() {
+  const L = store("nfa-look") || {};
+  return {
+    iy: !!L.iy, ix: !!L.ix,
+    s: clamp(+L.s || 1, 0.3, 3),
+    ss: clamp(+L.ss || 0.35, 0.15, 1),
+    fov: clamp(+L.fov || 78, 68, 104),
+    ch: typeof L.ch === "string" && ["dyn", "static", "dot", "cross"].includes(L.ch) ? L.ch : "dyn",
+    chc: typeof L.chc === "string" && /^#[0-9a-f]{6}$/i.test(L.chc) ? L.chc : "#a0ffc8",
+  };
+}
+function saveLookPrefs(L) {
+  store("nfa-look", {
+    iy: !!L.iy, ix: !!L.ix,
+    s: clamp(+L.s || 1, 0.3, 3),
+    ss: clamp(+L.ss || 0.35, 0.15, 1),
+    fov: clamp(+L.fov || 78, 68, 104),
+    ch: L.ch || "dyn",
+    chc: L.chc || "#a0ffc8",
+  });
+}
 function syncLookPanel(F) {
   const sp = F && F.setPanel; if (!sp) return; const L = lookPrefs();
-  sp.querySelector('[data-k="iy"]').checked = L.iy; sp.querySelector('[data-k="ix"]').checked = L.ix;
-  sp.querySelector('[data-k="s"]').value = L.s; sp.querySelector("[data-v]").textContent = L.s.toFixed(1) + "×";
+  const q = (sel) => sp.querySelector(sel);
+  if (q('[data-k="iy"]')) q('[data-k="iy"]').checked = L.iy;
+  if (q('[data-k="ix"]')) q('[data-k="ix"]').checked = L.ix;
+  if (q('[data-k="s"]')) { q('[data-k="s"]').value = L.s; if (q("[data-v]")) q("[data-v]").textContent = L.s.toFixed(1) + "×"; }
+  if (q('[data-k="ss"]')) { q('[data-k="ss"]').value = L.ss; if (q("[data-ssv]")) q("[data-ssv]").textContent = Math.round(L.ss * 100) + "%"; }
+  if (q('[data-k="fov"]')) { q('[data-k="fov"]').value = L.fov; if (q("[data-fovv]")) q("[data-fovv]").textContent = Math.round(L.fov) + "°"; }
+  if (q('[data-k="ch"]')) q('[data-k="ch"]').value = L.ch;
+  if (q('[data-k="chc"]')) q('[data-k="chc"]').value = L.chc;
 }
 function loadThree() {
   if (window.THREE) return Promise.resolve(true);
@@ -716,7 +741,7 @@ const frenzy = {
       ctx.strokeStyle = "rgba(245,241,230,.35)"; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc((F.stick.bx - r.left) / s, (F.stick.by - r.top) / s, 55 / s, 0, Math.PI * 2); ctx.stroke();
       ctx.fillStyle = "rgba(245,241,230,.35)"; ctx.beginPath(); ctx.arc((F.stick.x - r.left) / s, (F.stick.y - r.top) / s, 22 / s, 0, Math.PI * 2); ctx.fill();
     }
-    if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !matchMedia("(pointer: coarse)").matches && t % 2 < 1.6 && !F.firedOnce) {
+    if (me >= 0 && V.h.ph === "play" && !document.pointerLockElement && !IS_COARSE && t % 2 < 1.6 && !F.firedOnce) {
       ctx.textAlign = "center"; ctx.fillStyle = "#f5f1e6"; ctx.font = "700 15px Inter, sans-serif"; ctx.fillText("Click to lock your mouse and aim · Esc to release · I = invert up/down", W / 2, H - 20);
     }
     if (document.pointerLockElement) F.firedOnce = true;

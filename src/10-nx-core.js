@@ -57,9 +57,11 @@ const NX = {
   drs: { k: 1, acc: 0, n: 0, hold: 4, cool: 6, up: 0, sum: 0, cnt: 0, told: false },
   drsReset() { const D = NX.drs; D.k = 1; D.acc = 0; D.n = 0; D.hold = 4; D.cool = 6; D.up = 0; D.sum = 0; D.cnt = 0; D.told = false; },
   drsTick(dtMs) {
-    const D = NX.drs; if (!(dtMs > 0) || dtMs > 250) return D.k; D.acc += dtMs; D.n++; if (D.n < 30) return D.k;
-    const avg = D.acc / D.n, goal = NX.frameGoal(); D.acc = 0; D.n = 0;
-    if (avg > goal * 1.23 && D.k > 0.5) { if (D.up) D.cool = Math.min(64, D.cool * 2); D.up = 0; D.k = Math.max(0.5, D.k * (avg > goal * 1.8 ? 0.8 : 0.9)); D.hold = D.cool; }
+    const D = NX.drs; if (!(dtMs > 0) || dtMs > 250) return D.k; D.acc += dtMs; D.n++; if (D.n < 20) return D.k;
+    const avg = D.acc / D.n, goal = NX.frameGoal();
+    if (D.n < 30 && avg <= goal * 1.3) return D.k;
+    D.acc = 0; D.n = 0;
+    if (avg > goal * 1.22 && D.k > 0.5) { if (D.up) D.cool = Math.min(64, D.cool * 2); D.up = 0; D.k = Math.max(0.5, D.k * (avg > goal * 1.8 ? 0.8 : 0.9)); D.hold = D.cool; }
     else if (D.hold > 0) D.hold--;
     else if (avg < goal * 1.056 && D.k < 1) { D.k = Math.min(1, D.k + 0.1); D.up = 1; D.hold = 2; }
     else D.up = 0;
@@ -92,7 +94,8 @@ const NX = {
     const N = P.ts.length, avg = P.ts.reduce((a, b) => a + b, 0) / N;
     P.hist = P.hist.concat(P.ts).slice(-480); const s = P.hist.slice().sort((a, b) => a - b), low = s[Math.min(s.length - 1, Math.floor(s.length * 0.99))];
     const T = NX.tier(), lvl = ({ low: "Performance", medium: "Medium", high: "High", ultra: "Ultra" })[T.name] + (T.auto ? " (auto)" : "");
-    const rows = [Math.round(1000 / avg) + " FPS   " + avg.toFixed(1) + " ms   slowest " + Math.round(low) + " ms"];
+    const pg = typeof NET !== "undefined" && NET.pingMs != null ? "   ping " + NET.pingMs + " ms" : "";
+    const rows = [Math.round(1000 / avg) + " FPS   " + avg.toFixed(1) + " ms   slowest " + Math.round(low) + " ms" + pg];
     if (inGame && now - P.live < 1500) {
       if (P.gN) { P.gpuMs = P.gAcc / P.gN; P.gAcc = 0; P.gN = 0; }
       rows.push("script " + (P.js / P.n).toFixed(1) + " ms (drawing " + (P.draw / P.n).toFixed(1) + ")" + (P.gpuMs >= 0 ? "   graphics card " + P.gpuMs.toFixed(1) + " ms" : ""));

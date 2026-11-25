@@ -305,7 +305,18 @@ void main(){ vec3 d = normalize( vDir );
   // give everything that is not part of the static world the probe lighting (and a place in the shadow pass)
   adopt(S, obj, opt) {
     const cast = S.shadow && opt && opt.cast;
-    obj.traverse(o => { if (!o.isMesh || o.userData.nxStatic) return; const ms = Array.isArray(o.material) ? o.material : [o.material]; for (const m of ms) if (m && m.isMeshStandardMaterial && !m.userData.nx) NX.patchDynamic(m, S); if (cast) o.castShadow = true; if (S.shadow && o.castShadow && !o.userData.nxCast) { o.layers.enable(2); o.userData.nxCast = 1; } });
+    const walk = (o) => {
+      if (!o || o === S.group || o.userData.nxStatic) return;
+      if (o.isMesh) {
+        const ms = Array.isArray(o.material) ? o.material : [o.material];
+        for (let i = 0; i < ms.length; i++) { const m = ms[i]; if (m && m.isMeshStandardMaterial && !m.userData.nx) NX.patchDynamic(m, S); }
+        if (cast) o.castShadow = true;
+        if (S.shadow && o.castShadow && !o.userData.nxCast) { o.layers.enable(2); o.userData.nxCast = 1; }
+      }
+      const ch = o.children;
+      for (let i = 0; i < ch.length; i++) walk(ch[i]);
+    };
+    walk(obj);
   },
   keep(S) { const ps = S.renderer.info.programs; if (ps && ps.length !== S.pn) { for (let i = 0; i < ps.length; i++) if (!ps[i].nxKeep) { ps[i].nxKeep = 1; ps[i].usedTimes++; } S.pn = ps.length; } },
   update(S, dt, t) {

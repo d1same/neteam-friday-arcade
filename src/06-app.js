@@ -2,8 +2,8 @@
 const APP = {
   me: null, sel: store("nfa-sel") || "coverage", bots: store("nfa-bots") !== false,
   view: "lobby", S: null, hostTimer: 0, V: null, optOut: null,
-  matches: [], tab: "today", myIn: null, lastInJson: "", lastInSend: 0,
-  emoteSeen: {}, emoteAt: {}, boardKey: "",
+  matches: [], tab: "hof", tabPicked: false, myIn: null, lastInJson: "", lastInSend: 0, lastUrgentKey: "",
+  emoteSeen: {}, emoteAt: {}, boardKey: "", _resizeRev: 0,
 };
 if (!GAMES[APP.sel] || !GAME_ORDER.includes(APP.sel)) APP.sel = GAME_ORDER[0];
 (function loadMe() {
@@ -29,25 +29,34 @@ function findHost() {
   }
   return best;
 }
-// Other players arrive 15 to 25 times a second. Instead of easing toward the last position (which trails and then
-// jumps), remember when each update arrived and how fast they were moving, look a little ahead along that motion and
-// glide there at the same rate whatever the frame rate. vx/vz: speed sent with the update (cars), else measured.
+// Other players arrive ~30 times a second. Instead of trailing behind and jumping, use their true velocity when sent
+// (or smoothed measured velocity otherwise), look slightly ahead along that motion, stop crisply when velocity is zero,
+// and converge at a frame-rate-independent exponential rate.
 function netSmooth(o, ref, x, z, vx, vz, dt, snap, ahead) {
   const t = performance.now();
-  if (!o.init || o.nsT == null || Math.hypot(o.x - x, o.z - z) > snap) { o.x = x; o.z = z; o.init = true; o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t; o.nvx = 0; o.nvz = 0; return o; }
+  if (!o.init || o.nsT == null || Math.hypot(o.x - x, o.z - z) > snap) { o.x = x; o.z = z; o.init = true; o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t; o.nvx = vx || 0; o.nvz = vz || 0; return o; }
   if (ref !== o.nsRef || x !== o.nsX || z !== o.nsZ) {
     const gap = Math.max(0.016, (t - o.nsT) / 1000);
-    if (vx == null) { const mx = clamp((x - o.nsX) / gap, -24, 24), mz = clamp((z - o.nsZ) / gap, -24, 24); const k = gap > 0.3 ? 1 : 0.4; o.nvx += (mx - o.nvx) * k; o.nvz += (mz - o.nvz) * k; }
-    else { o.nvx = vx; o.nvz = vz; }
+    if (vx == null || vz == null) {
+      const mx = clamp((x - o.nsX) / gap, -24, 24), mz = clamp((z - o.nsZ) / gap, -24, 24);
+      const k = gap > 0.25 ? 1 : 0.45;
+      o.nvx += (mx - o.nvx) * k; o.nvz += (mz - o.nvz) * k;
+    } else {
+      o.nvx = clamp(vx, -80, 80); o.nvz = clamp(vz, -80, 80);
+    }
     o.nsRef = ref; o.nsX = x; o.nsZ = z; o.nsT = t;
   }
-  // look ahead by the time since the update, fading out when no new one comes (they stopped, or the update is late)
-  const age = (t - o.nsT) / 1000, la = age < ahead ? age : Math.max(0, ahead - (age - ahead));
-  const tx = o.nsX + o.nvx * la, tz = o.nsZ + o.nvz * la, k = 1 - Math.exp(-(dt || 0) * 16);
+  // look ahead by elapsed time since the packet arrived, decaying cleanly to zero if the packet is late or player stopped
+  const age = (t - o.nsT) / 1000;
+  const stopped = Math.abs(o.nvx) < 0.08 && Math.abs(o.nvz) < 0.08;
+  const la = stopped ? 0 : (age < ahead ? age : Math.max(0, ahead - (age - ahead) * 1.4));
+  const tx = o.nsX + o.nvx * la, tz = o.nsZ + o.nvz * la;
+  const k = 1 - Math.exp(-(dt || 0) * 20);
   o.x += (tx - o.x) * k; o.z += (tz - o.z) * k;
   return o;
 }
 function setPresence(patch) { if (NET.room) NET.room.presence(patch).catch(() => {}); }
+function setPresenceFast(patch) { if (NET.room) (NET.room.presenceFast ? NET.room.presenceFast(patch) : NET.room.presence(patch)).catch(() => {}); }
 function myPresence() { return { v: 1, nick: APP.me.nick || "New tech", c: APP.me.c, uid: NET.uid }; }
 
 // ---------- host ----------
@@ -69,9 +78,24 @@ function roomState(S) {
   all.forEach(r => { if (!r.u) return; const q = best[r.u]; if (!q || rank(r) > rank(q)) best[r.u] = r; });
   return all.filter(r => { if (!r.u) return true; const q = best[r.u]; if (q !== r) { q.t = (q.t || 1) + 1; return false; } return true; }).map(r => { delete r.u; return r; }).slice(0, 24);
 }
+function hostMetaKey(S) {
+  return S.ph + "|" + S.ro.map(r => r.k + ":" + r.col).join(",") + "|" + (S.saved || "") + "|" + (S.ph === "ready" ? (S.allT > 0 ? 1 : 0) + ":" + (S.rr ? S.rr.map(r => r.k + r.v + r.mv).join(",") : "") : "");
+}
+function sendHostState(S, forceFull) {
+  const mod = GAMES[S.game];
+  const mk = hostMetaKey(S);
+  const full = forceFull || mk !== S._metaKey || S.ph !== "play" || !NET.room || !NET.room.sendHostTick;
+  if (full) {
+    S._metaKey = mk;
+    setPresenceFast({ h: packH() });
+  } else {
+    const tl = mod.timeLeft(S), g = S.g ? mod.pack(S) : null;
+    if (!NET.room.sendHostTick(S.id, ++S.sq, tl, g)) { S._metaKey = mk; setPresenceFast({ h: packH() }); }
+  }
+}
 function startSession(gameId) {
   if (findHost()) { toast("A game is already running. Hop in when it ends."); return; }
-  const S = { id: randId(8), since: Date.now(), game: gameId, ph: "ready", phT: READY_MS, seed: (Math.random() * 1e9) | 0, ro: [], rr: [], sq: 0, saved: null, res: null, rdyT: 0, hr: 0, hv: "", allT: 0 };
+  const S = { id: randId(8), since: Date.now(), game: gameId, ph: "ready", phT: READY_MS, seed: (Math.random() * 1e9) | 0, ro: [], rr: [], sq: 0, saved: null, res: null, rdyT: 0, hr: 0, hv: "", allT: 0, _metaKey: "", _urgent: false };
   APP.S = S; APP.optOut = null;
   S.rr = roomState(S);
   let last = now(), lastSend = 0;
@@ -81,15 +105,21 @@ function startSession(gameId) {
     // steps, up to two seconds) so the match clock and the bots don't crawl for everyone when the host tabs away.
     if (APP.S !== S) return;
     const t = now(); let left = clamp(t - last, 0, 2000); last = t;
+    const prevPh = S.ph, prevKseq = S.g ? (S.g.kseq || 0) : 0, prevFxs = S.g ? (S.g.fxs || 0) : 0, prevAseq = S.g ? (S.g.aseq || 0) : 0, prevEvN = S.g ? (S.g.evN || 0) : 0;
     while (left > 0.5 && APP.S === S) { const d = Math.min(left, 50); hostTick(d); left -= d; }
-    if (t - lastSend > 60 && APP.S) {
+    if (!APP.S) return;
+    const urgent = S._urgent || S.ph !== prevPh || (S.g && ((S.g.kseq || 0) !== prevKseq || (S.g.fxs || 0) !== prevFxs || (S.g.aseq || 0) !== prevAseq || (S.g.evN || 0) !== prevEvN));
+    const gap = S.ph === "play" ? 32 : 90;
+    if ((urgent || t - lastSend >= gap) && APP.S) {
+      S._urgent = false;
       lastSend = t;
       // two people pressed Start at the same moment: the older game wins, the other host stands down
       const other = findHost(); if (other && other.h.id !== APP.S.id && other.peer !== NET.myPeerLabel()) { endSession(); toast("Someone else started a game first. Joining theirs."); return; }
-      setPresence({ h: packH() });
+      sendHostState(S, S.ph !== prevPh);
     }
   });
-  setPresence({ h: packH(), rdy: { s: S.id, v: 0 } });
+  S._metaKey = hostMetaKey(S);
+  setPresenceFast({ h: packH(), rdy: { s: S.id, v: 0 } });
   SFX.play("start");
 }
 // most-voted map wins (ties broken at random); no votes = picked automatically from the player count
@@ -137,7 +167,7 @@ function launchSession() {
   S.ro = ro; S.ph = "intro"; S.phT = 6500; S.rr = null;
   S.ro.forEach(r => r.hex = PALETTE[r.col]);
   mod.hostStart(S);
-  setPresence({ h: packH() });
+  sendHostState(S, true);
 }
 function hostTick(dtMs) {
   const S = APP.S; if (!S) return;
@@ -341,6 +371,7 @@ function resizeGame() {
   if (h > bh) { h = bh; w = bh * W / H; }
   cv.style.width = Math.floor(w) + "px"; cv.style.height = Math.floor(h) + "px";
   APP.gameScale = w / W;
+  APP._resizeRev = (APP._resizeRev || 0) + 1;
 }
 addEventListener("resize", () => { if (APP.view === "game") resizeGame(); drawCards(); });
 
@@ -354,6 +385,11 @@ function readInput() {
   const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
   const dash = pendingDash; pendingDash = false;
   return { dx, dy, dash };
+}
+function urgentInputKey(o) {
+  if (!o) return "";
+  const hc = o.hc, lastHc = Array.isArray(hc) && hc.length ? hc[hc.length - 1][0] : 0;
+  return (o.sh || 0) + "|" + lastHc + "|" + (o.th ? o.th[0] : 0) + "|" + (o.rk ? o.rk[0] : 0) + "|" + (o.buy ? o.buy[0] : 0) + "|" + (o.tp ? o.tp[0] : 0) + "|" + (o.use || 0) + "|" + (o.fire || 0);
 }
 function gameFrame(dt, t) {
   const host = findHost();
@@ -379,13 +415,15 @@ function gameFrame(dt, t) {
     V.prevPh = ph;
     renderOverlay(V, true);
   } else if (ph === "results" && V.h.saved !== V.shownSaved) renderOverlay(V, false);
-  // input
+  // input: urgent combat/race events flush with 0ms delay; steady movement streams at ~33Hz
   const inp = readInput();
   const out = mod.clientInput(V, dt, inp);
   if (V.meIdx >= 0 && out) {
     APP.myIn = Object.assign({ s: V.sid }, out);
+    const uk = urgentInputKey(out), urgent = uk !== APP.lastUrgentKey;
     const j = JSON.stringify(APP.myIn), tt = now();
-    if (j !== APP.lastInJson && tt - APP.lastInSend > 45) { APP.lastInJson = j; APP.lastInSend = tt; setPresence({ in: APP.myIn }); }
+    if (urgent) { APP.lastUrgentKey = uk; APP.lastInJson = j; APP.lastInSend = tt; setPresenceFast({ in: APP.myIn }); }
+    else if (j !== APP.lastInJson && tt - APP.lastInSend >= 30) { APP.lastInJson = j; APP.lastInSend = tt; setPresence({ in: APP.myIn }); }
   }
   // timer
   const tl = Math.max(0, (V.h.tl || 0) - V.age);
@@ -767,7 +805,7 @@ function updateLobby() {
   renderHero();
   // net pill
   const dot = $("#netDot"), txt = $("#netText");
-  if (NET.server) { const on = NET.room.connected(); dot.className = "dot" + (on ? " on" : ""); txt.textContent = on ? "Online" : "Reconnecting…"; }
+  if (NET.server) { const on = NET.room.connected(); dot.className = "dot" + (on ? " on" : ""); txt.textContent = on ? (NET.pingMs != null ? "Online · " + NET.pingMs + " ms" : "Online") : "Reconnecting…"; }
   else if (NET.local) { dot.className = "dot solo"; txt.textContent = "This browser only"; }
   else if (NET.room) { dot.className = "dot on"; txt.textContent = "Live"; }
 }
@@ -848,6 +886,10 @@ function onMatches(snap) {
   APP.matches = snap.docs.map(d => d.data()).filter(m => m && typeof m === "object" && gameOf(m.g) && Array.isArray(m.ps))
     .map(m => { const at = Number.isFinite(+m.at) ? +m.at : 0; return Object.assign({}, m, { at, day: typeof m.day === "string" ? m.day : dayKey(at), ps: m.ps.filter(p => p && typeof p === "object") }); })
     .sort((a, b) => b.at - a.at);
+  if (!APP.tabPicked) {
+    const td = dayKey(Date.now());
+    if (APP.matches.some(m => m.day === td && !m.solo)) APP.tab = "today";
+  }
   renderBoard();
 }
 function aggregate(ms) {
@@ -898,6 +940,68 @@ function renderBoard() {
     const recEl = $('.game-card[data-g="' + id + '"] .rec');
     if (recEl) { recEl.textContent = ""; if (best) { const b = document.createElement("b"); b.textContent = mod.rec.fmt(best.v); recEl.append("Record ", b); } else recEl.textContent = "No record yet"; }
   });
+  const tab = APP.tab || "hof";
+  $$("#boardTabs button").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  const titleEl = $("#boardTitle") || $(".board h2"), noteEl = $("#boardNote");
+  if (tab === "today") {
+    if (titleEl) titleEl.textContent = "Today's League";
+    if (noteEl) noteEl.textContent = "Points for today's group matches (2+ real people). First place scores top points; solo games show in the feed below.";
+    const td = dayKey(Date.now());
+    const todays = APP.matches.filter(m => m.day === td);
+    const groupMs = todays.filter(m => !m.solo);
+    const standings = aggregate(groupMs);
+    $("#boardSub").textContent = groupMs.length ? groupMs.length + (groupMs.length === 1 ? " match" : " matches") + " today" : "Friday standings";
+    if (standings.length) {
+      const rows = mkEl("div", "rows");
+      standings.slice(0, 12).forEach((o, i) => {
+        const row = mkEl("div", "row" + (i === 0 ? " first" : ""));
+        if (o.u === NET.uid) row.style.boxShadow = "inset 3px 0 0 var(--bulb)";
+        const who = mkEl("div", "who");
+        who.append(mkEl("b", null, o.n || "Tech"), mkEl("small", null, o.wins + (o.wins === 1 ? " win" : " wins") + " · " + o.games + (o.games === 1 ? " game" : " games")));
+        const pts = mkEl("div", "pts", String(o.pts)); pts.append(mkEl("small", null, "PTS"));
+        row.append(mkEl("div", "rank", String(i + 1)), avatarCanvas(o.c || [0, 0, 0, 0, 0], 38), who, pts);
+        rows.append(row);
+      });
+      body.append(rows);
+    } else {
+      body.append(mkEl("div", "empty", "No group matches yet today — grab a coworker and start a game!"));
+    }
+    if (todays.length) {
+      const feed = mkEl("div", "feed");
+      feed.append(mkEl("h4", null, "Recent today"));
+      const ul = mkEl("ul");
+      todays.slice(0, 6).forEach(m => {
+        const mod = gameOf(m.g); if (!mod) return;
+        const win = m.ps.find(p => p.pl === 1) || m.ps[0];
+        const li = mkEl("li");
+        li.append(mkEl("span", null, mod.title + (win ? " · " + (cleanNick(win.n) || "Tech") : "") + (m.solo ? " (solo)" : "")), mkEl("span", null, win && win.sc != null && mod.rec ? mod.rec.fmt(+win.sc) : ""));
+        ul.append(li);
+      });
+      feed.append(ul); body.append(feed);
+    }
+    return;
+  }
+  if (tab === "records") {
+    if (titleEl) titleEl.textContent = "Mode Records";
+    if (noteEl) noteEl.textContent = "Best single-match performance recorded on this server for each game mode.";
+    const held = GAME_ORDER.filter(id => recs[id]).length;
+    $("#boardSub").textContent = held + " / " + GAME_ORDER.length + " set";
+    const box = mkEl("div", "records hof");
+    GAME_ORDER.forEach(id => {
+      const mod = GAMES[id], best = recs[id], row = mkEl("div", "record");
+      row.append(avatarCanvas(best ? validChar(best.p.c) || [0, 0, 0, 0, 0] : [0, 9, 3, 0, 0], 38));
+      const mid = mkEl("div"); mid.style.minWidth = "0";
+      const nm = mkEl("div", null, best ? cleanNick(best.p.n) || "Tech" : "Up for grabs"); nm.style.fontWeight = "700";
+      mid.append(mkEl("div", "lbl", mod.title + " · " + mod.rec.label), nm);
+      row.append(mid, mkEl("div", "val", best ? mod.rec.fmt(best.v) : "—"));
+      if (best && best.p.u === NET.uid) row.classList.add("mine");
+      box.append(row);
+    });
+    body.append(box);
+    return;
+  }
+  if (titleEl) titleEl.textContent = "Hall of Fame";
+  if (noteEl) noteEl.textContent = "All time, everyone who has played on this server. Real people only, bots never count. Kills against bots count too; wins need 2+ people.";
   const all = APP.stats || [];
   $("#boardSub").textContent = all.length ? all.length + " player" + (all.length > 1 ? "s" : "") : "";
   const box = mkEl("div", "records hof");
@@ -1015,6 +1119,7 @@ function bindEvents() {
   $("#soundBtn").textContent = SFX.on ? "🔊" : "🔇";
   $("#setBtn").addEventListener("click", (e) => { e.stopPropagation(); let sp = $("#homeSettings"); if (!sp) { sp = opsSettingsPanel(); sp.id = "homeSettings"; sp.classList.add("set-home"); document.body.appendChild(sp); const box = sp; document.addEventListener("click", (ev) => { if (!box.hidden && !box.contains(ev.target)) box.hidden = true; }); document.addEventListener("keydown", (ev) => { if (ev.key === "Escape") box.hidden = true; }); } else syncLookPanel({ setPanel: sp }); sp.hidden = !sp.hidden; });
   $$(".emote").forEach(b => b.addEventListener("click", () => { SFX.ensure(); setPresence({ em: { e: b.dataset.e, t: Date.now() } }); }));
+  $$("#boardTabs button").forEach(b => b.addEventListener("click", () => { APP.tab = b.dataset.tab || "hof"; APP.tabPicked = true; SFX.play("blip"); renderBoard(); }));
   $("#fsBtn").addEventListener("click", toggleFullscreen);
   $("#leaveBtn").addEventListener("click", () => {
     if (APP.S && APP.V && APP.S.id === APP.V.sid) { endSession(); toast("You ended the game for everyone."); }
@@ -1031,7 +1136,7 @@ function bindEvents() {
     KEYS.add(e.code);
     if (e.repeat) return;
     if (e.code === "KeyF" && !e.ctrlKey && !e.metaKey) toggleFullscreen();
-    if (V.ready) { if ((e.code === "KeyR" || e.code === "Enter")) setReady(V, V.myRdy ? 0 : 1); return; }
+    if (V.ready) { if ((e.code === "KeyR" || e.code === "Enter" || e.code === "Space")) setReady(V, V.myRdy ? 0 : 1); return; }
     if (V.mod.id === "sumo" && e.code === "Space") pendingDash = true;
     if (V.mod.id === "alert" && (e.code === "Space" || e.code === "Enter")) alert.tap(V);
     if (V.mod.id === "alert" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) alert.tap(V, +e.code.slice(-1) - 1);

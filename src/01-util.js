@@ -19,10 +19,20 @@ function shuffle(arr, rnd = Math.random) {
   for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
   return arr;
 }
+const _storeCache = Object.create(null);
+try { addEventListener("storage", (e) => { if (e.key) delete _storeCache[e.key]; else for (const k in _storeCache) delete _storeCache[k]; }); } catch (e) {}
+const IS_COARSE = (() => { try { return matchMedia("(pointer: coarse)").matches; } catch (e) { return false; } })();
 function store(key, val) {
   try {
-    if (val === undefined) { const v = localStorage.getItem(key); return v == null ? null : JSON.parse(v); }
+    if (val === undefined) {
+      if (key !== "nfa-local-db" && Object.prototype.hasOwnProperty.call(_storeCache, key)) return _storeCache[key];
+      const v = localStorage.getItem(key);
+      const parsed = v == null ? null : JSON.parse(v);
+      if (key !== "nfa-local-db") _storeCache[key] = parsed;
+      return parsed;
+    }
     localStorage.setItem(key, JSON.stringify(val));
+    if (key !== "nfa-local-db") _storeCache[key] = val;
   } catch (e) { return null; }
 }
 function sstore(key, val) {

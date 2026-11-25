@@ -107,6 +107,10 @@ const GFX = {
   },
   // size the 3D canvas to fill the whole stage (the 16:10 HUD canvas floats centred on top of it)
   fitStage(F, cam) {
+    const g = store("nfa-gfx") || {}, rs = g.rs || 0;
+    const rev = (APP._resizeRev || 0) + ":" + rs;
+    if (F._fitRev === rev && F.w > 0 && F.h > 0) return;
+    F._fitRev = rev;
     const box = $("#stagebox"), gc = $("#gameCanvas"), w = box.clientWidth || 960, h = box.clientHeight || 600, pr = this.pxRatio(w, h);
     if (F.w !== w || F.h !== h || F.pr !== pr) { F.w = w; F.h = h; F.pr = pr; F.renderer.setPixelRatio(pr); F.renderer.setSize(w, h, false); Object.assign(F.cv.style, { width: w + "px", height: h + "px", left: "0px", top: "0px", borderRadius: "0" }); cam.aspect = w / h; cam.updateProjectionMatrix(); }
     const gw = parseFloat(gc.style.width) || 960, gh = parseFloat(gc.style.height) || 600; F.gw = gw; F.gh = gh; pinToStage(F, gw, gh);
