@@ -83,16 +83,26 @@ const GFX = {
     return GFX._ppl = GFX.track(GFX.operator().then(() => Promise.all(N.map(n => Promise.all([load("person-" + n + ".glb?v=1"), tex("person-" + n + "-mask.png?v=2")])))).then((L) => {
       if (L.some(([g, m]) => !g || !m)) return null; const o = {}; L.forEach(([g, m], k) => { g.userData.mask = m; g.userData.mean = PEOPLE_MEAN[N[k]]; o[N[k]] = g; }); return o; }));
   },
-  // a cloud of glowing points drawn in one call (sparks, chips of light): emit() adds one, update() moves and fades them all
-  cloud(scene, N, size) {
+  // a cloud of points drawn in one call (sparks, chips of light, or normal-blended crimson droplets): emit() adds one, update() moves and fades them all
+  cloud(scene, N, size, opt) {
     const T = THREE, g = new T.BufferGeometry(), P = new T.BufferAttribute(new Float32Array(N * 3), 3), C = new T.BufferAttribute(new Float32Array(N * 3), 3); g.setAttribute("position", P); g.setAttribute("color", C);
-    const m = new T.Points(g, new T.PointsMaterial({ map: GFX.glowTex(), size, sizeAttenuation: true, vertexColors: true, transparent: true, blending: T.AdditiveBlending, depthWrite: false })); m.frustumCulled = false; m.renderOrder = 5; m.visible = false; scene.add(m);
+    const norm = opt && opt.normal;
+    const m = new T.Points(g, new T.PointsMaterial({ map: norm ? GFX.dropTex() : GFX.glowTex(), size, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: norm ? 0.92 : 1, blending: norm ? T.NormalBlending : T.AdditiveBlending, depthWrite: false })); m.frustumCulled = false; m.renderOrder = 5; m.visible = false; scene.add(m);
     const v = new Float32Array(N * 3), life = new Float32Array(N), max = new Float32Array(N), c = new Float32Array(N * 3); let n = 0, live = 0;
+    const bounce = !norm;
     return { m,
       emit(x, y, z, vx, vy, vz, lf, r, gg, b) { const o = n++ % N; P.setXYZ(o, x, y, z); v[o * 3] = vx; v[o * 3 + 1] = vy; v[o * 3 + 2] = vz; life[o] = max[o] = lf; c[o * 3] = r; c[o * 3 + 1] = gg; c[o * 3 + 2] = b; live = Math.max(live, lf + 0.1); },
       update(dt, grav) {
         if (live <= 0) { if (m.visible) m.visible = false; return; } live -= dt; m.visible = true;
-        for (let o = 0; o < N; o++) { if (life[o] <= 0) continue; life[o] -= dt; const f = Math.max(0, life[o] / max[o]); v[o * 3 + 1] -= grav * dt; P.setXYZ(o, P.getX(o) + v[o * 3] * dt, Math.max(0.02, P.getY(o) + v[o * 3 + 1] * dt), P.getZ(o) + v[o * 3 + 2] * dt); C.setXYZ(o, c[o * 3] * f, c[o * 3 + 1] * f, c[o * 3 + 2] * f); }
+        for (let o = 0; o < N; o++) {
+          if (life[o] <= 0) continue; life[o] -= dt;
+          const f = Math.max(0, life[o] / max[o]), k = o * 3;
+          v[k + 1] -= grav * dt;
+          let ny = P.getY(o) + v[k + 1] * dt;
+          if (ny < 0.02) { ny = 0.02; if (bounce && v[k + 1] < -0.6) { v[k + 1] = -v[k + 1] * 0.38; v[k] *= 0.65; v[k + 2] *= 0.65; } else { v[k + 1] = 0; v[k] *= 0.5; v[k + 2] *= 0.5; } }
+          P.setXYZ(o, P.getX(o) + v[k] * dt, ny, P.getZ(o) + v[k + 2] * dt);
+          if (norm) { const d = 0.35 + 0.65 * f; C.setXYZ(o, c[k] * d, c[k + 1] * d, c[k + 2] * d); } else C.setXYZ(o, c[k] * f, c[k + 1] * f, c[k + 2] * f);
+        }
         P.needsUpdate = C.needsUpdate = true;
       } };
   },
@@ -132,6 +142,8 @@ const GFX = {
     const t = new THREE.CanvasTexture(o); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.copy(srcTex.repeat); t.anisotropy = 8; return t;
   },
   glowTex(col = "#ffffff") { return this._glow || (this._glow = this.tex(128, 128, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.25, "rgba(255,255,255,.55)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); })); },
+  dropTex() { return this._drop || (this._drop = this.tex(64, 64, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w * 0.46); g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.55, "rgba(255,255,255,.85)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); })); },
+  tracerTex() { return this._trTex || (this._trTex = this.tex(16, 128, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "rgba(255,255,255,0)"); g.addColorStop(0.45, "rgba(255,235,190,.35)"); g.addColorStop(0.88, "rgba(255,248,220,.95)"); g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); })); },
   shadowTex() { return this._shad || (this._shad = this.tex(64, 64, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 0, w / 2, h / 2, w / 2); g.addColorStop(0, "rgba(0,0,0,.6)"); g.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = g; x.fillRect(0, 0, w, h); })); },
   flashTex() { return this._flash || (this._flash = this.tex(128, 128, (x, w, h) => { x.translate(w / 2, h / 2); for (let k = 0; k < 7; k++) { x.rotate(Math.PI * 2 / 7 + Math.random() * 0.3); const g = x.createLinearGradient(0, 0, 60, 0); g.addColorStop(0, "rgba(255,240,200,1)"); g.addColorStop(1, "rgba(255,160,40,0)"); x.fillStyle = g; x.beginPath(); x.moveTo(0, -7); x.lineTo(58 * (0.6 + Math.random() * 0.4), 0); x.lineTo(0, 7); x.fill(); } const g = x.createRadialGradient(0, 0, 0, 0, 0, 26); g.addColorStop(0, "rgba(255,255,240,1)"); g.addColorStop(1, "rgba(255,200,80,0)"); x.fillStyle = g; x.beginPath(); x.arc(0, 0, 26, 0, 7); x.fill(); })); },
 

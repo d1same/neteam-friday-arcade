@@ -209,7 +209,7 @@ const RCCAR = {
       #ifdef USE_METALNESSMAP
       if (uPaintLum > 0.0) { float pm = texture2D(metalnessMap, vMetalnessMapUv).r;
         vec3 pc = uPaint * clamp(dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)) / uPaintLum, 0.25, 2.2);
-        diffuseColor.rgb = mix(diffuseColor.rgb, pc, pm); roughnessFactor = mix(roughnessFactor, 0.16, pm); metalnessFactor = mix(metalnessFactor, 0.55, pm); }
+        diffuseColor.rgb = mix(diffuseColor.rgb, pc, pm); roughnessFactor = mix(roughnessFactor, 0.12, pm); metalnessFactor = mix(metalnessFactor, 0.62, pm); }
       #endif`);
   },
   _paintKey() { return "rcpaint1"; },
@@ -217,18 +217,18 @@ const RCCAR = {
   makeReal(T, hex, num, k) {
     const R = RCCAR.real[k], body = new T.Group(), own = [];
     R.body.children.forEach(m0 => { let mt = m0.material;
-      if (mt === R.paint) { mt = R.paint.clone(); mt.userData.rcp = { col: { value: new T.Color(hex) }, lum: { value: R.lum } }; mt.onBeforeCompile = RCCAR._paintObc; mt.customProgramCacheKey = RCCAR._paintKey; mt.userData.exObc = RCCAR._paintObc; mt.userData.exKey = "rcpaint1"; mt.envMapIntensity = 1.3; own.push(mt); }
+      if (mt === R.paint) { mt = R.paint.clone(); mt.userData.rcp = { col: { value: new T.Color(hex) }, lum: { value: R.lum } }; mt.onBeforeCompile = RCCAR._paintObc; mt.customProgramCacheKey = RCCAR._paintKey; mt.userData.exObc = RCCAR._paintObc; mt.userData.exKey = "rcpaint1"; mt.envMapIntensity = 1.55; own.push(mt); }
       const m = new T.Mesh(m0.geometry, mt); m.name = m0.name; if (/glass/.test(mt.name)) m.renderOrder = 2; body.add(m); });
     // brake lights: a lit strip across the tail that flares when the driver brakes
-    const brake = new T.Mesh(RCCAR._brG || (RCCAR._brG = new T.PlaneGeometry(1, 1)), new T.MeshBasicMaterial({ color: new T.Color(2.4, 0.12, 0.16), transparent: true, opacity: 0.0, blending: T.AdditiveBlending, depthWrite: false }));
-    brake.scale.set(R.hw * 1.5, 0.09, 1); brake.position.set(0, R.top * 0.62, R.L0 - 0.02); brake.rotation.y = Math.PI; body.add(brake); own.push(brake.material);
+    const brake = new T.Mesh(RCCAR._brG || (RCCAR._brG = new T.PlaneGeometry(1, 1)), new T.MeshBasicMaterial({ color: new T.Color(2.8, 0.14, 0.18), transparent: true, opacity: 0.0, blending: T.AdditiveBlending, depthWrite: false }));
+    brake.scale.set(R.hw * 1.52, 0.1, 1); brake.position.set(0, R.top * 0.62, R.L0 - 0.02); brake.rotation.y = Math.PI; body.add(brake); own.push(brake.material);
     const wheels = R.hubs.map(h => { const st = new T.Group(), w = new T.Object3D(); st.position.set(h.x, h.y, h.z); st.add(w); return { st, w, front: h.front, side: h.side }; });
     return { body, wheels, brake, real: R, own, sh: { tailY: R.top * 0.62, seatY: R.top - 0.35, headY: R.top * 0.55, L0: R.L0, L1: R.L1, hw: R.hw, wr: R.wr } };
   },
   // one car: returns the body group (add it to the car's root), the four wheels and a few anchor points
   make(T, hex, num, si) {
     const C = RCCAR, sh = C.shape(T, si), M = C.mats(T), W = C.wheel(T), body = new T.Group();
-    const lv = C.livery(T, hex, num, si), paintM = new T.MeshStandardMaterial({ map: lv, metalness: 0.6, roughness: 0.2, envMapIntensity: 1.25 });
+    const lv = C.livery(T, hex, num, si), paintM = new T.MeshStandardMaterial({ map: lv, metalness: 0.65, roughness: 0.16, envMapIntensity: 1.45 });
     const dt = C.door(T, hex, num), doorM = new T.MeshStandardMaterial({ map: dt, transparent: true, roughness: 0.4, metalness: 0.2, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, depthWrite: false });
     body.add(new T.Mesh(sh.paint, paintM), new T.Mesh(sh.trim, M.trim), new T.Mesh(sh.head, M.head), new T.Mesh(sh.tail, M.tail));
     const gl = new T.Mesh(sh.glass, M.glass); gl.renderOrder = 2; body.add(gl);

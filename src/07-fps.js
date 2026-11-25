@@ -142,11 +142,11 @@ const frenzy = {
     for (const s of FPS_SPAWNS) { const d = others.length ? Math.min(...others.map(q => Math.hypot(q.x - s[0], q.z - s[1]))) : Math.random() * 10; if (d > bs) { bs = d; best = s; } }
     return best;
   },
-  damage(S, tgt, from) {
+  damage(S, tgt, from, head) {
     const g = S.g, q = g.P[tgt];
     if (!q.alive) return;
     if (q.sh > 0) { q.sh--; return; }
-    q.hp -= this.DMG;
+    q.hp -= head ? 50 : this.DMG;
     if (q.hp <= 0) {
       q.hp = 0; q.alive = 0; q.rT = 3; q.de++;
       if (from >= 0 && from !== tgt) g.P[from].sc++;
@@ -175,7 +175,8 @@ const frenzy = {
             const tg = c[1] | 0; const q = P[tg];
             if (!q || tg === i || !q.alive) continue;
             if (Math.hypot(q.x - p.x, q.z - p.z) > 60) continue;
-            this.damage(S, tg, i);
+            if (!fLOS(p.x, p.z, q.x, q.z)) continue;
+            this.damage(S, tg, i, !!c[2]);
           }
           p.lastClaim = mx;
         }
@@ -312,6 +313,7 @@ const frenzy = {
     const F = V.fps; if (!F) return;
     (F.unbind || []).forEach(f => f());
     if (document.pointerLockElement) try { document.exitPointerLock(); } catch (e) {}
+    if (F.post) try { F.post.dispose(); } catch (e) {}
     if (F.renderer) { try { F.renderer.dispose(); F.renderer.forceContextLoss(); } catch (e) {} }
     if (F.cv) F.cv.remove();
     if (F.fireBtn) F.fireBtn.remove();
@@ -405,6 +407,7 @@ const frenzy = {
     renderer.outputColorSpace = T.SRGBColorSpace;
     renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
     F.renderer = renderer;
+    if (window.GFX && GFX.post) F.post = GFX.post(renderer, { strength: 0.78, threshold: 0.85, vignette: 0.34, low: GFX.lowEnd() });
     const scene = new T.Scene(); F.scene = scene;
     scene.background = new T.Color(0x070915);
     scene.fog = new T.FogExp2(0x101436, 0.035);
@@ -563,7 +566,7 @@ const frenzy = {
   },
   fire(V) {
     const F = V.fps, me = F.me;
-    SFX.tone(1200, 0.08, "sawtooth", 0.035, -700);
+    SFX.shot("laser", 0.55, 0, 0);
     F.recoil = 1; if (F.flash) F.flash.intensity = 6;
     const cp = Math.cos(me.p), dir = [-Math.sin(me.a) * cp, Math.sin(me.p), -Math.cos(me.a) * cp];
     const h = Math.hypot(dir[0], dir[2]) || 1e-6;
@@ -573,26 +576,38 @@ const frenzy = {
     let t = tHoriz / h;
     if (dir[1] < -1e-4) t = Math.min(t, EYE / -dir[1]);
     if (dir[1] > 1e-4) t = Math.min(t, (3.4 - EYE) / dir[1]);
-    // players
-    let hitIdx = -1;
+    // players: accurate vertical cylinder with point-blank overlap fallback + headshot zone (y >= 1.38)
+    let hitIdx = -1, hitHead = false, hitSh = false;
     V.ro.forEach((r, i) => {
       if (i === V.meIdx) return;
       const pl = V.g && V.g.pl && V.g.pl[i]; if (!pl || !pl[1]) return;
       const av = F.remote[i]; if (!av) return;
-      // ray vs vertical cylinder radius 0.5, height 0..1.9
       const ox = me.x - av.x, oz = me.z - av.z;
       const a = dir[0] * dir[0] + dir[2] * dir[2], b = 2 * (ox * dir[0] + oz * dir[2]), c = ox * ox + oz * oz - 0.5 * 0.5;
+      if (a < 1e-6) {
+        if (c > 0) return;
+        const y0 = EYE; if (y0 < 0 || y0 > 1.95) return;
+        t = 0.05; hitIdx = i; hitHead = y0 >= 1.38; hitSh = pl[5] > 0; return;
+      }
       const disc = b * b - 4 * a * c; if (disc < 0) return;
-      const th = (-b - Math.sqrt(disc)) / (2 * a); if (th <= 0 || th >= t) return;
+      const sq = Math.sqrt(disc), t0 = (-b - sq) / (2 * a), t1 = (-b + sq) / (2 * a);
+      const th = t0 > 0 ? t0 : (t1 > 0 ? 0.05 : -1);
+      if (th <= 0 || th >= t) return;
       const y = EYE + dir[1] * th; if (y < 0 || y > 1.95) return;
-      t = th; hitIdx = i;
+      t = th; hitIdx = i; hitHead = y >= 1.38; hitSh = pl[5] > 0;
     });
     const end = [me.x + dir[0] * t, EYE + dir[1] * t, me.z + dir[2] * t];
     const start = [me.x - Math.sin(me.a) * 0.6 + Math.cos(me.a) * 0.22, EYE - 0.18, me.z - Math.cos(me.a) * 0.6 - Math.sin(me.a) * 0.22];
     const hex = V.ro[V.meIdx].hex;
     this.addTracer(V, start, end, hex);
     F.shotN++; F.lastShot = [F.shotN, +end[0].toFixed(2), +end[1].toFixed(2), +end[2].toFixed(2)];
-    if (hitIdx >= 0) { F.claims.push([++F.claimN, hitIdx]); F.hitT = 0.25; SFX.tone(1800, 0.06, "square", 0.05); }
+    if (hitIdx >= 0) {
+      F.claims.push([++F.claimN, hitIdx, hitHead ? 1 : 0]);
+      F.hitT = 0.28; F.hitMode = hitSh ? 2 : hitHead ? 1 : 0;
+      if (hitSh) { SFX.shield(0.45); FX.text(W / 2, H / 2 - 34, "SHIELD BLOCKED", "#4cc9f0", 0.9); }
+      else if (hitHead) { SFX.hit(1, 0, 3); FX.text(W / 2, H / 2 - 36, "HEADSHOT -50", "#ffd23f", 1.0); }
+      else { SFX.hit(0, 0, 2); }
+    }
   },
   draw(ctx, V, dt, t) {
     const F = V.fps; const g = V.g || {};
@@ -629,13 +644,14 @@ const frenzy = {
     F.flash.intensity = Math.max(0, F.flash.intensity - dt * 60);
     F.rackMat.emissiveIntensity = 1.2 + Math.sin(t * 3) * 0.25;
     // avatars
+    const kSm = 1 - Math.exp(-dt * 18);
     V.ro.forEach((r, i) => {
       const av = F.avatars[i]; const pl = g.pl && g.pl[i];
       let x, z, a;
       if (r.b) { const b = g.bt && g.bt[i]; if (!b) return; [x, z, a] = b; }
       else { const inp = V.inputOf(i); if (inp && Number.isFinite(inp.x)) { x = inp.x; z = inp.z; a = inp.a || 0; } else { if (!av.init) return; x = av.x; z = av.z; a = av.a || 0; } }
       if (!av.init || Math.hypot(av.x - x, av.z - z) > 6) { av.x = x; av.z = z; av.init = true; }
-      av.x = lerp(av.x, x, 0.3); av.z = lerp(av.z, z, 0.3); av.a = a;
+      av.x = lerp(av.x, x, kSm); av.z = lerp(av.z, z, kSm); av.a = a;
       F.remote[i] = { x: av.x, z: av.z, a };
       av.grp.position.set(av.x, 0, av.z);
       const alive = !pl || pl[1];
@@ -647,9 +663,9 @@ const frenzy = {
       if (Array.isArray(shot) && shot[0] !== F.shSeen[i]) {
         const first = F.shSeen[i] === undefined; F.shSeen[i] = shot[0];
         if (!first && i !== V.meIdx) {
-          this.addTracer(V, [av.x - Math.sin(a) * 0.5, 1.2, av.z - Math.cos(a) * 0.5].map((v, k) => k === 1 ? v : v), [shot[1], shot[2], shot[3]], r.hex);
+          this.addTracer(V, [av.x - Math.sin(a) * 0.5, 1.2, av.z - Math.cos(a) * 0.5], [shot[1], shot[2], shot[3]], r.hex);
           const d = Math.hypot(av.x - F.me.x, av.z - F.me.z);
-          if (d < 25) SFX.tone(1000, 0.06, "sawtooth", 0.02 * (1 - d / 25), -500);
+          if (d < 30) SFX.shot("laser", 0.35 * (1 - d / 30), 0, clamp(d / 30, 0, 0.9));
         }
       }
     });
@@ -660,7 +676,7 @@ const frenzy = {
     F.tracers = F.tracers.filter(o => o.life > 0);
     for (const o of F.sparks) { o.life -= dt; const k = Math.max(0, o.life / 0.25); o.m.material.opacity = k; o.m.scale.setScalar(1 + (1 - k) * 2.5); if (o.life <= 0) { F.scene.remove(o.m); o.m.material.dispose(); } }
     F.sparks = F.sparks.filter(o => o.life > 0);
-    F.renderer.render(F.scene, F.cam);
+    if (F.post) F.post.render(F.scene, F.cam, t); else F.renderer.render(F.scene, F.cam);
   },
   hud(ctx, V, dt, t) {
     const F = V.fps, g = V.g || {};
@@ -678,7 +694,7 @@ const frenzy = {
       F.pevSeen = g.pev[2];
       if (g.pev[0] === me) { const type = PICK_TYPES[g.pev[1] % PICK_TYPES.length]; FX.text(W / 2, H / 2 + 70, PICK_NAMES[type] + "!", type === "oc" ? "#ffd23f" : type === "heal" ? "#3ddc97" : "#4cc9f0", 1.2); SFX.play("pop"); }
     }
-    if (pl) { if (pl[0] < F.lastHp && pl[1]) { F.hurtT = 0.4; SFX.play("bump"); } F.lastHp = pl[0]; }
+    if (pl) { if (pl[0] < F.lastHp && pl[1]) { F.hurtT = 0.4; SFX.hurt(1, 0, false); } F.lastHp = pl[0]; }
     // hurt vignette
     F.hurtT = Math.max(0, F.hurtT - dt);
     if (F.hurtT > 0) { const gr = ctx.createRadialGradient(W / 2, H / 2, 150, W / 2, H / 2, 560); gr.addColorStop(0, "rgba(255,59,78,0)"); gr.addColorStop(1, "rgba(255,59,78," + (F.hurtT * 1.4) + ")"); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); }
@@ -689,7 +705,13 @@ const frenzy = {
       ctx.strokeStyle = "rgba(245,241,230,.9)"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(cx - 12, cy); ctx.lineTo(cx - 5, cy); ctx.moveTo(cx + 5, cy); ctx.lineTo(cx + 12, cy); ctx.moveTo(cx, cy - 12); ctx.lineTo(cx, cy - 5); ctx.moveTo(cx, cy + 5); ctx.lineTo(cx, cy + 12); ctx.stroke();
       F.hitT = Math.max(0, F.hitT - dt);
-      if (F.hitT > 0) { ctx.strokeStyle = "rgba(255,107,87," + F.hitT * 4 + ")"; ctx.lineWidth = 3; ctx.beginPath(); for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.moveTo(cx + sx * 8, cy + sy * 8); ctx.lineTo(cx + sx * 15, cy + sy * 15); } ctx.stroke(); }
+      if (F.hitT > 0) {
+        const a = Math.min(1, F.hitT * 4), col = F.hitMode === 2 ? `rgba(76,201,240,${a})` : F.hitMode === 1 ? `rgba(255,210,63,${a})` : `rgba(255,107,87,${a})`;
+        const r0 = F.hitMode === 1 ? 7 : 8, r1 = F.hitMode === 1 ? 18 : 15;
+        ctx.strokeStyle = col; ctx.lineWidth = F.hitMode === 1 ? 3.5 : 3; ctx.beginPath();
+        for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { ctx.moveTo(cx + sx * r0, cy + sy * r0); ctx.lineTo(cx + sx * r1, cy + sy * r1); }
+        ctx.stroke();
+      }
     }
     // health + status
     if (pl) {

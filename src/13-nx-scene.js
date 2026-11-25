@@ -18,7 +18,7 @@ const NXS = {
       nxSunDir: { value: W.sun ? new T.Vector3(W.sun.dir[0], W.sun.dir[1], W.sun.dir[2]).normalize() : new T.Vector3(0, 1, 0) },
       nxSunCol: { value: W.sun ? new T.Vector3(W.sun.E[0], W.sun.E[1], W.sun.E[2]) : new T.Vector3() },
       // x: reflection strength per unit of light, y: minimum reflection, z: strength of bump shading from baked light, w: extra reflection in sunlight
-      nxK: { value: new T.Vector4(0.2, 0.035, 0.9, 0.45) }, nxHaze: { value: new T.Vector4(0.0013, 0.85, 0, 0) },
+      nxK: { value: new T.Vector4(0.22, 0.038, 1.04, 0.48) }, nxHaze: { value: new T.Vector4(0.0013, 0.85, 0, 0) },
       nxShadow: { value: null }, nxShadowM: { value: new T.Matrix4() }, nxShadowP: { value: new T.Vector4(1 / 2048, 1.7, 0, 0.0005) },
       nxProbe: { value: null }, nxProbeP: { value: new T.Vector4(1, 0.5, 0, 0) },
       // room reflections. P: 1 / map size, largest mip, -, on. T: 1 / atlas width, 1 / atlas height
@@ -44,6 +44,18 @@ const NXS = {
       const dc = NXD.paint(W); S.decalTex = new T.CanvasTexture(dc); S.decalTex.colorSpace = T.SRGBColorSpace; S.decalTex.anisotropy = tier.aniso; S.trash.push(S.decalTex);
       NXS.makeMats(S);
       NXS.buildMeshes(S, baked ? baked.vl : null);
+      if (tier.i >= 1 && W.fixtures && W.fixtures.length) {
+        const nf = W.fixtures.length, fp = new Float32Array(nf * 3), fc = new Float32Array(nf * 3);
+        for (let i = 0; i < nf; i++) {
+          const fx = W.fixtures[i], c0 = fx.col || [1, 0.9, 0.8], mx = Math.max(0.01, c0[0], c0[1], c0[2]);
+          const k = fx.kind === "bar" ? 0.24 : 0.34;
+          fp[i * 3] = fx.x; fp[i * 3 + 1] = fx.y - 0.06; fp[i * 3 + 2] = fx.z;
+          fc[i * 3] = (c0[0] / mx) * k; fc[i * 3 + 1] = (c0[1] / mx) * k; fc[i * 3 + 2] = (c0[2] / mx) * k;
+        }
+        const fg = new T.BufferGeometry(); fg.setAttribute("position", new T.BufferAttribute(fp, 3)); fg.setAttribute("color", new T.BufferAttribute(fc, 3));
+        const fm = new T.PointsMaterial({ map: GFX.glowTex(), size: 1.35, sizeAttenuation: true, vertexColors: true, transparent: true, opacity: 0.72, blending: T.AdditiveBlending, depthWrite: false });
+        const pts = new T.Points(fg, fm); pts.userData.nxStatic = 1; pts.renderOrder = 15; S.group.add(pts); S.trash.push(fg, fm);
+      }
       if (city) NXS.buildCity(S, city);
       scene.add(S.group);
       NXS.initShadow(S);

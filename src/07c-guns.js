@@ -7,25 +7,52 @@ const GUNS = {
   mats(T) {
     if (this._m) return this._m;
     const S = (o) => new T.MeshStandardMaterial(o);
-    const grain = GFX.tex(64, 64, (x, w, h) => { x.fillStyle = "#808080"; x.fillRect(0, 0, w, h); for (let i = 0; i < 900; i++) { const v = 108 + Math.random() * 40 | 0; x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5); } });
-    grain.repeat.set(6, 6); const nrm = GFX.normal(grain, 0.6);
-    const wood = GFX.tex(128, 64, (x, w, h) => { x.fillStyle = "#6b4226"; x.fillRect(0, 0, w, h); for (let i = 0; i < 60; i++) { x.strokeStyle = Math.random() < 0.5 ? "rgba(40,22,10,.35)" : "rgba(150,100,60,.25)"; x.lineWidth = 0.6 + Math.random() * 1.6; const y = Math.random() * h; x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w * 0.3, y + (Math.random() - 0.5) * 8, w * 0.6, y + (Math.random() - 0.5) * 8, w, y + (Math.random() - 0.5) * 6); x.stroke(); } });
-    wood.repeat.set(3, 3);
+    // directional brushed steel height + roughness variation
+    const brushed = GFX.tex(256, 256, (x, w, h) => {
+      x.fillStyle = "#808080"; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 420; i++) {
+        const v = 96 + Math.random() * 64 | 0, y = Math.random() * h;
+        x.fillStyle = `rgba(${v},${v},${v},.35)`; x.fillRect(0, y, w, 1 + (Math.random() < 0.25 ? 1 : 0));
+      }
+      for (let i = 0; i < 180; i++) {
+        const v = 115 + Math.random() * 45 | 0;
+        x.fillStyle = `rgba(${v},${v},${v},.25)`; x.fillRect(Math.random() * w, Math.random() * h, 24 + Math.random() * 48, 1);
+      }
+    });
+    brushed.repeat.set(3, 3); const nMetal = GFX.normal(brushed, 0.45);
+    // molded polymer micro-stipple
+    const stipple = GFX.tex(128, 128, (x, w, h) => {
+      x.fillStyle = "#808080"; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 2400; i++) {
+        const v = 92 + Math.random() * 72 | 0;
+        x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(Math.random() * w, Math.random() * h, 1.5, 1.5);
+      }
+    });
+    stipple.repeat.set(6, 6); const nPoly = GFX.normal(stipple, 0.75);
+    const wood = GFX.tex(256, 128, (x, w, h) => {
+      x.fillStyle = "#6b4226"; x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 110; i++) {
+        x.strokeStyle = Math.random() < 0.5 ? "rgba(34,18,8,.4)" : "rgba(165,112,68,.28)";
+        x.lineWidth = 0.7 + Math.random() * 1.8; const y = Math.random() * h;
+        x.beginPath(); x.moveTo(0, y); x.bezierCurveTo(w * 0.3, y + (Math.random() - 0.5) * 9, w * 0.65, y + (Math.random() - 0.5) * 9, w, y + (Math.random() - 0.5) * 6); x.stroke();
+      }
+    });
+    wood.repeat.set(3, 3); const nWood = GFX.normal(wood, 0.55);
     // scanned cloth and leather from the map texture sets
-    const scan = (name, kind, ru, rv, srgb) => { const t = new T.TextureLoader().load((typeof NX !== "undefined" && NX.url ? NX.url("t-" + name + "-" + kind + ".jpg") : "models/t-" + name + "-" + kind + ".jpg")); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(ru, rv); t.anisotropy = 4; if (srgb) t.colorSpace = T.SRGBColorSpace; return t; };
+    const scan = (name, kind, ru, rv, srgb) => { const t = new T.TextureLoader().load((typeof NX !== "undefined" && NX.url ? NX.url("t-" + name + "-" + kind + ".jpg") : "models/t-" + name + "-" + kind + ".jpg")); t.wrapS = t.wrapT = T.RepeatWrapping; t.repeat.set(ru, rv); t.anisotropy = 8; if (srgb) t.colorSpace = T.SRGBColorSpace; return t; };
     return this._m = {
-      steel: S({ color: 0x2b2e33, metalness: 0.92, roughness: 0.36, normalMap: nrm, normalScale: new T.Vector2(0.25, 0.25) }),
-      blued: S({ color: 0x1a1c20, metalness: 0.85, roughness: 0.42, normalMap: nrm, normalScale: new T.Vector2(0.3, 0.3) }),
-      bright: S({ color: 0xb9bdc4, metalness: 1, roughness: 0.24 }),
-      poly: S({ color: 0x17181b, metalness: 0.05, roughness: 0.72, normalMap: nrm, normalScale: new T.Vector2(0.5, 0.5) }),
-      tan: S({ color: 0x8a7350, metalness: 0.05, roughness: 0.75, normalMap: nrm, normalScale: new T.Vector2(0.5, 0.5) }),
-      olive: S({ color: 0x4a5138, metalness: 0.1, roughness: 0.7, normalMap: nrm, normalScale: new T.Vector2(0.5, 0.5) }),
-      wood: S({ map: wood, color: 0xffffff, metalness: 0, roughness: 0.55 }),
-      brass: S({ color: 0xc9a03a, metalness: 1, roughness: 0.3 }),
-      lens: S({ color: 0x1a2a55, metalness: 0.9, roughness: 0.05, emissive: 0x223a88, emissiveIntensity: 0.5 }),
-      glove: S({ color: 0x33363b, metalness: 0, roughness: 0.78, normalMap: scan("leather", "n", 3, 3), normalScale: new T.Vector2(0.9, 0.9) }),
-      knuckle: S({ color: 0x4a4e56, metalness: 0.25, roughness: 0.5 }),
-      sleeve: S({ map: scan("fabric", "c", 1, 1, true), color: 0x8f9a8c, metalness: 0, roughness: 0.95, normalMap: scan("fabric", "n", 1, 1), normalScale: new T.Vector2(1.2, 1.2) }),
+      steel: S({ color: 0x2c3036, metalness: 0.94, roughness: 0.32, roughnessMap: brushed, normalMap: nMetal, normalScale: new T.Vector2(0.32, 0.32), envMapIntensity: 1.35 }),
+      blued: S({ color: 0x191c22, metalness: 0.88, roughness: 0.38, roughnessMap: brushed, normalMap: nMetal, normalScale: new T.Vector2(0.35, 0.35), envMapIntensity: 1.3 }),
+      bright: S({ color: 0xc4c8cf, metalness: 1, roughness: 0.2, roughnessMap: brushed, normalMap: nMetal, normalScale: new T.Vector2(0.18, 0.18), envMapIntensity: 1.45 }),
+      poly: S({ color: 0x18191d, metalness: 0.06, roughness: 0.72, roughnessMap: stipple, normalMap: nPoly, normalScale: new T.Vector2(0.55, 0.55) }),
+      tan: S({ color: 0x8a7350, metalness: 0.05, roughness: 0.74, roughnessMap: stipple, normalMap: nPoly, normalScale: new T.Vector2(0.55, 0.55) }),
+      olive: S({ color: 0x4a5138, metalness: 0.08, roughness: 0.7, roughnessMap: stipple, normalMap: nPoly, normalScale: new T.Vector2(0.55, 0.55) }),
+      wood: S({ map: wood, color: 0xffffff, metalness: 0.02, roughness: 0.52, normalMap: nWood, normalScale: new T.Vector2(0.4, 0.4) }),
+      brass: S({ color: 0xd4a942, metalness: 1, roughness: 0.25, roughnessMap: brushed, envMapIntensity: 1.4 }),
+      lens: S({ color: 0x152754, metalness: 0.95, roughness: 0.04, emissive: 0x1f4099, emissiveIntensity: 0.65, envMapIntensity: 1.8 }),
+      glove: S({ color: 0x33363b, metalness: 0, roughness: 0.76, normalMap: scan("leather", "n", 3, 3), normalScale: new T.Vector2(0.95, 0.95) }),
+      knuckle: S({ color: 0x4a4e56, metalness: 0.28, roughness: 0.48, normalMap: nPoly, normalScale: new T.Vector2(0.3, 0.3) }),
+      sleeve: S({ map: scan("fabric", "c", 1, 1, true), color: 0x8f9a8c, metalness: 0, roughness: 0.94, normalMap: scan("fabric", "n", 1, 1), normalScale: new T.Vector2(1.25, 1.25) }),
     };
   },
   // extruded side profile: pts are [forward, up] pairs; th = thickness (left-right)
@@ -223,9 +250,20 @@ const GUNS = {
     if (this._sc[k]) return this._sc[k];
     return this._sc[k] = GFX.track(GFX.operator().then(() => new Promise((res) => { try { new THREE_EXTRAS.GLTFLoader().load("models/gun-" + k + ".glb", (g) => res(g.scene), null, () => res(null)); } catch (e) { res(null); } })).catch(() => null));
   },
+  polishMat(m) {
+    const ms = Array.isArray(m.material) ? m.material : [m.material];
+    for (let i = 0; i < ms.length; i++) {
+      const mt = ms[i]; if (!mt) continue;
+      if (mt.map) mt.map.anisotropy = 8;
+      if (mt.normalMap) mt.normalMap.anisotropy = 8;
+      if (mt.roughnessMap) mt.roughnessMap.anisotropy = 8;
+      if (mt.metalnessMap) mt.metalnessMap.anisotropy = 8;
+      if (mt.isMeshStandardMaterial) mt.envMapIntensity = Math.max(mt.envMapIntensity || 1, (mt.metalness || 0) > 0.35 ? 1.4 : 1.15);
+    }
+  },
   fit(g, src, k, id, T) {
     const U = g.userData; U.proc.forEach(c => { c.visible = false; });
-    const root = new T.Group(), part = (n) => { const q = new T.Group(), o = src.getObjectByName(n); if (o) { const c = o.clone(true); c.traverse(m => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; } }); q.add(c); } root.add(q); return q; };
+    const root = new T.Group(), part = (n) => { const q = new T.Group(), o = src.getObjectByName(n); if (o) { const c = o.clone(true); c.traverse(m => { if (m.isMesh) { m.castShadow = false; m.frustumCulled = false; GUNS.polishMat(m); } }); q.add(c); } root.add(q); return q; };
     // scans have the barrel along +X: turn it to -Z, then seat the grip on the model origin
     root.rotation.y = Math.PI / 2;
     const C = GUNS.SCAN[id] || GUNS.SCAN[k], hold = new T.Group(); hold.add(root); hold.scale.setScalar(C.s); hold.position.set(0, C.y, C.z); g.add(hold);
@@ -243,7 +281,7 @@ const GUNS = {
   fit2(g, src, C, T) {
     const U = g.userData; U.proc.forEach(c => { c.visible = false; });
     const m = THREE_EXTRAS.SkeletonUtils.clone(src), V = (x, y, z) => new T.Vector3(x, y, z);
-    m.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; } });
+    m.traverse(o => { if (o.isMesh) { o.castShadow = false; o.frustumCulled = false; GUNS.polishMat(o); } });
     const find = (n) => { let f = null; m.traverse(o => { if (!f && o.name === n) f = o; }); return f; };
     (C.hide || []).forEach(n => { const o = find(n); if (o) o.visible = false; });
     const turn = new T.Group(), hold = new T.Group(); turn.add(m); hold.add(turn); hold.scale.setScalar(C.s);

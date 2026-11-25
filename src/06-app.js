@@ -105,10 +105,10 @@ function startSession(gameId) {
     // steps, up to two seconds) so the match clock and the bots don't crawl for everyone when the host tabs away.
     if (APP.S !== S) return;
     const t = now(); let left = clamp(t - last, 0, 2000); last = t;
-    const prevPh = S.ph, prevKseq = S.g ? (S.g.kseq || 0) : 0, prevFxs = S.g ? (S.g.fxs || 0) : 0, prevAseq = S.g ? (S.g.aseq || 0) : 0, prevEvN = S.g ? (S.g.evN || 0) : 0;
+    const prevPh = S.ph, prevKseq = S.g ? (S.g.kseq || 0) : 0, prevFxs = S.g ? (S.g.fxs || 0) : 0, prevAseq = S.g ? (S.g.aseq || 0) : 0, prevEvN = S.g ? (S.g.evN || 0) : 0, prevBm = S.g ? (S.g.bmSeq || 0) : 0, prevPseq = S.g ? (S.g.pseq || 0) : 0, prevRp = S.g ? (S.g.rp || "") : "";
     while (left > 0.5 && APP.S === S) { const d = Math.min(left, 50); hostTick(d); left -= d; }
     if (!APP.S) return;
-    const urgent = S._urgent || S.ph !== prevPh || (S.g && ((S.g.kseq || 0) !== prevKseq || (S.g.fxs || 0) !== prevFxs || (S.g.aseq || 0) !== prevAseq || (S.g.evN || 0) !== prevEvN));
+    const urgent = S._urgent || S.ph !== prevPh || (S.g && ((S.g.kseq || 0) !== prevKseq || (S.g.fxs || 0) !== prevFxs || (S.g.aseq || 0) !== prevAseq || (S.g.evN || 0) !== prevEvN || (S.g.bmSeq || 0) !== prevBm || (S.g.pseq || 0) !== prevPseq || (S.g.rp || "") !== prevRp));
     const gap = S.ph === "play" ? 32 : 90;
     if ((urgent || t - lastSend >= gap) && APP.S) {
       S._urgent = false;
@@ -389,7 +389,8 @@ function readInput() {
 function urgentInputKey(o) {
   if (!o) return "";
   const hc = o.hc, lastHc = Array.isArray(hc) && hc.length ? hc[hc.length - 1][0] : 0;
-  return (o.sh || 0) + "|" + lastHc + "|" + (o.th ? o.th[0] : 0) + "|" + (o.rk ? o.rk[0] : 0) + "|" + (o.buy ? o.buy[0] : 0) + "|" + (o.tp ? o.tp[0] : 0) + "|" + (o.use || 0) + "|" + (o.fire || 0);
+  const rx = o.rx ? (o.rx.r + ":" + (o.rx.f ? "f" : o.rx.a)) : "";
+  return (o.sh || 0) + "|" + lastHc + "|" + (o.th ? o.th[0] : 0) + "|" + (o.rk ? o.rk[0] : 0) + "|" + (o.buy ? o.buy[0] : 0) + "|" + (o.tp ? o.tp[0] : 0) + "|" + (o.use || 0) + "|" + (o.fire || 0) + "|" + (o.d || 0) + "|" + rx + "|" + (o.p || 0);
 }
 function gameFrame(dt, t) {
   const host = findHost();
@@ -824,7 +825,7 @@ function renderHero() {
   $("#heroTitle").textContent = g.title; $("#heroTag").textContent = g.tag; $("#heroKind").textContent = HERO_KIND[id] || "Game night";
   const ks = $("#heroKeys"); ks.textContent = ""; (g.keys || []).slice(0, 6).forEach(k => { const sp = document.createElement("span"); sp.textContent = k; ks.append(sp); });
   const im = $("#heroImg"), src = "models/shot-" + id + ".jpg?v=" + SHOT_V; im.classList.add("swap"); const pre = new Image();
-  pre.onload = () => { im.src = src; im.classList.remove("swap"); }; pre.onerror = () => { im.style.display = "none"; }; pre.src = src;
+  pre.onload = () => { im.style.display = ""; im.src = src; im.classList.remove("swap"); }; pre.onerror = () => { im.style.display = "none"; }; pre.src = src;
   const best = (APP.recs || {})[id]; $("#heroRec").textContent = best ? g.rec.fmt(best.v) : "—";
 }
 function buildCards() {
@@ -1138,7 +1139,6 @@ function bindEvents() {
     if (e.code === "KeyF" && !e.ctrlKey && !e.metaKey) toggleFullscreen();
     if (V.ready) { if ((e.code === "KeyR" || e.code === "Enter" || e.code === "Space")) setReady(V, V.myRdy ? 0 : 1); return; }
     if (V.mod.id === "sumo" && e.code === "Space") pendingDash = true;
-    if (V.mod.id === "alert" && (e.code === "Space" || e.code === "Enter")) alert.tap(V);
     if (V.mod.id === "alert" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) alert.tap(V, +e.code.slice(-1) - 1);
     if (V.mod.id === "helpdesk" && /^Digit[1-4]$|^Numpad[1-4]$/.test(e.code)) helpdesk.answer(V, +e.code.slice(-1) - 1);
   });
@@ -1147,13 +1147,11 @@ function bindEvents() {
   const cv = $("#gameCanvas");
   cv.addEventListener("pointerdown", (e) => {
     const V = APP.V; if (!V) return;
-    if (V.mod.id === "alert") { alert.tap(V); return; }
     if (V.mod.id === "coverage" || V.mod.id === "sumo") { JOY.on = true; JOY.id = e.pointerId; JOY.bx = JOY.x = e.clientX; JOY.by = JOY.y = e.clientY; try { cv.setPointerCapture(e.pointerId); } catch (er) {} }
   });
   cv.addEventListener("pointermove", (e) => { if (JOY.on && e.pointerId === JOY.id) { JOY.x = e.clientX; JOY.y = e.clientY; } });
   const up = (e) => { if (e.pointerId === JOY.id) { JOY.on = false; JOY.id = null; } };
   cv.addEventListener("pointerup", up); cv.addEventListener("pointercancel", up);
-  $("#stagebox").addEventListener("pointerdown", (e) => { const V = APP.V; if (V && V.mod.id === "alert" && e.target.id !== "leaveBtn" && !e.target.closest(".card") && !e.target.closest("#socPanel")) { if (e.target !== cv) alert.tap(V); } });
 }
 
 
